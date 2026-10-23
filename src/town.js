@@ -173,6 +173,11 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
       held.length = 0; self.walker.queue = [];
       return new Promise((resolve) => { self.fx = { id, phase: 'leave', t0: performance.now(), resolve }; });
     },
+    /** For manual testing in the console (two tabs): where this pet is, and walk to a tile like a tap would. */
+    debug: {
+      pos: () => [self.walker.tileX, self.walker.tileY],
+      goTo(x, y) { const mv = games.movement(); const path = findPath(self.walker.tileX, self.walker.tileY, x, y, mv.zone ? walkableFor(mv.zone) : self.area); if (path.length) self.walker.setPath(path); return path.length; },
+    },
     games: {
       play: () => { const g = spotAt(self.walker.tileX, self.walker.tileY); return !!g && games.open(g); },
       join() {                                                  // "Me sumo": from anywhere; the pet runs to the pad if it is outside the game's area

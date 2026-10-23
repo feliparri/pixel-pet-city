@@ -8,6 +8,20 @@ small top-down town, walk around and greet each other with presets. Plain HTML, 
 - No free-text chat: only the presets (👋 ❤️ 😄 🎉 "¡Hola!", "¡Juguemos!", "¡Chau!"). Only the pet's name and look are shared.
 - A town of 48 x 44 tiles with a plaza and fountain, four houses, the Parque (pond, trees, bushes, open grass) and the Tienda, which can
   be entered (it sells nothing yet: "Próximamente"). The town follows your local clock: dusk, night, lit windows and lamps.
+- Games, played in the Parque on their own marked places (a signpost, a pad and a big floating icon each). The town is social only:
+  pets are not cared for here. Stand on a game's pad and press **Jugar a ...**: a 10 s lobby opens and everybody in the room gets
+  "¡Escondida! ¿Juegan?" with **Me sumo** (or just walk onto the pad). Anyone can start; the creator of the room has no special power.
+  - **Escondida** (hide and seek, the whole Parque): during the lobby anyone can press **¡Yo busco!**; if nobody does the seeker
+    rotates (who searched least, then who joined first). 15 s countdown (the seeker is frozen in the dark), then 90 s search seeing
+    only a 3-tile circle of light; bushes hide a pet unless the seeker is next to it. Touching a hider finds it. Stars: +1 per survivor,
+    +1 for the seeker per find.
+  - **Pillar la gallina** (the gallinero and around it, works solo): a chicken that flees and tires; first to touch it scores 3 stars;
+    60 s or first to 3 catches.
+  - The cancha (football) and the pista (race) are drawn and signed but not playable yet.
+  - Stars show in the HUD (`⭐ 12`), kept in `localStorage` per pet name; the shop that spends them is a later stage.
+  - No host: one browser among the players is the invisible *referee* (the lowest peer id among the players) that simulates the shared
+    things and broadcasts them; if it leaves, the next lowest id carries on. Shared state is only believed from the referee.
+    One lobby or game at a time per room. See `src/games/`.
 - Opened by the pixel-pet Android app with the player's pet in the URL fragment, or in a desktop browser with a pet chooser.
 
 ## Try it locally (two tabs)
@@ -70,6 +84,7 @@ for example `#n=Mochi&s=cat&g=2&i=tophat,,scarf,`.
 | `src/render.js`, `src/sprites.js`, `src/font.js`, `src/daynight.js` | drawing: integer scale, camera, props sorted with pets, day/night tint and lights |
 | `tools/stamp.mjs` | cache-busting: run `node tools/stamp.mjs` before committing changes to `src/`, `style.css` or `config.js` |
 | `shot.html`, `tools/shots.mjs` | the preview (below) |
+| `src/games/*.js`, `src/hud.js`, `src/stars.js` | game rules (pure), the per-browser game manager, the overlay and the star counter |
 | `src/town.js`, `src/main.js` | input and the game loop; the lobby and town screens |
 
 ## Previews

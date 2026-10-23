@@ -110,6 +110,7 @@ async function enter(code, { transport = mode, arrival = null, solo = false } = 
   const showStars = () => { $('stars-n').textContent = String(stars.get()); };
   showStars();
   const counter = { add(n) { stars.add(n); showStars(); } };
+  window.cityDebug = () => ({ town, net });                    // handy in the console when testing with two tabs
   town = startTown({ canvas: $('view'), stage: $('stage'), sprites, font, net, me, entrance: arrival, stars: counter, onHud: (info) => hud && hud.update(info) });
   setStatus('connected');
   return true;
