@@ -20,7 +20,7 @@ const browserTimers = {
  * Events handed to `onEvent`:
  *   { type: 'status', status: 'connecting'|'connected'|'error'|'closed' }
  *   { type: 'join', peer: { id, name, look, x, y, d } }   { type: 'leave', id }
- *   { type: 'pos', id, x, y, d }                          { type: 'emote', id, e }
+ *   { type: 'pos', id, x, y, d, area }                        { type: 'emote', id, e }
  */
 export function createNet({ wire, catalogue, onEvent = () => {}, now = () => Date.now(), timers = browserTimers, id = newPeerId() }) {
   const peers = new Map();                 // id -> { name, look, x, y, d, seen }
@@ -34,7 +34,7 @@ export function createNet({ wire, catalogue, onEvent = () => {}, now = () => Dat
 
   function flushPos() {
     posTimer = null;
-    if (!lastPos || (sentPos && sentPos.x === lastPos.x && sentPos.y === lastPos.y && sentPos.d === lastPos.d)) return;
+    if (!lastPos || (sentPos && sentPos.x === lastPos.x && sentPos.y === lastPos.y && sentPos.d === lastPos.d && sentPos.area === lastPos.area)) return;
     sentPos = { ...lastPos };
     sentAt = now();
     send({ t: 'pos', id, ...sentPos });
@@ -51,7 +51,7 @@ export function createNet({ wire, catalogue, onEvent = () => {}, now = () => Dat
       const fresh = !p;
       if (fresh) {
         if (peers.size >= MAX_PEERS) return;
-        p = { x: null, y: null, d: 'down' };
+        p = { x: null, y: null, d: 'down', area: 'town' };
         peers.set(m.id, p);
       }
       p.name = m.name; p.look = m.look; p.seen = t;
@@ -69,7 +69,7 @@ export function createNet({ wire, catalogue, onEvent = () => {}, now = () => Dat
     }
     p.seen = t;
     if (m.t === 'bye') { dropPeer(m.id); return; }
-    if (m.t === 'pos') { p.x = m.x; p.y = m.y; p.d = m.d; onEvent({ type: 'pos', id: m.id, x: m.x, y: m.y, d: m.d }); } else if (m.t === 'emote') onEvent({ type: 'emote', id: m.id, e: m.e });
+    if (m.t === 'pos') { p.x = m.x; p.y = m.y; p.d = m.d; p.area = m.area; onEvent({ type: 'pos', id: m.id, x: m.x, y: m.y, d: m.d, area: m.area }); } else if (m.t === 'emote') onEvent({ type: 'emote', id: m.id, e: m.e });
   }
 
   function dropPeer(pid) {
@@ -113,9 +113,9 @@ export function createNet({ wire, catalogue, onEvent = () => {}, now = () => Dat
       }, HEARTBEAT_MS);
     },
 
-    /** The tile this pet is walking to. Sent at most every POS_INTERVAL_MS and only when it changed. */
-    sendPos(x, y, d) {
-      lastPos = { x, y, d };
+    /** The tile this pet is walking to, in `area`. Sent at most every POS_INTERVAL_MS and only when it changed. */
+    sendPos(x, y, d, area = 'town') {
+      lastPos = { x, y, d, area };
       if (!conn) return;
       const wait = sentAt + POS_INTERVAL_MS - now();
       if (wait <= 0) { if (posTimer) { timers.clearTimeout(posTimer); } flushPos(); } else if (!posTimer) posTimer = timers.setTimeout(flushPos, wait);

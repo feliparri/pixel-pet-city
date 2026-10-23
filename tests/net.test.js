@@ -51,17 +51,17 @@ function pair() {
 test('two players see each other join, move, emote and leave', async () => {
   const { a, b, advance } = pair();
   await a.net.join(CODE, { name: 'Ana', look });
-  a.net.sendPos(12, 17, 'down');
+  a.net.sendPos(19, 18, 'down');
   await b.net.join(CODE, { name: 'Beto<>', look: { ...look, species: 'cat' } });
   const join = a.events.find((e) => e.type === 'join');
   assert.equal(join.peer.name, 'Beto');
   assert.equal(join.peer.look.species, 'cat');
   const joinB = b.events.find((e) => e.type === 'join');          // a answered b's hello with its hello and its position
   assert.equal(joinB.peer.name, 'Ana');
-  assert.ok(b.events.some((e) => e.type === 'pos' && e.x === 12 && e.y === 17));
+  assert.ok(b.events.some((e) => e.type === 'pos' && e.x === 19 && e.y === 18));
   advance(500);
-  b.net.sendPos(13, 17, 'right');
-  assert.ok(a.events.some((e) => e.type === 'pos' && e.x === 13 && e.d === 'right'));
+  b.net.sendPos(20, 18, 'right');
+  assert.ok(a.events.some((e) => e.type === 'pos' && e.x === 20 && e.d === 'right'));
   assert.equal(b.net.sendEmote('hola'), true);
   assert.ok(a.events.some((e) => e.type === 'emote' && e.e === 'hola'));
   b.net.leave();
@@ -82,19 +82,19 @@ test('positions: at most one per 100 ms, the latest wins, nothing when unchanged
   await a.net.join(CODE, { name: 'Ana', look });
   await b.net.join(CODE, { name: 'Beto', look });
   const count = () => b.events.filter((e) => e.type === 'pos').length;
-  a.net.sendPos(12, 17, 'down');                  // first one goes out
+  a.net.sendPos(19, 18, 'down');                  // first one goes out
   assert.equal(count(), 1);
-  a.net.sendPos(13, 17, 'right');                 // too soon: waits for the timer
-  a.net.sendPos(14, 17, 'right');
+  a.net.sendPos(20, 18, 'right');                 // too soon: waits for the timer
+  a.net.sendPos(21, 18, 'right');
   assert.equal(count(), 1);
   assert.equal(a.timers.timeouts.length, 1);
   assert.ok(a.timers.timeouts[0].ms <= POS_INTERVAL_MS);
   advance(POS_INTERVAL_MS);
   a.timers.timeouts[0].fn();
   assert.equal(count(), 2);
-  assert.equal(b.events.filter((e) => e.type === 'pos').at(-1).x, 14);
+  assert.equal(b.events.filter((e) => e.type === 'pos').at(-1).x, 21);
   advance(500);
-  a.net.sendPos(14, 17, 'right');                 // unchanged: not sent
+  a.net.sendPos(21, 18, 'right');                 // unchanged: not sent
   assert.equal(count(), 2);
   a.net.leave(); b.net.leave();
 });
@@ -119,7 +119,7 @@ test('hostile input is dropped: bad ids, unknown peers, bad positions, floods', 
   const net = createNet({ wire: mk(), catalogue: CAT, onEvent: (e) => events.push(e), now: () => clock, timers: fakeTimers() });
   await net.join(CODE, { name: 'Ana', look });
   const hostile = await injector.open(CODE, 'x', {}, () => {});
-  hostile.send({ t: 'pos', id: 'zzzzzz1', x: 12, y: 17, d: 'up' });          // never said hello
+  hostile.send({ t: 'pos', id: 'zzzzzz1', x: 19, y: 18, d: 'up' });          // never said hello
   hostile.send({ t: 'hello', id: 'zzzzzz1', name: '<img src=x>', look: { species: 'dragon', stage: 0 } });
   hostile.send({ t: 'hello', id: 'zzzzzz1', name: '<img src=x>', look });
   assert.equal(events.filter((e) => e.type === 'join').length, 1);
@@ -127,7 +127,7 @@ test('hostile input is dropped: bad ids, unknown peers, bad positions, floods', 
   hostile.send({ t: 'pos', id: 'zzzzzz1', x: 0, y: 0, d: 'up' });            // inside a tree
   hostile.send({ t: 'emote', id: 'zzzzzz1', e: 'say anything' });
   assert.equal(events.filter((e) => e.type === 'pos' || e.type === 'emote').length, 0);
-  for (let i = 0; i < 100; i++) hostile.send({ t: 'pos', id: 'zzzzzz1', x: 12 + (i % 2), y: 17, d: 'left' });
+  for (let i = 0; i < 100; i++) hostile.send({ t: 'pos', id: 'zzzzzz1', x: 19 + (i % 2), y: 18, d: 'left' });
   const flood = events.filter((e) => e.type === 'pos').length;
   assert.ok(flood > 0 && flood <= 12, String(flood));
   net.leave();
@@ -181,11 +181,11 @@ test('local transport: two nets over BroadcastChannel', async () => {
   };
   const a = mk('a'), b = mk('b');
   await a.net.join(CODE, { name: 'Ana', look });
-  a.net.sendPos(12, 17, 'down');
+  a.net.sendPos(19, 18, 'down');
   await b.net.join(CODE, { name: 'Beto', look });
   await tick();
   assert.ok(a.events.some((e) => e.type === 'join' && e.peer.name === 'Beto'));
-  assert.ok(b.events.some((e) => e.type === 'pos' && e.x === 12));
+  assert.ok(b.events.some((e) => e.type === 'pos' && e.x === 19));
   b.net.leave();
   await tick();
   assert.ok(a.events.some((e) => e.type === 'leave'));
@@ -238,11 +238,11 @@ test('supabase transport: presence and broadcast, with the channel and the anon 
   };
   const a = mk(), b = mk();
   await a.net.join(CODE, { name: 'Ana', look });
-  a.net.sendPos(12, 17, 'down');
+  a.net.sendPos(19, 18, 'down');
   await b.net.join(CODE, { name: 'Beto', look });
   assert.ok(a.events.some((e) => e.type === 'join' && e.peer.name === 'Beto'));
   assert.ok(b.events.some((e) => e.type === 'join' && e.peer.name === 'Ana'));
-  assert.ok(b.events.some((e) => e.type === 'pos' && e.x === 12));
+  assert.ok(b.events.some((e) => e.type === 'pos' && e.x === 19));
   b.net.sendEmote('party');
   assert.ok(a.events.some((e) => e.type === 'emote' && e.e === 'party'));
   b.net.leave();

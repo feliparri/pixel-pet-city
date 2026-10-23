@@ -35,10 +35,19 @@ test('validateMessage: hello', () => {
 });
 
 test('validateMessage: pos must be an integer walkable tile with a known direction', () => {
-  assert.deepEqual(validateMessage({ t: 'pos', id, x: 12, y: 17, d: 'left' }), { t: 'pos', id, x: 12, y: 17, d: 'left' });
-  for (const bad of [{ x: 0, y: 0 }, { x: 99, y: 17 }, { x: 12.5, y: 17 }, { x: '12', y: 17 }, { x: 12, y: -1 }, { x: 14, y: 13 }, { x: NaN, y: 1 }, { x: 12, y: 17, d: 'north' }]) {
+  assert.deepEqual(validateMessage({ t: 'pos', id, x: 19, y: 18, d: 'left' }), { t: 'pos', id, x: 19, y: 18, d: 'left', area: 'town' });
+  for (const bad of [{ x: 0, y: 0 }, { x: 99, y: 18 }, { x: 19.5, y: 18 }, { x: '19', y: 18 }, { x: 19, y: -1 }, { x: 23, y: 21 }, { x: NaN, y: 1 }, { x: 19, y: 18, d: 'north' }, { x: 19, y: 18, area: 'moon' }, { x: 19, y: 18, area: 'shop' }, { x: 6, y: 10, area: 5 }]) {
     assert.equal(validateMessage({ t: 'pos', id, d: 'up', ...bad }), null, JSON.stringify(bad));
   }
+});
+
+test('validateMessage: pos carries its area, validated against that area\'s own map', () => {
+  assert.deepEqual(validateMessage({ t: 'pos', id, x: 6, y: 10, d: 'up', area: 'shop' }), { t: 'pos', id, x: 6, y: 10, d: 'up', area: 'shop' });
+  assert.equal(validateMessage({ t: 'pos', id, x: 5, y: 7, d: 'up' }), null);                       // no area means the town, where (5, 7) is a roof
+  assert.equal(validateMessage({ t: 'pos', id, x: 5, y: 4, d: 'up', area: 'shop' }), null);       // the counter
+  assert.equal(validateMessage({ t: 'pos', id, x: 40, y: 3, d: 'up', area: 'shop' }), null);      // outside the shop
+  assert.equal(validateMessage({ t: 'pos', id, x: 6, y: 11, d: 'down', area: 'shop' }).area, 'shop');
+  for (const area of ['__proto__', 'constructor', '', null, {}, ['town']]) assert.equal(validateMessage({ t: 'pos', id, x: 19, y: 18, d: 'up', area }), null, String(area));
 });
 
 test('validateMessage: emotes are presets only', () => {

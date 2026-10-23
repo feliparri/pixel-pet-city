@@ -1,6 +1,6 @@
 // Everything that arrives from another player is untrusted: this module turns a raw payload into a clean message or null,
 // and limits how often each peer may speak. Nothing else in the app reads a network payload directly.
-import { isWalkable } from './map.js';
+import { isWalkable, isArea, DEFAULT_AREA } from './map.js';
 
 export const MAX_NAME = 12;
 export const MAX_PEERS = 12;
@@ -65,7 +65,7 @@ export const newPeerId = () => {
 /**
  * One received message: { t: 'hello'|'pos'|'emote'|'bye', id, ... }. Returns the normalized message or null.
  *   hello  { id, name, look }      who is here (also the presence payload)
- *   pos    { id, x, y, d }         the tile the peer is walking to, and its facing; must be a walkable tile of the map
+ *   pos    { id, x, y, d, area? }  the tile the peer is walking to, its facing and its area (default the town); must be a walkable tile of that area
  *   emote  { id, e }               one of EMOTES
  *   bye    { id }
  */
@@ -78,8 +78,11 @@ export function validateMessage(raw, catalogue) {
       return look ? { t: 'hello', id: m.id, name: sanitizeName(m.name), look } : null;
     }
     case 'pos':
-      if (!Number.isInteger(m.x) || !Number.isInteger(m.y) || !isWalkable(m.x, m.y) || !DIRS.includes(m.d)) return null;
-      return { t: 'pos', id: m.id, x: m.x, y: m.y, d: m.d };
+    {
+      const area = m.area === undefined ? DEFAULT_AREA : m.area;           // older clients never send it
+      if (!isArea(area) || !Number.isInteger(m.x) || !Number.isInteger(m.y) || !isWalkable(m.x, m.y, area) || !DIRS.includes(m.d)) return null;
+      return { t: 'pos', id: m.id, x: m.x, y: m.y, d: m.d, area };
+    }
     case 'emote':
       return typeof m.e === 'string' && Object.hasOwn(EMOTES, m.e) ? { t: 'emote', id: m.id, e: m.e } : null;
     case 'bye':

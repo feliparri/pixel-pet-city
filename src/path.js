@@ -1,12 +1,16 @@
 // Grid pathfinding: breadth-first search over 4-neighbour tiles, so every step costs the same and the shortest path is found.
-import { MAP_W, MAP_H, isWalkable } from './map.js';
+import { getArea, isWalkable, DEFAULT_AREA } from './map.js';
 
 const DIRS = [[0, -1, 'up'], [1, 0, 'right'], [0, 1, 'down'], [-1, 0, 'left']];
 export const DIR_NAMES = DIRS.map((d) => d[2]);
 export const dirVector = (name) => { const d = DIRS.find((e) => e[2] === name); return d ? [d[0], d[1]] : [0, 0]; };
 
-/** Tiles to walk from (sx, sy) to (tx, ty), excluding the start; [] when already there or no way. `walkable` is replaceable for tests. */
-export function findPath(sx, sy, tx, ty, walkable = isWalkable) {
+/** Tiles to walk from (sx, sy) to (tx, ty), excluding the start; [] when already there or no way.
+ * `where` is an area name (default the town) or, for tests, a walkable(x, y) function over the town's dimensions. */
+export function findPath(sx, sy, tx, ty, where = DEFAULT_AREA) {
+  const area = getArea(typeof where === 'string' ? where : DEFAULT_AREA);
+  const MAP_W = area.w, MAP_H = area.h;
+  const walkable = typeof where === 'function' ? where : (x, y) => isWalkable(x, y, area.name);
   if (!walkable(sx, sy) || !walkable(tx, ty)) return [];
   if (sx === tx && sy === ty) return [];
   const prev = new Int32Array(MAP_W * MAP_H).fill(-1);

@@ -48,12 +48,12 @@ export class Walker {
     if (this.d !== d) { this.d = d; if (this.onStep) this.onStep(this.tx, this.ty, d); }
   }
 
-  /** A remote pet reports the tile it is walking to: walk there by the map's own paths, or jump when it is too far. */
-  goTo(x, y, d, walkable) {
+  /** A remote pet reports the tile it is walking to: walk there by the map's own paths (`where`: an area name), or jump when it is too far. */
+  goTo(x, y, d, where) {
     const endX = this.queue.length ? this.queue[this.queue.length - 1][0] : this.tx;
     const endY = this.queue.length ? this.queue[this.queue.length - 1][1] : this.ty;
     if (endX === x && endY === y) { if (!this.busy) this.d = d; return; }
-    const path = findPath(endX, endY, x, y, walkable);
+    const path = findPath(endX, endY, x, y, where);
     if (!path.length || path.length > MAX_CATCHUP) { this.snap(x, y, d); return; }
     this.queue.push(...path);
     if (!this.moving) this.begin();
