@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { AREAS, AREA_NAMES, TILES, SIGNS, SPAWNS, ENTRY, HOUSES, DOORS, isWalkable, inMap, tileAt, doorAt, getArea, TILE } from '../src/map.js';
+import { AREAS, AREA_NAMES, TILES, SIGNS, SPAWNS, ENTRY, HOUSES, DOORS, GAME_PLACES, GAME_IDS, PLACES, inZone, spotAt, isWalkable, inMap, tileAt, doorAt, getArea, TILE } from '../src/map.js';
 import { findPath, stepDir } from '../src/path.js';
 
 test('every area is a rectangle of known tiles', () => {
@@ -125,4 +125,37 @@ test('stepDir', () => {
   assert.equal(stepDir(1, 1, 0, 1), 'left');
   assert.equal(stepDir(1, 1, 1, 0), 'up');
   assert.equal(stepDir(1, 1, 1, 2), 'down');
+});
+
+test('game places: every pad is walkable, inside its own zone, next to nothing solid it needs, and every sign is a solid signpost', () => {
+  assert.deepEqual(GAME_IDS.sort(), ['chicken', 'hide', 'race', 'soccer']);
+  for (const g of GAME_IDS) {
+    const p = GAME_PLACES[g];
+    for (const [x, y] of p.spot) { assert.equal(tileAt(x, y), 'p', `${g} pad`); assert.ok(inZone(g, x, y), `${g} pad in its zone`); assert.equal(spotAt(x, y), g); }
+    assert.equal(tileAt(p.sign[0], p.sign[1]), 'S', `${g} sign`);
+    assert.ok(SIGNS.some((s) => s.x === p.sign[0] && s.y === p.sign[1]), `${g} sign has a board`);
+    const z = p.zone;
+    assert.ok(z.x >= 0 && z.y >= 0 && z.x + z.w <= AREAS.town.w && z.y + z.h <= AREAS.town.h, `${g} zone is on the map`);
+  }
+  assert.equal(spotAt(0, 0), null);
+  assert.equal(inZone('nope', 21, 34), false);
+  assert.equal(inZone('hide', 23, 20), false, 'the plaza is outside the Parque');
+  assert.equal(inZone('hide', 23, 33), true);
+});
+
+test('the gallinero is a closed pen with one open gate and a coop; the cancha has two goals; the pista has hurdles and puddles', () => {
+  const at = (x, y) => tileAt(x, y);
+  assert.equal(at(29, 41), 'a');
+  assert.ok(isWalkable(29, 41) && isWalkable(29, 40), 'the gate leads into the pen');
+  for (let x = 28; x <= 34; x++) { if (x !== 29) assert.equal(at(x, 41), 'F'); assert.equal(at(x, 38), 'F'); }
+  assert.equal(isWalkable(32, 39), false, 'the coop is solid');
+  const count = (ch) => AREAS.town.grid.join('').split(ch).length - 1;
+  assert.equal(count('g'), 6, 'two goals of three tiles');
+  assert.ok(count('V') >= 6 && count('w') >= 3 && count('y') >= 30 && count('j') >= 10);
+});
+
+test('every place has a floating icon, and the icons sit above their pads', () => {
+  const ids = PLACES.map((p) => p.id).sort();
+  assert.deepEqual(ids, ['chicken', 'hide', 'park', 'race', 'shop', 'soccer']);
+  for (const g of GAME_IDS) { const p = PLACES.find((e) => e.id === g); assert.ok(p.y < GAME_PLACES[g].spot[0][1]); }
 });

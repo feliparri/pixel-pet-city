@@ -11,7 +11,7 @@ import { ambientAt } from './daynight.js';
 import { Walker } from './walker.js';
 
 const q = new URLSearchParams(location.search);
-const kind = ['town', 'shop', 'view'].includes(q.get('shot')) ? q.get('shot') : 'town';
+const kind = ['town', 'shop', 'view', 'park'].includes(q.get('shot')) ? q.get('shot') : 'town';
 const hour = q.has('hour') && Number.isFinite(Number(q.get('hour'))) ? Number(q.get('hour')) : 13;
 const scale = Math.max(1, Math.min(6, Number(q.get('scale')) | 0 || (kind === 'shop' ? 4 : kind === 'view' ? 3 : 2)));
 
@@ -27,6 +27,7 @@ async function main() {
   const entities = (kind === 'shop' ? CAST.shop : CAST.town).filter((e) => e.look.items.every((i) => !i || sprites.catalogue[i]));
   const me = entities[0], others = entities.slice(1);
   let vw = area.w * TILE, vh = area.h * TILE, cam = { x: 0, y: 0 };
+  if (kind === 'park') { cam = { x: 0, y: 29 * TILE }; vh = 15 * TILE; }
   if (kind === 'view') { vw = VIEW_W; vh = VIEW_H; cam = cameraFor(24 * TILE, 22 * TILE, area.w * TILE, area.h * TILE); }
   const scene = document.createElement('canvas');
   scene.width = vw; scene.height = vh;

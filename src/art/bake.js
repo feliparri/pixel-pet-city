@@ -1,14 +1,15 @@
 // Bakes an area (the town or an interior) into what the renderer needs: one ground canvas with every tile, small sprites for the tall
 // things that sort with the pets, the animated spots (pond ripples, the fountain), and what lights up at night (windows, lamps).
-import { TILE, HOUSES, inPlaza } from '../map.js';
+import { TILE, HOUSES, GAME_PLACES, inPlaza } from '../map.js';
 import { canvas, noise, shadow } from './palette.js';
 import * as G from './ground.js';
+import * as PL from './places.js';
 import { oak, pine, bush, lamp, lampLit, LAMP_GLOW, drawFountain } from './props.js';
 import { drawHouse, windowsOf, litWindow } from './buildings.js';
 import { drawInterior, counter, nightWindow, raccoon } from './interior.js';
 
 let sprites = null;
-const kit = () => sprites || (sprites = { oak: [oak(1), oak(2)], pine: [pine(1), pine(2)], bush: [bush(0), bush(1)], lamp: lamp(), lampLit: lampLit(), counter: counter(), nightWindow: nightWindow() });
+const kit = () => sprites || (sprites = { oak: [oak(1), oak(2)], pine: [pine(1), pine(2)], bush: [bush(0), bush(1)], lamp: lamp(), lampLit: lampLit(), coop: PL.coop(), counter: counter(), nightWindow: nightWindow() });
 
 function bakeTown(area) {
   const k = kit();
@@ -31,6 +32,14 @@ function bakeTown(area) {
       case 'F': G.grass(ctx, x, y, tx, ty); G.fence(ctx, x, y, tx, ty, at); break;
       case 'n': base(); G.bench(ctx, x, y, tx, ty); break;
       case 'S': G.grass(ctx, x, y, tx, ty); G.sign(ctx, x, y); break;
+      case 'p': PL.pad(ctx, x, y, tx, ty); break;
+      case 'a': PL.gate(ctx, x, y, tx, ty); break;
+      case 'y': PL.pitch(ctx, x, y, tx, ty, at, GAME_PLACES.soccer.zone); break;
+      case 'g': PL.goal(ctx, x, y, tx, ty, at, tx < GAME_PLACES.soccer.zone.x + 4 ? -1 : 1); break;
+      case 'j': PL.track(ctx, x, y, tx, ty, at); break;
+      case 'V': PL.hurdle(ctx, x, y, tx, ty, at); break;
+      case 'w': PL.puddle(ctx, x, y, tx, ty, at); break;
+      case 'G': G.grass(ctx, x, y, tx, ty); if (raw(tx - 1, ty) !== 'G' && raw(tx, ty - 1) !== 'G') out.props.push({ x, y: y + 32 - 40, sortY: y + 32, sprite: k.coop }); break;
       case 'o': G.plaza(ctx, x, y, tx, ty, at); break;
       case 't': G.grass(ctx, x, y, tx, ty); shadow(ctx, x + 14, y + 13, 13, 4, 0.32); out.props.push({ x: x - 8, y: y + 16 - 40, sortY: y + 16, sprite: k.oak[(tx * 3 + ty) & 1] }); break;
       case 'T': G.grass(ctx, x, y, tx, ty); shadow(ctx, x + 14, y + 13, 11, 3.5, 0.32); out.props.push({ x: x - 4, y: y + 16 - 40, sortY: y + 16, sprite: k.pine[(tx + ty) & 1] }); break;

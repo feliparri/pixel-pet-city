@@ -23,6 +23,15 @@ export const TILES = {
   'S': { name: 'sign', solid: true },
   'H': { name: 'building', solid: true },     // roof, wall or the door of a house that cannot be entered
   'E': { name: 'door', solid: false },         // a door that can be entered (see DOORS)
+  // the game places in the Parque (see GAME_PLACES)
+  'p': { name: 'spot', solid: false },         // the pad a pet stands on to start a game
+  'a': { name: 'gate', solid: false },         // the open gate of the gallinero
+  'G': { name: 'coop', solid: true },
+  'y': { name: 'pitch', solid: false },        // the cancha's grass
+  'g': { name: 'goal', solid: true },
+  'j': { name: 'track', solid: false },        // the pista's lanes
+  'V': { name: 'hurdle', solid: false },       // walkable for now: the race game will make pets jump it
+  'w': { name: 'puddle', solid: false },
   // the shop
   '_': { name: 'floor', solid: false },
   'r': { name: 'rug', solid: false },
@@ -64,7 +73,36 @@ export const DOORS = {
 export const SIGNS = [
   { area: 'town', x: 21, y: 31, text: 'Parque', sub: 'Para jugar' },
   { area: 'town', x: 33, y: 10, text: 'Tienda', sub: 'Próximamente', below: true },
+  { area: 'town', x: 20, y: 34, text: 'Escondida', sub: 'Jugar' },
+  { area: 'town', x: 33, y: 42, text: 'Gallina', sub: 'Jugar' },
+  { area: 'town', x: 40, y: 42, text: 'Cancha', sub: 'Pronto' },
+  { area: 'town', x: 12, y: 39, text: 'Pista', sub: 'Pronto' },
   { area: 'shop', x: 6.5, y: 2, text: 'Tienda', sub: 'Próximamente' },
+];
+
+/**
+ * The games' places, all in the Parque. `spot`: the pad tiles a pet stands on to start the game, `sign`: its signpost, `zone`: the
+ * tiles the game is played on (pets playing cannot leave it). `playable: false` places are drawn and signed but have no game yet.
+ */
+export const GAME_PLACES = {
+  hide: { name: 'Escondida', area: 'town', spot: [[21, 34]], sign: [20, 34], zone: { x: 1, y: 32, w: 46, h: 11 } },
+  chicken: { name: 'Pillar la gallina', area: 'town', spot: [[29, 42]], sign: [33, 42], zone: { x: 26, y: 37, w: 11, h: 6 } },
+  soccer: { name: 'Cancha', area: 'town', playable: false, spot: [[41, 42]], sign: [40, 42], zone: { x: 37, y: 37, w: 9, h: 6 } },
+  race: { name: 'Pista', area: 'town', playable: false, spot: [[12, 40]], sign: [12, 39], zone: { x: 12, y: 38, w: 10, h: 5 } },
+};
+export const GAME_IDS = Object.keys(GAME_PLACES);
+export const inZone = (g, x, y) => {
+  const z = Object.hasOwn(GAME_PLACES, g) ? GAME_PLACES[g].zone : null;
+  return !!z && Number.isInteger(x) && Number.isInteger(y) && x >= z.x && y >= z.y && x < z.x + z.w && y < z.y + z.h;
+};
+/** The game whose pad is at this tile of the town, or null. */
+export const spotAt = (x, y) => GAME_IDS.find((g) => GAME_PLACES[g].spot.some(([sx, sy]) => sx === x && sy === y)) || null;
+
+/** Floating icons over the main places: (x, y) in tile units is the badge's centre and its bottom edge. */
+export const PLACES = [
+  { id: 'shop', area: 'town', icon: 'shop', x: 35.5, y: 5.7 },
+  { id: 'park', area: 'town', icon: 'park', x: 21.5, y: 29.15 },
+  ...GAME_IDS.map((g) => ({ id: g, area: 'town', icon: g, x: GAME_PLACES[g].spot[0][0] + 0.5, y: GAME_PLACES[g].sign[1] - 1.85 })),
 ];
 
 export const SPAWNS = [[19, 18], [28, 18], [18, 21], [29, 21], [19, 24], [28, 24], [22, 24], [25, 24]];
@@ -126,8 +164,29 @@ function buildTown() {
     for (const [x, y] of [[4, 33], [3, 36], [4, 39], [13, 40], [14, 33], [20, 33], [27, 33], [36, 33], [44, 36], [42, 40], [30, 41], [18, 41], [8, 41], [12, 32]]) set(x, y, 't');
     for (const [x, y] of [[3, 32], [10, 41], [16, 33], [38, 41], [43, 32], [33, 33], [3, 42], [26, 41]]) set(x, y, 'T');
     for (const [x, y] of [[8, 40], [14, 38], [17, 39], [19, 37], [21, 40], [27, 38], [29, 40], [31, 38], [34, 40], [36, 38], [39, 39], [41, 37], [43, 41], [11, 40], [22, 38], [35, 41]]) set(x, y, 'b');
+    // the game places: a cleared field south of the road, each place with its pad and signpost (see GAME_PLACES)
+    fill(12, 37, 35, 6, '.');
+    fill(23, 37, 2, 6, '=');
+    set(13, 37, 'L'); set(25, 37, 'L');
+    for (const gp of Object.values(GAME_PLACES)) {
+      for (const [x, y] of gp.spot) set(x, y, 'p');
+      set(gp.sign[0], gp.sign[1], 'S');
+    }
+    // the pista: three lanes with two hurdles each and a few puddles
+    fill(13, 39, 9, 3, 'j');
+    for (const x of [16, 19]) fill(x, 39, 1, 3, 'V');
+    for (const [x, y] of [[14, 40], [18, 41], [21, 39], [17, 39]]) set(x, y, 'w');
+    // the gallinero: a fenced pen with a coop and the gate open towards the pad
+    fill(28, 38, 7, 1, 'F'); fill(28, 41, 7, 1, 'F'); fill(28, 39, 1, 2, 'F'); fill(34, 39, 1, 2, 'F');
+    set(29, 41, 'a'); fill(32, 39, 2, 2, 'G');
+    // the cancha: a pitch with a goal at each end
+    fill(38, 37, 7, 5, 'y'); fill(37, 38, 1, 3, 'g'); fill(45, 38, 1, 3, 'g');
+    // the rest of the park: trees at the edges and bushes to hide in
+    for (const [x, y] of [[12, 42], [22, 40], [36, 42], [46, 42], [46, 37], [27, 40], [42, 42], [26, 42]]) set(x, y, (x + y) % 3 ? 't' : 'T');
+    for (const [x, y] of [[14, 37], [18, 38], [21, 37], [15, 42], [20, 42], [22, 38], [22, 42], [26, 38], [26, 41], [36, 38], [36, 41], [37, 42], [44, 42], [46, 39], [46, 41], [17, 34], [22, 33], [28, 34], [32, 32], [38, 34], [45, 34], [11, 33], [26, 32], [39, 32]]) set(x, y, 'b');
     // trees: the border and some clumps between the houses (never on a path)
     for (let x = 0; x < w; x++) { set(x, 0, x % 2 ? 'T' : 't'); set(x, h - 1, x % 2 ? 't' : 'T'); }
+    for (let x = 1; x < w - 1; x++) set(x, h - 1, 'h');          // the park's south edge is a low hedge: tall trees there would cover the game pads
     for (let y = 0; y < h; y++) { set(0, y, y % 2 ? 't' : 'T'); set(w - 1, y, y % 2 ? 'T' : 't'); }
     for (const [x, y] of [[2, 3], [10, 3], [18, 3], [30, 3], [40, 3], [46, 8], [2, 9], [19, 8], [29, 8], [2, 13], [3, 15], [10, 14], [20, 5], [27, 5], [46, 13], [46, 20], [46, 26], [2, 26], [2, 20], [10, 22], [45, 28], [33, 28], [13, 28]]) set(x, y, (x + y) % 3 ? 't' : 'T');
     for (const [x, y] of [[8, 14], [14, 16], [45, 12], [41, 14], [8, 24]]) set(x, y, 'b');
