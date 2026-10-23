@@ -7,6 +7,9 @@ import { createTownNet } from './net.js';
 import { loadSprites, drawPet } from './sprites.js';
 import { loadFont } from './font.js';
 import { startTown } from './town.js';
+import { createTripClient, tripCodeFromSearch, tripErrorText } from './trip.js';
+import { devEntrance } from './entrance.js';
+import { drawKeepsake } from './keepsake.js';
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -14,7 +17,8 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode */ } },
 };
 
-let sprites, font, net = null, town = null, mode = null;
+let sprites, font, net = null, town = null, mode = null, netMode = null;
+let visit = null;                                 // a pet visiting from its board: { client, entrance, stop, solo }
 let me = null;                                   // { name, look }
 let fixedPet = false;                            // the pet came from the Android app: no chooser
 
@@ -73,40 +77,50 @@ function setMode(m) {
 function show(screen) {
   $('lobby').hidden = screen !== 'lobby';
   $('town').hidden = screen !== 'town';
+  $('gone').hidden = screen !== 'gone';
 }
 
-async function enter(code) {
+async function enter(code, { transport = mode, arrival = null, solo = false } = {}) {
   say('');
   refreshPet();
   if (!me.look) { say('Elige una mascota.'); return; }
   $('create').disabled = $('join').disabled = true;
   try {
-    net = createTownNet({ mode, config, catalogue: sprites.catalogue, onEvent: (ev) => {
+    netMode = transport;
+    net = createTownNet({ mode: transport, config, catalogue: sprites.catalogue, onEvent: (ev) => {
       if (ev.type === 'status') setStatus(ev.status);
       if (town) town.onNetEvent(ev);
     } });
     await net.join(code, me);
   } catch (e) {
     net = null;
-    say(mode === 'supabase' ? 'No se pudo conectar con la ciudad. Revisa tu conexión e inténtalo de nuevo.' : 'No se pudo abrir la sala en este navegador.');
+    say(transport === 'supabase' ? 'No se pudo conectar con la ciudad. Revisa tu conexión e inténtalo de nuevo.' : 'No se pudo abrir la sala en este navegador.');
     $('create').disabled = $('join').disabled = false;
-    return;
+    return false;
   }
   $('create').disabled = $('join').disabled = false;
   $('room-code').textContent = code;
+  if (visit) visit.solo = solo;
+  paintVisitBar();
   show('town');
-  town = startTown({ canvas: $('view'), stage: $('stage'), sprites, font, net, me });
+  town = startTown({ canvas: $('view'), stage: $('stage'), sprites, font, net, me, entrance: arrival });
   setStatus('connected');
+  return true;
 }
 
 function setStatus(status) {
-  const text = { connecting: 'Conectando…', connected: mode === 'local' ? 'Modo local: solo pestañas de este navegador' : 'Conectado', error: 'Sin conexión', closed: '' }[status] || '';
+  const text = { connecting: 'Conectando…', connected: visit && visit.solo ? '' : netMode === 'local' ? 'Modo local: solo pestañas de este navegador' : 'Conectado', error: 'Sin conexión', closed: '' }[status] || '';
   $('status').textContent = text;
 }
 
-function leave() {
+function closeRoom() {
   if (town) { town.destroy(); town = null; }
   if (net) { net.leave(); net = null; }
+}
+
+function leave() {
+  closeRoom();
+  if (visit) { enterSolo(null); return; }          // a visiting pet goes back to its own corner of the town, not to the lobby
   show('lobby');
 }
 window.cityLeave = leave;                          // the Android back button calls this before it closes the page
@@ -140,6 +154,68 @@ function buildEmotes() {
   }
 }
 
+// ---- a pet visiting from its board (docs/trip-api.md) ------------------------------------------------------------------------------
+async function visitEnter(code) {
+  closeRoom();
+  if (!(await enter(code, { transport: mode }))) {
+    await enterSolo(null);
+    $('status').textContent = 'No se pudo conectar con la sala.';
+  }
+}
+
+function enterSolo(arrival) {
+  return enter(generateCode(), { transport: 'local', arrival, solo: true });   // a private corner nobody else can join: no network
+}
+
+function paintVisitBar() {
+  const inSolo = !!visit && visit.solo;
+  $('visit-badge').hidden = !visit;
+  $('room-info').hidden = inSolo;
+  $('visit-join').hidden = !inSolo;
+  $('leave').hidden = inSolo;
+}
+
+function showGone(text, canGoToLobby = false) {
+  $('gone-text').textContent = text;
+  $('gone-lobby').hidden = !canGoToLobby;
+  show('gone');
+}
+
+async function recalled(kind) {
+  if (!visit) return;
+  if (kind === 'recalled' && town) await town.playExit(visit.entrance);
+  closeRoom();
+  visit.client.forget();
+  const text = kind === 'recalled' ? 'Volvió a su casa' : 'El viaje terminó';
+  visit = null;
+  showGone(text);
+}
+
+async function bootTrip(code) {
+  show('gone');
+  $('gone-text').textContent = 'Abriendo el viaje…';
+  if (!isConfigured(config)) { showGone('La ciudad en línea todavía no está configurada.'); return; }
+  const client = createTripClient({ base: `${config.supabaseUrl}/functions/v1`, storage: (() => { try { return localStorage; } catch { return null; } })() });
+  const r = await client.claim(code, sprites.catalogue);
+  if (!r.ok) { showGone(tripErrorText(r.error), true); return; }
+  fixedPet = true; me = { name: r.pet.name, look: r.pet.look };
+  $('chooser').hidden = true; $('pet-fixed').hidden = false; $('pet-name').textContent = me.name;
+  const dev = devEntrance(location.search);
+  if (dev && dev !== r.entrance && !r.resumed) { await client.save({ entrance: dev }); }
+  visit = { client, entrance: client.session.entrance, stop: null, solo: true };
+  const box = $('keepsakes');
+  box.replaceChildren();
+  for (const k of r.pet.keepsakes) {
+    const c = document.createElement('canvas');
+    c.title = k.name; c.setAttribute('role', 'img'); c.setAttribute('aria-label', k.name);
+    drawKeepsake(c, k, 2);
+    box.append(c);
+  }
+  refreshPet();
+  visit.stop = client.watch(recalled);
+  await enterSolo(r.resumed ? null : visit.entrance);
+}
+
 async function boot() {
   try {
     [sprites, font] = await Promise.all([loadSprites(), loadFont()]);
@@ -149,6 +225,16 @@ async function boot() {
   }
   fillItemSelects();
   buildEmotes();
+  const tripCode = tripCodeFromSearch(location.search);
+  if (tripCode) {
+    $('copy').addEventListener('click', copyCode);
+    $('leave').addEventListener('click', leave);
+    $('v-create').addEventListener('click', () => visitEnter(generateCode()));
+    $('v-join').addEventListener('click', () => { const c = normalizeCode($('v-code').value); if (c) visitEnter(c); else $('status').textContent = 'Código no válido. Ejemplo: FOCA-LUNA-42'; });
+    $('v-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('v-join').click(); });
+    mode = 'supabase';
+    return bootTrip(tripCode);
+  }
   const fromApp = parsePetFragment(location.hash, sprites.catalogue);
   if (fromApp) {
     fixedPet = true; me = fromApp;

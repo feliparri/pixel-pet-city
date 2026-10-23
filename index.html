@@ -45,14 +45,25 @@
 
   <main id="town" class="screen town" hidden>
     <header class="bar">
-      <span class="label">Código</span>
-      <strong id="room-code"></strong>
-      <button id="copy" class="btn small" type="button">Copiar código</button>
+      <span id="room-info" class="room-info"><span class="label">Código</span> <strong id="room-code"></strong>
+        <button id="copy" class="btn small" type="button">Copiar código</button></span>
+      <span id="visit-badge" class="badge" hidden>De visita desde su placa <span id="keepsakes" class="keepsakes"></span></span>
+      <span id="visit-join" class="visit-join" hidden>
+        <button id="v-create" class="btn small" type="button">Crear sala</button>
+        <input id="v-code" class="small" placeholder="FOCA-LUNA-42" maxlength="30" autocapitalize="characters" spellcheck="false" autocomplete="off" aria-label="Código de sala">
+        <button id="v-join" class="btn small" type="button">Unirse</button>
+      </span>
       <button id="leave" class="btn small danger" type="button">Salir</button>
     </header>
     <div id="stage"><canvas id="view"></canvas></div>
     <p id="status" role="status"></p>
     <nav id="emotes" class="emotes" aria-label="Saludos"></nav>
+  </main>
+
+  <main id="gone" class="screen" hidden>
+    <h1>Ciudad</h1>
+    <p id="gone-text" class="note" role="status"></p>
+    <a id="gone-lobby" class="btn" href="./" hidden>Ir a la ciudad</a>
   </main>
 
   <script type="module" src="src/main.js"></script>

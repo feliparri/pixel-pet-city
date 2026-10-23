@@ -67,3 +67,14 @@ for example `#n=Mochi&s=cat&g=2&i=tophat,,scarf,`.
 | `src/net.js`, `src/transport-*.js` | the room session and its `local` and `supabase` transports |
 | `src/art.js`, `src/render.js`, `src/sprites.js`, `src/font.js` | drawing: integer scale, nearest-neighbour, letterboxed |
 | `src/town.js`, `src/main.js` | input and the game loop; the lobby and town screens |
+
+## Web trip (a pet visiting from its board)
+
+Open `?trip=<code>` (the board shows the code and a QR): the pet arrives with its entrance animation (parachute by default), lives in the town,
+and leaves when the board recalls it ("Volvió a su casa"). API contract: `docs/trip-api.md`; server: `supabase/` (migration + eight Edge Functions).
+
+- No Supabase needed: `node tools/local-demo.mjs` serves the town with the real handlers on an in-memory database and prints a code to open;
+  `curl -X POST localhost:8099/demo/recall` plays the board's recall (then `return`, `ack`).
+- Against the deployed project: `node tools/fake-board.mjs run` (register, start, wait for the claim, recall, return, ack). Fixtures in
+  `tests/fixtures` come from `make city-fixtures CITY=../pixel-pet-city` in the game repo.
+- Demo entrance: add `&dev=1&entrance=blue_bolt` to the URL.

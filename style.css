@@ -35,3 +35,12 @@ input:focus-visible, select:focus-visible, .btn:focus-visible { outline: 3px sol
 .emotes { display: flex; gap: .4rem; padding: .4rem .6rem max(.5rem, env(safe-area-inset-bottom)); background: var(--face); border-top: 2px solid var(--edge); overflow-x: auto; justify-content: center; }
 .emotes .btn { padding: .3rem .7rem; font-size: 1.15rem; white-space: nowrap; flex: none; }
 .emotes .btn.text { font-size: .9rem; }
+
+/* a pet visiting from its board */
+.bar .room-info { display: inline-flex; align-items: center; gap: .5rem; margin-right: auto; }
+.badge { display: inline-flex; align-items: center; gap: .4rem; background: var(--gold); color: var(--bg); font-weight: 700; font-size: .8rem; padding: .15rem .5rem; border: 2px solid #b89420; }
+.keepsakes { display: inline-flex; gap: .2rem; }
+.keepsakes canvas { image-rendering: pixelated; max-height: 28px; width: auto; background: var(--bg); border: 1px solid #b89420; }
+.visit-join { display: inline-flex; align-items: center; gap: .4rem; margin-left: auto; }
+.visit-join input.small { min-height: 2.25rem; padding: .25rem .4rem; width: 9.5rem; text-transform: uppercase; letter-spacing: .06em; font-size: .85rem; }
+a.btn { display: inline-block; text-decoration: none; }

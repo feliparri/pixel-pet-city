@@ -4,6 +4,7 @@ import { TILE, MAP_W, MAP_H, SIGNS } from './map.js';
 import { drawPet, CELL } from './sprites.js';
 import { drawText, textWidth, textCanvas } from './font.js';
 import { EMOTES } from './protocol.js';
+import { entranceState, drawEntranceFx, flickers } from './entrance.js';
 
 export const VIEW_W = 224;
 export const VIEW_H = 288;
@@ -82,17 +83,29 @@ export function createRenderer({ canvas, sprites, font, mapCanvas }) {
     all.sort((a, b) => a.walker.pos().y - b.walker.pos().y);
     const bubbles = [];
     for (const e of all) {
+      if (e.gone) continue;                                                                                // it left the town (a recalled visitor)
       const p = e.walker.pos();
       const k = e.walker.moving ? Math.min(1, e.walker.t / e.walker.stepMs()) : 0;
       const hop = e.walker.moving ? Math.round(Math.abs(Math.sin(k * Math.PI)) * 3) : 0;
       const bx = Math.round(p.x * TILE + TILE / 2 - cam.x), by = Math.round(p.y * TILE + TILE - cam.y);   // the feet
       if (bx < -20 || bx > VIEW_W + 20 || by < 0 || by > VIEW_H + 40) continue;                           // off screen: nothing to draw
-      sctx.fillStyle = 'rgba(24,28,44,0.35)';                                                              // shadow
-      sctx.fillRect(bx - 7, by - 3, 14, 3); sctx.fillRect(bx - 5, by - 4, 10, 1);
-      const flap = e.walker.moving && Math.floor(now / 140) % 2 === 1;
-      drawPet(sctx, sprites, e.look, bx - CELL / 2, by - CELL + 2 - hop, { frame: headFrame(e, now, e.id), flip: e.walker.d === 'left', flap });
-      drawText(sctx, font, e.name, bx - Math.floor(textWidth(font, e.name) / 2), by + 2, e === state.me ? '#f8d040' : '#f4f6fa');
-      if (e.emote && now < e.emote.until) bubbles.push({ x: bx, y: by - CELL - hop, e: e.emote.e });
+      const fx = e.fx ? entranceState(e.fx.id, e.fx.phase, now - e.fx.t0) : null;                          // an arrival or an exit in progress
+      const lift = fx ? Math.round(fx.lift * (by + CELL + 24)) : 0;                                         // 1 = just above the top edge
+      const px = bx + (fx ? Math.round(fx.sway) : 0);
+      if (fx) drawEntranceFx(sctx, e.fx.id, fx, bx, by, CELL, false);
+      if (!fx || !fx.hidden) {
+        if (lift < by * 0.6) {
+          sctx.fillStyle = 'rgba(24,28,44,0.35)';                                                           // shadow (it grows as the pet lands)
+          sctx.fillRect(bx - 7, by - 3, 14, 3); sctx.fillRect(bx - 5, by - 4, 10, 1);
+        }
+        if (!(fx && flickers(e.fx.id, e.fx.phase, now - e.fx.t0))) {
+          const flap = (e.walker.moving || lift > 0) && Math.floor(now / 140) % 2 === 1;
+          drawPet(sctx, sprites, e.look, px - CELL / 2, by - CELL + 2 - hop - lift, { frame: lift > 0 ? 'happy' : headFrame(e, now, e.id), flip: e.walker.d === 'left', flap });
+        }
+        drawText(sctx, font, e.name, px - Math.floor(textWidth(font, e.name) / 2), by + 2 - lift, e === state.me ? '#f8d040' : '#f4f6fa');
+      }
+      if (fx) drawEntranceFx(sctx, e.fx.id, fx, px, by - lift, CELL, true);
+      if (e.emote && now < e.emote.until && !lift && !(fx && fx.hidden)) bubbles.push({ x: bx, y: by - CELL - hop, e: e.emote.e });
     }
 
     ctx.imageSmoothingEnabled = false;

@@ -4,6 +4,7 @@ import { isWalkable, SPAWNS, TILE } from './map.js';
 import { Walker } from './walker.js';
 import { createRenderer, EMOTE_MS } from './render.js';
 import { renderMap } from './art.js';
+import { entranceState } from './entrance.js';
 
 const KEY_DIRS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', w: 'up', s: 'down', a: 'left', d: 'right', W: 'up', S: 'down', A: 'left', D: 'right' };
 
@@ -13,10 +14,12 @@ function spawnFor(id) {
   return SPAWNS[h % SPAWNS.length];
 }
 
-/** me: { name, look }; net: a createNet() session already joined. Returns { emote, destroy }. */
-export function startTown({ canvas, stage, sprites, font, net, me }) {
+/** me: { name, look }; net: a createNet() session already joined; entrance: an entrance id to play on arrival (a visiting pet), or null.
+ * Returns { onNetEvent, emote, playExit, destroy }. */
+export function startTown({ canvas, stage, sprites, font, net, me, entrance = null }) {
   const [sx, sy] = spawnFor(net.id);
   const self = { id: net.id, name: me.name, look: me.look, walker: new Walker(sx, sy), emote: null };
+  if (entrance) self.fx = { id: entrance, phase: 'arrive', t0: performance.now(), resolve: null };
   const others = new Map();
   const state = { me: self, others: [], marker: null };
   const renderer = createRenderer({ canvas, sprites, font, mapCanvas: renderMap() });
@@ -59,7 +62,13 @@ export function startTown({ canvas, stage, sprites, font, net, me }) {
     const dt = Math.min(100, t - last);
     last = t;
     const w = self.walker;
-    if (!w.busy && held.length) {                    // a held arrow key keeps walking
+    if (self.fx && entranceState(self.fx.id, self.fx.phase, t - self.fx.t0).done) {      // the arrival or the exit is over
+      const f = self.fx;
+      self.fx = null;
+      if (f.phase === 'leave') self.gone = true;
+      if (f.resolve) f.resolve();
+    }
+    if (!w.busy && held.length && !self.fx) {                    // a held arrow key keeps walking
       const d = held[held.length - 1];
       const [dx, dy] = dirVector(d);
       const nx = w.tileX + dx, ny = w.tileY + dy;
@@ -74,7 +83,7 @@ export function startTown({ canvas, stage, sprites, font, net, me }) {
   raf = requestAnimationFrame(frame);
 
   function onPointer(ev) {
-    if (ev.button > 0) return;
+    if (ev.button > 0 || self.fx || self.gone) return;
     const tile = renderer.pointToTile(ev.clientX, ev.clientY);
     if (!tile) return;
     ev.preventDefault();
@@ -87,7 +96,7 @@ export function startTown({ canvas, stage, sprites, font, net, me }) {
   function onKeyDown(ev) {
     if (ev.target && /^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName)) return;
     const d = KEY_DIRS[ev.key];
-    if (!d) return;
+    if (!d || self.fx) return;
     ev.preventDefault();
     if (!held.includes(d)) { held.push(d); self.walker.queue = []; }   // a key cancels a tapped route
   }
@@ -103,11 +112,18 @@ export function startTown({ canvas, stage, sprites, font, net, me }) {
 
   return {
     onNetEvent,
+    /** Plays the exit of an entrance id and resolves when the pet is gone (the caller then leaves the room). */
+    playExit(id) {
+      held.length = 0; self.walker.queue = [];
+      return new Promise((resolve) => { self.fx = { id, phase: 'leave', t0: performance.now(), resolve }; });
+    },
     emote(e) {
+      if (self.fx || self.gone) return;
       if (net.sendEmote(e)) self.emote = { e, until: performance.now() + EMOTE_MS };
     },
     destroy() {
       alive = false;
+      if (self.fx && self.fx.resolve) self.fx.resolve();
       cancelAnimationFrame(raf);
       ro.disconnect();
       canvas.removeEventListener('pointerdown', onPointer);
