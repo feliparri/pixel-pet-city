@@ -10,13 +10,19 @@ export const POS_INTERVAL_MS = 100;        // at most 10 position messages a sec
 export const HEARTBEAT_MS = 2000;          // a hello now and then: late joiners and lost messages heal
 export const PEER_TIMEOUT_MS = 7000;       // a peer silent this long (a crashed tab) is gone
 
+// wrapped: the browser's timers throw "illegal invocation" when called as methods of another object
+const browserTimers = {
+  setInterval: (fn, ms) => setInterval(fn, ms), clearInterval: (h) => clearInterval(h),
+  setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: (h) => clearTimeout(h),
+};
+
 /**
  * Events handed to `onEvent`:
  *   { type: 'status', status: 'connecting'|'connected'|'error'|'closed' }
  *   { type: 'join', peer: { id, name, look, x, y, d } }   { type: 'leave', id }
  *   { type: 'pos', id, x, y, d }                          { type: 'emote', id, e }
  */
-export function createNet({ wire, catalogue, onEvent = () => {}, now = () => Date.now(), timers = { setInterval, clearInterval, setTimeout, clearTimeout }, id = newPeerId() }) {
+export function createNet({ wire, catalogue, onEvent = () => {}, now = () => Date.now(), timers = browserTimers, id = newPeerId() }) {
   const peers = new Map();                 // id -> { name, look, x, y, d, seen }
   let limiter = createRateLimiter(now);
   let conn = null, code = null, hello = null, heartbeat = null, posTimer = null;
