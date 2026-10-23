@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net; img-src 'self' data: blob:; style-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="theme-color" content="#181c2c">
+  <title>Ciudad</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="lobby" class="screen">
+    <h1>Ciudad</h1>
+    <p id="config-note" class="note" hidden>La ciudad en línea todavía no está configurada. Puedes probarla en modo local: solo entre pestañas de este navegador.</p>
+    <button id="local-mode" class="btn secondary" type="button" hidden>Jugar en modo local</button>
+
+    <section class="card" aria-label="Tu mascota">
+      <canvas id="preview" width="64" height="64" aria-hidden="true"></canvas>
+      <div id="pet-fixed" hidden><strong id="pet-name"></strong></div>
+      <form id="chooser" autocomplete="off">
+        <label>Nombre <input id="name" maxlength="12" value="Mochi"></label>
+        <label>Especie
+          <select id="species"><option value="frog">Rana</option><option value="seal">Foca</option><option value="cat">Gato</option></select>
+        </label>
+        <label>Edad
+          <select id="age"><option value="0">Bebé</option><option value="1">Niño</option><option value="2" selected>Adulto</option><option value="3">Mayor</option></select>
+        </label>
+        <label>Cabeza <select id="item-head"></select></label>
+        <label>Cara <select id="item-face"></select></label>
+        <label>Cuello <select id="item-neck"></select></label>
+        <label>Espalda <select id="item-back"></select></label>
+      </form>
+    </section>
+
+    <section class="card actions" id="actions">
+      <button id="create" class="btn primary" type="button">Crear sala</button>
+      <div class="join">
+        <label for="code-input">Código</label>
+        <input id="code-input" placeholder="FOCA-LUNA-42" maxlength="30" autocapitalize="characters" spellcheck="false" autocomplete="off">
+        <button id="join" class="btn" type="button">Unirse</button>
+      </div>
+      <p id="error" class="error" role="alert"></p>
+    </section>
+  </main>
+
+  <main id="town" class="screen town" hidden>
+    <header class="bar">
+      <span class="label">Código</span>
+      <strong id="room-code"></strong>
+      <button id="copy" class="btn small" type="button">Copiar código</button>
+      <button id="leave" class="btn small danger" type="button">Salir</button>
+    </header>
+    <div id="stage"><canvas id="view"></canvas></div>
+    <p id="status" role="status"></p>
+    <nav id="emotes" class="emotes" aria-label="Saludos"></nav>
+  </main>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
