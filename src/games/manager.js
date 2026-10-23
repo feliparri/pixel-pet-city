@@ -1,0 +1,279 @@
+// The games in a room, from the lobby to the results, for one browser. There is no host: everyone keeps a copy of the shared state, and the
+// *referee* (the lowest peer id among the players still here) is the only one that advances the clock, simulates the chicken, decides who was
+// found or who caught it, and broadcasts it. When the referee leaves, the next lowest id already holds the last state and carries on.
+// Everything that arrives was validated by protocol.js; here the receiver also checks who is allowed to say it: shared state is only
+// believed from the current referee, never from another player.
+import { GAME_RULES, isPlayable, STATE_MS, LOBBY_MS } from './rules.js';
+import { openLobby, joinLobby, leaveLobby, volunteerSeeker, electReferee, lobbyReady, buildStart, lobbyKey } from './lobby.js';
+import { tickHide, hideResults, hideStars, seekerSees } from './hide.js';
+import { createChicken, stepChicken, catcher, spawnTile, catchesToWin } from './chicken.js';
+import { GAME_PLACES, inZone, isWalkable, tileAt, TILES } from '../map.js';
+
+const NOTICE_MS = 3200;
+const LOBBY_GRACE_MS = 4000;                          // a lobby whose start never came is dropped this long after its time
+const newRound = (rng) => Array.from({ length: 6 }, () => Math.floor(rng() * 36).toString(36)).join('');
+
+/**
+ * Hooks: `id` (this browser's peer id), `send(msg)` (a game message to everybody else), `present()` (a Set of the other peers' ids),
+ * `pos(id)` ({ x, y, area } of a peer or of this pet, or null), `name(id)`, `award(n)` (stars for this pet), `now()` and `rng()`.
+ */
+export function createGames({ id, send, present, pos, name = (i) => i, award = () => {}, now = () => Date.now(), rng = Math.random }) {
+  let lobby = null;                 // the lobby that is open, or null
+  let game = null;                  // the game in progress: { g, r, roster, seeker, play (am I a player), left: Set of idx, ... }
+  let results = null;               // the last game's results, until dismissed
+  const seekCount = new Map();      // id -> rounds searched in this room (everyone counts them from the same gstart messages)
+  const notices = [];
+  const awarded = new Set();
+  let stateAt = -Infinity;
+
+  const everyone = () => { const s = new Set(present()); s.add(id); return s; };
+  const say = (text, kind = 'info') => { notices.push({ text, kind, until: now() + NOTICE_MS }); if (notices.length > 4) notices.shift(); };
+  const tile = (pid) => { const p = pos(pid); return p && p.area === 'town' ? p : null; };
+  const aliveIds = () => (game ? game.roster.filter((_, i) => !game.gone.has(i)) : []);
+  const referee = () => (game ? electReferee(aliveIds(), everyone()) : lobby ? electReferee(lobby.joined, everyone()) : null);
+  const amReferee = () => referee() === id;
+  const myIndex = () => (game ? game.roster.indexOf(id) : -1);
+  const award1 = (key, n) => { if (n > 0 && !awarded.has(key)) { awarded.add(key); award(n); } };
+
+  // ---- starting, joining, leaving (this browser's own actions) ----
+  function open(g) {
+    if (!isPlayable(g) || lobby || game) return false;
+    const msg = { g, r: newRound(rng), left: LOBBY_MS };
+    lobby = openLobby({ g, r: msg.r, opener: id, now: now(), leftMs: LOBBY_MS });
+    send({ t: 'gopen', ...msg });
+    return true;
+  }
+  function join() {
+    if (!lobby || lobby.joined.includes(id) || !joinLobby(lobby, id)) return false;
+    send({ t: 'gjoin', r: lobby.r });
+    return true;
+  }
+  function volunteer() {
+    if (!lobby || lobby.g !== 'hide' || !volunteerSeeker(lobby, id)) return false;
+    send({ t: 'grole', r: lobby.r, role: 'seek' });
+    return true;
+  }
+  /** "Salir del juego": leaves the lobby or the game (the game goes on without this pet, which becomes a spectator). */
+  function leave() {
+    if (lobby && lobby.joined.includes(id)) {
+      leaveLobby(lobby, id);
+      send({ t: 'gleave', r: lobby.r });
+      say('Saliste del juego');
+      return true;
+    }
+    if (game && game.play) {
+      game.play = false; game.gone.add(myIndex());
+      send({ t: 'gleave', r: game.r });
+      say('Saliste del juego');
+      return true;
+    }
+    return false;
+  }
+
+  // ---- what arrives ----
+  function onMessage(m) {
+    const from = m.id;
+    switch (m.t) {
+      case 'gopen': {
+        if (game) return;
+        const incoming = openLobby({ g: m.g, r: m.r, opener: from, now: now(), leftMs: m.left });
+        if (lobby && lobbyKey(lobby) <= lobbyKey(incoming)) return;                    // two lobbies at once: the smaller key wins everywhere
+        lobby = incoming;
+        say(GAME_RULES[m.g].invite, 'invite');
+        return;
+      }
+      case 'gjoin': if (lobby && lobby.r === m.r) joinLobby(lobby, from); return;
+      case 'grole': if (lobby && lobby.r === m.r) volunteerSeeker(lobby, from); return;
+      case 'gleave':
+        if (lobby && lobby.r === m.r) leaveLobby(lobby, from);
+        else if (game && game.r === m.r) { const i = game.roster.indexOf(from); if (i >= 0) game.gone.add(i); }
+        return;
+      case 'gstart':
+        if (lobby && lobby.r === m.r && lobby.g === m.g && from === referee()) begin(m);
+        return;
+      default: break;
+    }
+    if (!game || game.r !== m.r) {
+      if (m.t === 'gend' && lobby && lobby.r === m.r && from === referee()) { lobby = null; say('Faltaron jugadores. ¡Otra vez!'); }
+      return;
+    }
+    if (from !== referee()) return;                                                    // shared state is only believed from the referee
+    if (m.t === 'gstate') {
+      if (game.g !== m.g || (game.phase === 'search' && m.ph === 'count')) return;
+      game.phase = m.ph; game.phaseEnd = now() + m.left;
+      m.f.forEach((v, i) => { if (i < game.f.length) game.f[i] = v; });
+    } else if (m.t === 'gfound') {
+      applyFound(m.i, m.at);
+    } else if (m.t === 'gchick') {
+      if (game.g !== 'chicken') return;
+      game.chick = { x: m.x, y: m.y, d: m.d, m: m.m, snap: m.s === 1, seq: (game.chick ? game.chick.seq : 0) + 1 };
+    } else if (m.t === 'gcatch') {
+      applyCatch(m.i, m.n);
+    } else if (m.t === 'gend') {
+      finish(m.rs, m.f);
+    }
+  }
+
+  function begin(m) {
+    if (m.s >= 0) seekCount.set(m.p[m.s], (seekCount.get(m.p[m.s]) || 0) + 1);
+    const t = now(), rules = GAME_RULES[m.g], hide = m.g === 'hide';
+    game = {
+      g: m.g, r: m.r, roster: m.p.slice(), seeker: m.s, play: m.p.includes(id) && !!lobby && lobby.joined.includes(id), gone: new Set(),
+      f: m.p.map(() => (hide ? -1 : 0)), phase: hide ? 'count' : 'play', phaseEnd: t + (hide ? rules.countMs : rules.roundMs),
+      chick: null, sim: null, respawnAt: t + 800,
+    };
+    lobby = null; results = null;
+    stateAt = -Infinity;
+    if (game.play) say(hide ? (m.p[m.s] === id ? 'Tú buscas. ¡Cuenta hasta 15!' : '¡Escóndete!') : '¡Pilla a la gallina!', 'start');
+    else say('Hay un juego: puedes mirar', 'info');
+  }
+
+  function applyFound(i, at) {
+    if (i < 0 || i >= game.roster.length || i === game.seeker) return;
+    if (game.f[i] === -1) game.f[i] = at;
+    if (game.roster[i] === id && !game.saidFound) { game.saidFound = true; say('¡Te encontré!', 'found'); }
+    else if (game.roster[i] !== id) say(`¡${name(game.roster[i])} apareció!`, 'found');
+  }
+
+  function applyCatch(i, n) {
+    if (i < 0 || i >= game.roster.length) return;
+    game.f[i] = Math.max(game.f[i], n);
+    game.chick = null;
+    say(`¡${name(game.roster[i])} atrapó a la gallina!`, 'catch');
+    if (game.roster[i] === id) award1(`${game.r}:c${n}`, GAME_RULES.chicken.starsPerCatch);
+  }
+
+  /** The end of a game: stars for this pet, the results panel. */
+  function finish(reason, f) {
+    const g = game;
+    if (!g) return;
+    const mine = g.roster.indexOf(id);
+    let rows, stars = 0;
+    if (g.g === 'hide') {
+      rows = hideResults(g.seeker, f, reason);
+      if (mine >= 0 && g.play) { stars = hideStars(mine, g.seeker, f, reason); award1(`${g.r}:end`, stars); }
+    } else {
+      rows = f.map((n, i) => ({ i, role: 'player', found: n, stars: n * GAME_RULES.chicken.starsPerCatch }));
+      stars = mine >= 0 ? f[mine] * GAME_RULES.chicken.starsPerCatch : 0;
+    }
+    results = { g: g.g, reason, roster: g.roster.slice(), names: g.roster.map((p) => name(p)), rows, mine, stars: g.play ? stars : 0, play: g.play, until: now() + 15000 };
+    game = null;
+  }
+
+  // ---- the clock: every frame ----
+  function update() {
+    const t = now();
+    while (notices.length && notices[0].until < t) notices.shift();
+    if (results && t > results.until) results = null;
+    if (lobby) {
+      const ref = referee();
+      if (ref === id && lobbyReady(lobby, t, everyone())) {
+        const start = buildStart(lobby, everyone(), seekCount);
+        if (!start) { send({ t: 'gend', g: lobby.g, r: lobby.r, rs: 'few', f: [] }); lobby = null; say('Faltaron jugadores. ¡Otra vez!'); }
+        else { send({ t: 'gstart', ...start }); begin({ t: 'gstart', id, ...start }); }
+      } else if (ref !== id && t > lobby.deadline + LOBBY_GRACE_MS) lobby = null;
+      else if (ref === null) lobby = null;
+      return;
+    }
+    if (!game) return;
+    for (const [i, p] of game.roster.entries()) if (i !== myIndex() && !game.gone.has(i) && !everyone().has(p)) game.gone.add(i);   // a peer that dropped
+    if (!amReferee()) {
+      game.sim = null;
+      if (referee() === null) game = null;                     // nobody is left to run it
+      return;
+    }
+    if (game.g === 'hide') refereeHide(t); else refereeChicken(t);
+  }
+
+  const stateMsg = (extra = {}) => ({ t: 'gstate', g: game.g, r: game.r, ph: game.phase, left: Math.max(0, Math.min(120000, Math.round(game.phaseEnd - now()))), f: game.f.slice(), ...extra });
+  const broadcastState = (t) => { if (t - stateAt >= STATE_MS) { stateAt = t; send(stateMsg()); } };
+  const petPos = (pid) => { const p = tile(pid); return p && inZone(game.g, p.x, p.y) ? p : null; };
+
+  function refereeHide(t) {
+    const s = { roster: game.roster, seeker: game.seeker, phase: game.phase, phaseEnd: game.phaseEnd, found: game.f };
+    const events = tickHide(s, t, petPos, (pid) => !game.gone.has(game.roster.indexOf(pid)) && everyone().has(pid));
+    game.phase = s.phase; game.phaseEnd = s.phaseEnd;
+    let end = null;
+    for (const e of events) {
+      if (e.type === 'found') { send({ t: 'gfound', r: game.r, i: e.i, at: e.at }); applyFound(e.i, e.at); }
+      else if (e.type === 'search') { stateAt = -Infinity; say('¡A buscar!', 'start'); }
+      else if (e.type === 'end') end = e.reason;
+    }
+    if (end) { const f = game.f.slice(); send({ t: 'gend', g: 'hide', r: game.r, rs: end, f }); finish(end, f); return; }
+    broadcastState(t);
+  }
+
+  const chickenTiles = () => {
+    const z = GAME_PLACES.chicken.zone, out = [];
+    for (let y = z.y; y < z.y + z.h; y++) for (let x = z.x; x < z.x + z.w; x++) if (chickenWalkable(x, y) && tileAt(x, y) !== 'p') out.push([x, y]);
+    return out;
+  };
+  const chickenWalkable = (x, y) => inZone('chicken', x, y) && isWalkable(x, y) && !TILES[tileAt(x, y)].hide;
+
+  function refereeChicken(t) {
+    const pets = game.roster.filter((_, i) => !game.gone.has(i)).map((pid) => ({ id: pid, ...petPos(pid) })).filter((p) => p.x !== undefined);
+    if (!game.sim && game.chick) game.sim = { ...createChicken(game.chick.x, game.chick.y, t), mode: 'wander' };    // took over as referee: carry on from the last chicken seen
+    if (!game.sim && t >= game.respawnAt) {
+      const [x, y] = spawnTile(chickenTiles(), pets, rng);
+      game.sim = createChicken(x, y, t);
+      game.chick = { x, y, d: 'left', m: 'w', snap: true, seq: (game.chick ? game.chick.seq : 0) + 1 };
+      send({ t: 'gchick', r: game.r, x, y, d: 'left', m: 'w', s: 1 });
+    }
+    const ch = game.sim;
+    if (ch) {
+      if (stepChicken(ch, pets, t, rng, chickenWalkable) || (ch.mode === 'tired') !== (game.chick && game.chick.m === 't')) {
+        const m = ch.mode === 'tired' ? 't' : ch.mode === 'flee' ? 'f' : 'w';
+        game.chick = { x: ch.x, y: ch.y, d: ch.d, m, snap: false, seq: (game.chick ? game.chick.seq : 0) + 1 };
+        send({ t: 'gchick', r: game.r, x: ch.x, y: ch.y, d: ch.d, m, s: 0 });
+      }
+      const who = catcher(ch, pets);
+      if (who) {
+        const i = game.roster.indexOf(who), n = game.f[i] + 1;
+        send({ t: 'gcatch', r: game.r, i, n });
+        applyCatch(i, n);                                           // records the score and the notice, like everyone else
+        game.sim = null; game.respawnAt = t + GAME_RULES.chicken.respawnMs;
+        if (n >= catchesToWin) { const f = game.f.slice(); send({ t: 'gend', g: 'chicken', r: game.r, rs: 'goal', f }); finish('goal', f); return; }
+      }
+    }
+    if (t >= game.phaseEnd) { const f = game.f.slice(); send({ t: 'gend', g: 'chicken', r: game.r, rs: 'time', f }); finish('time', f); return; }
+    broadcastState(t);
+  }
+
+  // ---- what the screen needs ----
+  function view() {
+    const t = now();
+    const out = { lobby: null, game: null, results, notices: notices.slice() };
+    if (lobby) {
+      const rules = GAME_RULES[lobby.g];
+      out.lobby = { g: lobby.g, name: rules.name, invite: rules.invite, left: Math.max(0, lobby.deadline - t), joined: lobby.joined.length, iJoined: lobby.joined.includes(id), iVolunteered: lobby.seekers.includes(id), canVolunteer: lobby.g === 'hide' && lobby.joined.includes(id), seekers: lobby.seekers.length };
+    }
+    if (game) {
+      const mine = myIndex(), rules = GAME_RULES[game.g];
+      const role = !game.play ? 'spectator' : game.g === 'chicken' ? 'player' : mine === game.seeker ? 'seeker' : game.f[mine] >= 0 ? 'found' : 'hider';
+      out.game = {
+        g: game.g, name: rules.name, phase: game.phase, left: Math.max(0, game.phaseEnd - t), role, play: game.play, seekerId: game.seeker >= 0 ? game.roster[game.seeker] : null,
+        hidersLeft: game.g === 'hide' ? game.f.filter((v, i) => i !== game.seeker && v === -1).length : 0, scores: game.g === 'chicken' ? game.roster.map((p, i) => ({ id: p, name: name(p), n: game.f[i] })) : null,
+        chick: game.chick, referee: referee() === id,
+      };
+    }
+    return out;
+  }
+
+  /** What a pet at tile (x, y) may do now: `frozen` (the seeker during the countdown), `zone` (the game it cannot leave) or none. */
+  function movement() {
+    if (!game || !game.play) return { frozen: false, zone: null };
+    const zone = game.g;
+    const frozen = game.g === 'hide' && game.phase === 'count' && game.roster[game.seeker] === id;
+    return { frozen, zone };
+  }
+
+  /** For the seeker's screen: null, or `{ full, see(pet tile, inBush) }`. `full` = the countdown (everything dark). */
+  function seekerVision() {
+    if (!game || !game.play || game.g !== 'hide' || game.roster[game.seeker] !== id) return null;
+    const me = pos(id);
+    return { full: game.phase === 'count', see: (p, inBush) => !!me && seekerSees(me, p, inBush) };
+  }
+
+  const dismiss = () => { results = null; };
+  return { open, join, volunteer, leave, onMessage, update, view, movement, seekerVision, dismiss, referee, get id() { return id; } };
+}
