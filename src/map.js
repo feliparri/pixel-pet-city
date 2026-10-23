@@ -38,6 +38,10 @@ export const TILES = {
 
 export const DEFAULT_AREA = 'town';
 
+/** The plaza's rectangle (stone paving; the fountain, benches, lamps and planters stand on it). */
+export const PLAZA = { x: 16, y: 15, w: 16, h: 13 };
+export const inPlaza = (x, y) => x >= PLAZA.x && y >= PLAZA.y && x < PLAZA.x + PLAZA.w && y < PLAZA.y + PLAZA.h;
+
 /** Houses (roof 2 rows + wall 2 rows). `door` is the tile offset of the door in the bottom row; `enter` marks the shop. */
 export const HOUSES = [
   { x: 4, y: 6, w: 5, door: 2, roof: 'red', wall: 'brick', windows: [0, 4] },
@@ -59,7 +63,7 @@ export const DOORS = {
 /** Text boards drawn over the scene. x may be fractional (tile units); the board floats above the tile. */
 export const SIGNS = [
   { area: 'town', x: 21, y: 31, text: 'Parque', sub: 'Para jugar' },
-  { area: 'town', x: 33, y: 10, text: 'Tienda', sub: 'Próximamente' },
+  { area: 'town', x: 33, y: 10, text: 'Tienda', sub: 'Próximamente', below: true },
   { area: 'shop', x: 6.5, y: 2, text: 'Tienda', sub: 'Próximamente' },
 ];
 
@@ -82,7 +86,7 @@ function buildTown() {
     fill(23, 2, 2, 40, '=');
     fill(3, 12, 42, 2, '=');
     fill(3, 29, 42, 2, '=');
-    fill(16, 15, 16, 13, '+');
+    fill(PLAZA.x, PLAZA.y, PLAZA.w, PLAZA.h, '+');
     // the houses (solid) with the path to each door
     for (const hs of HOUSES) { fill(hs.x, hs.y, hs.w, 4, 'H'); set(hs.x + hs.door, hs.y + 3, hs.enter ? 'E' : 'H'); }
     for (const hs of HOUSES) {
@@ -126,7 +130,7 @@ function buildTown() {
     for (let x = 0; x < w; x++) { set(x, 0, x % 2 ? 'T' : 't'); set(x, h - 1, x % 2 ? 't' : 'T'); }
     for (let y = 0; y < h; y++) { set(0, y, y % 2 ? 't' : 'T'); set(w - 1, y, y % 2 ? 'T' : 't'); }
     for (const [x, y] of [[2, 3], [10, 3], [18, 3], [30, 3], [40, 3], [46, 8], [2, 9], [19, 8], [29, 8], [2, 13], [3, 15], [10, 14], [20, 5], [27, 5], [46, 13], [46, 20], [46, 26], [2, 26], [2, 20], [10, 22], [45, 28], [33, 28], [13, 28]]) set(x, y, (x + y) % 3 ? 't' : 'T');
-    for (const [x, y] of [[8, 14], [14, 16], [45, 12], [33, 13], [41, 14], [8, 24]]) set(x, y, 'b');
+    for (const [x, y] of [[8, 14], [14, 16], [45, 12], [41, 14], [8, 24]]) set(x, y, 'b');
   });
 }
 
@@ -134,11 +138,11 @@ function buildShop() {
   return make(14, 12, '_', ({ fill, set, w, h }) => {
     fill(0, 0, w, 2, 'x'); fill(0, 0, 1, h, 'x'); fill(w - 1, 0, 1, h, 'x'); fill(0, h - 1, w, 1, 'x');
     fill(6, 11, 2, 1, 'e');
-    fill(1, 2, 2, 1, 'k'); fill(11, 2, 2, 1, 'k'); set(3, 2, 'q'); set(10, 2, 'q');
+    fill(1, 2, 2, 1, 'k'); fill(11, 2, 2, 1, 'k');
     fill(5, 4, 4, 1, 'c'); set(6, 3, 'N');
     fill(2, 6, 2, 2, 'u'); fill(10, 6, 2, 2, 'u');
     fill(6, 7, 2, 4, 'r');
-    set(1, 10, 'q'); set(12, 10, 'q'); set(12, 9, 'z'); set(1, 9, 'z');
+    set(1, 10, 'q'); set(12, 10, 'q'); set(12, 9, 'z'); set(1, 9, 'z'); set(10, 9, 'q');
   });
 }
 

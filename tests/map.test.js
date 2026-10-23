@@ -72,7 +72,7 @@ test('the shop: everything walkable is reachable from the entry and the counter,
   for (const [x, y] of ENTRY.shop) assert.ok(isWalkable(x, y, 'shop'));
   const { a, seen } = reachable('shop', ENTRY.shop[0]);
   for (let y = 0; y < a.h; y++) for (let x = 0; x < a.w; x++) if (isWalkable(x, y, 'shop')) assert.ok(seen.has(`${x},${y}`), `unreachable ${x},${y}`);
-  for (const [x, y] of [[5, 4], [8, 4], [6, 3], [2, 6], [11, 7], [1, 2], [3, 2], [0, 5], [6, 1]]) assert.equal(isWalkable(x, y, 'shop'), false, `${x},${y}`);
+  for (const [x, y] of [[5, 4], [8, 4], [6, 3], [2, 6], [11, 7], [1, 2], [10, 9], [0, 5], [6, 1]]) assert.equal(isWalkable(x, y, 'shop'), false, `${x},${y}`);
   assert.equal(isWalkable(7, 4, 'shop'), false);
   assert.equal(isWalkable(7, 5, 'shop'), true);
 });
