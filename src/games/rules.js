@@ -5,6 +5,7 @@ export const LOBBY_MS = 10000;                // how long a lobby stays open for
 export const EARLY_START_MS = 3000;           // a lobby where everybody already joined starts after this long (so a solo player is not kept waiting)
 export const SETTLE_MS = 2500;                 // ... and when nobody joined, left or asked to search for this long
 export const ECHO_MS = 2000;                   // a joined player repeats its join (and its "¡Yo busco!") this often until the lobby closes
+export const GONE_GRACE_MS = 12000;            // a player must be missing this long (on top of the net's own timeout) before a game gives it up
 export const STATE_MS = 500;                  // how often the referee broadcasts the shared state
 
 export const GAME_RULES = {

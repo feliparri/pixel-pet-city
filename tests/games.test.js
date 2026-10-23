@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { validateMessage, createRateLimiter, LIMITS, GAME_TYPES } from '../src/protocol.js';
 import { GAME_RULES, MAX_PLAYERS } from '../src/games/rules.js';
-import { SETTLE_MS, ECHO_MS } from '../src/games/rules.js';
+import { SETTLE_MS, ECHO_MS, GONE_GRACE_MS } from '../src/games/rules.js';
 import { openLobby, joinLobby, leaveLobby, volunteerSeeker, electReferee, lobbyReady, pickSeeker, buildStart, lobbyKey } from '../src/games/lobby.js';
 import { seekerSees, touching, createHide, tickHide, hideStars, hideResults } from '../src/games/hide.js';
 import { createChicken, stepChicken, catcher, spawnTile, CHICKEN } from '../src/games/chicken.js';
@@ -248,7 +248,8 @@ function room(ids) {
     peers.set(id, p);
   }
   const run = (ms, step = 100) => { for (let t = 0; t < ms; t += step) { clock += step; for (const [pid, p] of peers) if (!gone.has(pid)) p.mgr.update(); } };
-  return { peers, stars, log, run, gone, lost, mgr: (id) => peers.get(id).mgr, place: (id, x, y) => { peers.get(id).pos = { x, y, area: 'town' }; }, get now() { return clock; } };
+  const skip = (ms) => { clock += ms; };                            // time passes with no update at all (a sleeping tab)
+  return { peers, stars, log, run, skip, gone, lost, mgr: (id) => peers.get(id).mgr, place: (id, x, y) => { peers.get(id).pos = { x, y, area: 'town' }; }, get now() { return clock; } };
 }
 
 test('a hide and seek game from the lobby to the results, with a volunteer seeker and stars', () => {
@@ -317,6 +318,8 @@ test('the referee leaves in the middle of the search: the next lowest id takes o
   assert.equal(r.mgr(C).view().game.role, 'found');
   r.place(D, 40, 34);
   r.run(1000);
+  assert.ok(r.mgr(B).view().game, 'A may only be late: the game waits before it gives A up');
+  r.run(GONE_GRACE_MS);
   for (const id of [B, C, D]) assert.equal(r.mgr(id).view().game, null, `${id} saw the end`);
   assert.equal(r.mgr(C).view().results.reason, 'all');
   assert.equal(r.stars.get(D), 2, 'the seeker found C and B, and A had left');
@@ -467,4 +470,58 @@ test('a "¡Yo busco!" (or a join) that a peer never received is repeated until t
   assert.deepEqual(r.mgr(A).view().lobby && [r.mgr(A).view().lobby.joined, r.mgr(A).view().lobby.seekers], [2, 1], 'A learned both from the repeats');
   r.run(9000);
   assert.equal(r.mgr(A).view().game.seekerId, B);
+});
+
+test('hide: a referee that wakes up late (a hidden tab) still gives the search its full 90 seconds', () => {
+  const s = createHide({ roster: [A, B], seeker: 0, now: 0 });
+  const pos = (id) => (id === A ? { x: 3, y: 34 } : { x: 40, y: 40 });
+  const events = tickHide(s, 15000 + 40000, pos, () => true);          // the countdown ended 40 s ago and nobody was awake to say so
+  assert.deepEqual(events.map((e) => e.type), ['search']);
+  assert.equal(s.phaseEnd, 55000 + GAME_RULES.hide.searchMs);
+  assert.deepEqual(tickHide(s, 55000 + GAME_RULES.hide.searchMs - 1, pos, () => true), []);
+});
+
+test('a tab that was asleep (no updates for a while) does not lose the countdown or the search: the clocks wait for it', () => {
+  const r = room([A, B]);
+  r.mgr(A).open('hide'); r.mgr(B).join(); r.mgr(B).volunteer();
+  r.run(10500);
+  r.place(A, 40, 40); r.place(B, 3, 34);
+  r.run(5000);                                                          // 5 s into the countdown
+  r.mgr(A).update();                                                    // (A is the referee)
+  const before = r.mgr(A).view().game.left;
+  r.skip(40000);                                                        // A's tab sleeps for 40 s: no frames, no updates
+  r.run(100);
+  assert.equal(r.mgr(A).view().game.phase, 'count', 'still counting: the sleep did not use the countdown up');
+  assert.ok(Math.abs(r.mgr(A).view().game.left - before) < 300);
+  r.run(before + 500);
+  assert.equal(r.mgr(A).view().game.phase, 'search');
+  r.skip(30000);
+  r.run(100);
+  r.run(GAME_RULES.hide.searchMs - 3000);                               // 90 s of search minus the few seconds that already passed
+  assert.ok(r.mgr(A).view().game, 'the search is still on: it was not shortened by the sleep');
+  r.run(4000);
+  assert.equal(r.mgr(A).view().game, null);
+  assert.equal(r.mgr(B).view().results.reason, 'time');
+});
+
+test('a hider whose tab goes quiet for a few seconds (a missed heartbeat) is not given up: only a long absence is', () => {
+  const r = room([A, B, C]);
+  r.mgr(A).open('hide'); r.mgr(B).join(); r.mgr(C).join(); r.mgr(C).volunteer();
+  r.run(10500);
+  r.place(A, 40, 40); r.place(B, 20, 40); r.place(C, 3, 34);
+  r.run(16000);
+  r.gone.add(B);                                                        // B's heartbeats stop for a moment ...
+  r.run(5000);
+  r.gone.delete(B);                                                     // ... and come back
+  r.run(1000);
+  assert.ok(r.mgr(A).view().game, 'the round goes on');
+  assert.equal(r.mgr(A).view().game.hidersLeft, 2, 'B is still a hider, not "left"');
+  r.gone.add(A);                                                        // A, the others' referee, vanishes only briefly too
+  r.run(3000);
+  r.gone.delete(A);
+  r.run(1000);
+  assert.ok(r.mgr(C).view().game, 'and still goes on');
+  r.gone.add(A); r.gone.add(B);                                         // but really leaving ends it
+  r.run(GONE_GRACE_MS + 1000);
+  assert.equal(r.mgr(C).view().game, null);
 });

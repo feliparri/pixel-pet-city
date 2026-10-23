@@ -3,13 +3,14 @@
 // found or who caught it, and broadcasts it. When the referee leaves, the next lowest id already holds the last state and carries on.
 // Everything that arrives was validated by protocol.js; here the receiver also checks who is allowed to say it: shared state is only
 // believed from the current referee, never from another player.
-import { GAME_RULES, isPlayable, STATE_MS, LOBBY_MS, ECHO_MS } from './rules.js';
+import { GAME_RULES, isPlayable, STATE_MS, LOBBY_MS, ECHO_MS, GONE_GRACE_MS } from './rules.js';
 import { openLobby, joinLobby, leaveLobby, volunteerSeeker, electReferee, lobbyReady, buildStart, lobbyKey } from './lobby.js';
 import { tickHide, hideResults, hideStars, seekerSees } from './hide.js';
 import { createChicken, stepChicken, catcher, spawnTile, catchesToWin } from './chicken.js';
 import { GAME_PLACES, inZone, isWalkable, tileAt, TILES } from '../map.js';
 
 const NOTICE_MS = 3200;
+const STALL_MS = 1500;                                // a gap between two updates this long means this tab was asleep: the clocks wait for it
 const LOBBY_GRACE_MS = 4000;                          // a lobby whose start never came is dropped this long after its time
 const newRound = (rng) => Array.from({ length: 6 }, () => Math.floor(rng() * 36).toString(36)).join('');
 
@@ -24,7 +25,8 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
   const seekCount = new Map();      // id -> rounds searched in this room (everyone counts them from the same gstart messages)
   const notices = [];
   const awarded = new Set();
-  let stateAt = -Infinity, echoAt = -Infinity;
+  let stateAt = -Infinity, echoAt = -Infinity, lastAt = null;
+  const absentSince = new Map();    // id -> when it was first missed (cleared when it is back)
 
   const everyone = () => { const s = new Set(present()); s.add(id); return s; };
   const say = (text, kind = 'info') => { notices.push({ text, kind, until: now() + NOTICE_MS }); if (notices.length > 4) notices.shift(); };
@@ -33,6 +35,12 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
   const referee = () => (game ? electReferee(aliveIds(), everyone()) : lobby ? electReferee(lobby.joined, everyone()) : null);
   const amReferee = () => referee() === id;
   const myIndex = () => (game ? game.roster.indexOf(id) : -1);
+  /** Is this player still here? A peer that vanishes (a throttled tab misses its heartbeats) only counts as gone after GONE_GRACE_MS. */
+  const here = (pid) => {
+    if (pid === id || everyone().has(pid)) { absentSince.delete(pid); return true; }
+    if (!absentSince.has(pid)) absentSince.set(pid, now());
+    return now() - absentSince.get(pid) < GONE_GRACE_MS;
+  };
   const award1 = (key, n) => { if (n > 0 && !awarded.has(key)) { awarded.add(key); award(n); } };
 
   // ---- starting, joining, leaving (this browser's own actions) ----
@@ -123,7 +131,7 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
       chick: null, sim: null, respawnAt: t + 800,
     };
     lobby = null; results = null;
-    stateAt = -Infinity;
+    stateAt = -Infinity; absentSince.clear();
     if (game.play) say(hide ? (m.p[m.s] === id ? 'Tú buscas. ¡Cuenta hasta 15!' : '¡Escóndete!') : '¡Pilla a la gallina!', 'start');
     else say('Hay un juego: puedes mirar', 'info');
   }
@@ -163,6 +171,11 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
   // ---- the clock: every frame ----
   function update() {
     const t = now();
+    const gap = lastAt === null ? 0 : t - lastAt;
+    lastAt = t;
+    if (game && gap > STALL_MS) {                                  // this tab was asleep (rAF stops in a hidden tab): the game waits for it, it does not run out meanwhile
+      game.phaseEnd += gap; game.respawnAt += gap; absentSince.clear();
+    }
     while (notices.length && notices[0].until < t) notices.shift();
     if (results && t > results.until) results = null;
     if (lobby) {
@@ -181,7 +194,7 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
       return;
     }
     if (!game) return;
-    for (const [i, p] of game.roster.entries()) if (i !== myIndex() && !game.gone.has(i) && !everyone().has(p)) game.gone.add(i);   // a peer that dropped
+    for (const [i, p] of game.roster.entries()) if (i !== myIndex() && !game.gone.has(i) && !here(p)) game.gone.add(i);   // a peer that dropped
     if (!amReferee()) {
       game.sim = null;
       if (referee() === null) game = null;                     // nobody is left to run it
@@ -196,7 +209,7 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
 
   function refereeHide(t) {
     const s = { roster: game.roster, seeker: game.seeker, phase: game.phase, phaseEnd: game.phaseEnd, found: game.f };
-    const events = tickHide(s, t, petPos, (pid) => !game.gone.has(game.roster.indexOf(pid)) && everyone().has(pid));
+    const events = tickHide(s, t, petPos, (pid) => !game.gone.has(game.roster.indexOf(pid)) && here(pid));
     game.phase = s.phase; game.phaseEnd = s.phaseEnd;
     let end = null;
     for (const e of events) {

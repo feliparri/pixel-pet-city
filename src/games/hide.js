@@ -34,7 +34,8 @@ export function tickHide(s, now, pos, present) {
   const events = [];
   s.roster.forEach((id, i) => { if (s.found[i] === -1 && !present(id)) s.found[i] = -2; });
   if (s.found[s.seeker] === -2) return [{ type: 'end', reason: 'left' }];
-  if (s.phase === 'count' && now >= s.phaseEnd) { s.phase = 'search'; s.phaseEnd = s.phaseEnd + R.searchMs; events.push({ type: 'search' }); }
+  // the search runs 90 s from now, not from the old deadline: a referee that woke up late (a hidden tab) must not eat it
+  if (s.phase === 'count' && now >= s.phaseEnd) { s.phase = 'search'; s.phaseEnd = now + R.searchMs; events.push({ type: 'search' }); }
   if (s.phase === 'search') {
     const at = Math.floor(searchElapsed(s, now) / 1000), me = pos(s.roster[s.seeker]);
     if (me) s.roster.forEach((id, i) => {
