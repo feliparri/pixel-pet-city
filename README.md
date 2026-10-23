@@ -6,7 +6,8 @@ small top-down town, walk around and greet each other with presets. Plain HTML, 
 - Private rooms by invite code (`FOCA-LUNA-42`): "Crear sala" makes one, "Unirse" needs it. Rooms cannot be listed and end when
   everyone leaves. No accounts.
 - No free-text chat: only the presets (👋 ❤️ 😄 🎉 "¡Hola!", "¡Juguemos!", "¡Chau!"). Only the pet's name and look are shared.
-- The Parque and the Tienda are fenced and signed "Próximamente" (stages 2 and 4).
+- A town of 48 x 44 tiles with a plaza and fountain, four houses, the Parque (pond, trees, bushes, open grass) and the Tienda, which can
+  be entered (it sells nothing yet: "Próximamente"). The town follows your local clock: dusk, night, lit windows and lamps.
 - Opened by the pixel-pet Android app with the player's pet in the URL fragment, or in a desktop browser with a pet chooser.
 
 ## Try it locally (two tabs)
@@ -65,8 +66,16 @@ for example `#n=Mochi&s=cat&g=2&i=tophat,,scarf,`.
 | `src/map.js`, `src/path.js`, `src/walker.js` | the map, collisions, grid pathfinding, tile-to-tile movement and interpolation |
 | `src/protocol.js` | validation, sanitizing and rate limits for everything received |
 | `src/net.js`, `src/transport-*.js` | the room session and its `local` and `supabase` transports |
-| `src/art.js`, `src/render.js`, `src/sprites.js`, `src/font.js` | drawing: integer scale, nearest-neighbour, letterboxed |
+| `src/art/*.js` | the tileset, drawn in code with the pets' palette: ground tiles, props, houses, the shop interior; `bake.js` bakes an area |
+| `src/render.js`, `src/sprites.js`, `src/font.js`, `src/daynight.js` | drawing: integer scale, camera, props sorted with pets, day/night tint and lights |
+| `tools/stamp.mjs` | cache-busting: run `node tools/stamp.mjs` before committing changes to `src/`, `style.css` or `config.js` |
+| `shot.html`, `tools/shots.mjs` | the preview (below) |
 | `src/town.js`, `src/main.js` | input and the game loop; the lobby and town screens |
+
+## Previews
+
+`node tools/shots.mjs` renders the town (day, dusk, night), the shop and two phone-sized views to `docs/preview-*.png` with headless Chrome
+(`CHROME=/path/to/chrome` if needed). Or open `shot.html?shot=town|shop|view&hour=21&scale=2` in a browser. In the game, `?hour=21` forces the time of day.
 
 ## Web trip (a pet visiting from its board)
 
