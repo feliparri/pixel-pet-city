@@ -3,6 +3,8 @@
 export const MAX_PLAYERS = 13;                // everyone in a room (MAX_PEERS others plus this browser)
 export const LOBBY_MS = 10000;                // how long a lobby stays open for "Me sumo"
 export const EARLY_START_MS = 3000;           // a lobby where everybody already joined starts after this long (so a solo player is not kept waiting)
+export const SETTLE_MS = 2500;                 // ... and when nobody joined, left or asked to search for this long
+export const ECHO_MS = 2000;                   // a joined player repeats its join (and its "¡Yo busco!") this often until the lobby closes
 export const STATE_MS = 500;                  // how often the referee broadcasts the shared state
 
 export const GAME_RULES = {

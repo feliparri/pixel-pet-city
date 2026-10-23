@@ -156,9 +156,9 @@ export const LIMITS = {
   hello: { burst: 4, perSec: 0.5 },   // the heartbeat is every 2 s
   bye: { burst: 2, perSec: 0.2 },
   gopen: { burst: 2, perSec: 0.2 },
-  gjoin: { burst: 3, perSec: 0.5 },
+  gjoin: { burst: 4, perSec: 1 },
   gleave: { burst: 3, perSec: 0.5 },
-  grole: { burst: 3, perSec: 0.5 },
+  grole: { burst: 4, perSec: 1 },
   gstart: { burst: 2, perSec: 0.3 },
   gstate: { burst: 6, perSec: 4 },     // the referee sends two a second
   gfound: { burst: 13, perSec: 2 },

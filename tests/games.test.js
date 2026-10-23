@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { validateMessage, createRateLimiter, LIMITS, GAME_TYPES } from '../src/protocol.js';
 import { GAME_RULES, MAX_PLAYERS } from '../src/games/rules.js';
+import { SETTLE_MS, ECHO_MS } from '../src/games/rules.js';
 import { openLobby, joinLobby, leaveLobby, volunteerSeeker, electReferee, lobbyReady, pickSeeker, buildStart, lobbyKey } from '../src/games/lobby.js';
 import { seekerSees, touching, createHide, tickHide, hideStars, hideResults } from '../src/games/hide.js';
 import { createChicken, stepChicken, catcher, spawnTile, CHICKEN } from '../src/games/chicken.js';
@@ -220,8 +221,10 @@ function room(ids) {
   const stars = new Map();
   const log = [];
   const gone = new Set();
+  const lost = { when: null };                       // a predicate (from, msg) -> true drops that message for everybody
   const route = (from, msg) => {
     log.push({ from, ...msg });
+    if (lost.when && lost.when(from, msg)) return;
     for (const [pid, p] of peers) {
       if (pid === from || gone.has(pid)) continue;
       const m = validateMessage({ ...msg, id: from }, {});
@@ -245,7 +248,7 @@ function room(ids) {
     peers.set(id, p);
   }
   const run = (ms, step = 100) => { for (let t = 0; t < ms; t += step) { clock += step; for (const [pid, p] of peers) if (!gone.has(pid)) p.mgr.update(); } };
-  return { peers, stars, log, run, gone, mgr: (id) => peers.get(id).mgr, place: (id, x, y) => { peers.get(id).pos = { x, y, area: 'town' }; }, get now() { return clock; } };
+  return { peers, stars, log, run, gone, lost, mgr: (id) => peers.get(id).mgr, place: (id, x, y) => { peers.get(id).pos = { x, y, area: 'town' }; }, get now() { return clock; } };
 }
 
 test('a hide and seek game from the lobby to the results, with a volunteer seeker and stars', () => {
@@ -435,4 +438,33 @@ test('catch the chicken: the pet that touches it first gets the stars and everyb
   assert.equal(r.mgr(A).view().game.chick, null, 'it respawns a moment later');
   r.run(2500);
   assert.ok(r.mgr(A).view().game.chick, 'a new chicken');
+});
+
+// ---- regressions: "¡Yo busco!" ignored, and a round that ended early ----
+test('"¡Yo busco!" pressed right after joining a lobby that was already full of everybody present is honoured (the early start waits for the buttons)', () => {
+  const r = room([A, B]);
+  r.mgr(A).open('hide');
+  r.run(6000);                                           // A has waited alone for longer than the early-start minimum
+  assert.equal(r.mgr(B).join(), true);
+  r.run(300);                                            // everybody present has joined, but B has not found the button yet
+  assert.ok(r.mgr(A).view().lobby, 'the lobby does not start on top of the join');
+  assert.equal(r.mgr(B).volunteer(), true);
+  r.run(SETTLE_MS - 200);
+  assert.ok(r.mgr(A).view().lobby, 'and not on top of the button press');
+  r.run(1000);
+  const g = r.mgr(A).view().game;
+  assert.ok(g, 'then it starts');
+  assert.equal(g.seekerId, B, 'B searches, as it asked');
+  assert.equal(r.mgr(B).view().game.role, 'seeker');
+});
+
+test('a "¡Yo busco!" (or a join) that a peer never received is repeated until the lobby closes', () => {
+  const r = room([A, B]);
+  r.mgr(A).open('hide');
+  r.lost.when = (from, m) => from === B && (m.t === 'grole' || m.t === 'gjoin') && r.now < 3000;      // the first copies are lost on the way
+  r.mgr(B).join(); r.mgr(B).volunteer();
+  r.run(ECHO_MS * 2);
+  assert.deepEqual(r.mgr(A).view().lobby && [r.mgr(A).view().lobby.joined, r.mgr(A).view().lobby.seekers], [2, 1], 'A learned both from the repeats');
+  r.run(9000);
+  assert.equal(r.mgr(A).view().game.seekerId, B);
 });

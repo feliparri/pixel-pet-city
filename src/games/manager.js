@@ -3,7 +3,7 @@
 // found or who caught it, and broadcasts it. When the referee leaves, the next lowest id already holds the last state and carries on.
 // Everything that arrives was validated by protocol.js; here the receiver also checks who is allowed to say it: shared state is only
 // believed from the current referee, never from another player.
-import { GAME_RULES, isPlayable, STATE_MS, LOBBY_MS } from './rules.js';
+import { GAME_RULES, isPlayable, STATE_MS, LOBBY_MS, ECHO_MS } from './rules.js';
 import { openLobby, joinLobby, leaveLobby, volunteerSeeker, electReferee, lobbyReady, buildStart, lobbyKey } from './lobby.js';
 import { tickHide, hideResults, hideStars, seekerSees } from './hide.js';
 import { createChicken, stepChicken, catcher, spawnTile, catchesToWin } from './chicken.js';
@@ -24,7 +24,7 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
   const seekCount = new Map();      // id -> rounds searched in this room (everyone counts them from the same gstart messages)
   const notices = [];
   const awarded = new Set();
-  let stateAt = -Infinity;
+  let stateAt = -Infinity, echoAt = -Infinity;
 
   const everyone = () => { const s = new Set(present()); s.add(id); return s; };
   const say = (text, kind = 'info') => { notices.push({ text, kind, until: now() + NOTICE_MS }); if (notices.length > 4) notices.shift(); };
@@ -44,19 +44,19 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
     return true;
   }
   function join() {
-    if (!lobby || lobby.joined.includes(id) || !joinLobby(lobby, id)) return false;
+    if (!lobby || lobby.joined.includes(id) || !joinLobby(lobby, id, now())) return false;
     send({ t: 'gjoin', r: lobby.r });
     return true;
   }
   function volunteer() {
-    if (!lobby || lobby.g !== 'hide' || !volunteerSeeker(lobby, id)) return false;
+    if (!lobby || lobby.g !== 'hide' || !volunteerSeeker(lobby, id, now())) return false;
     send({ t: 'grole', r: lobby.r, role: 'seek' });
     return true;
   }
   /** "Salir del juego": leaves the lobby or the game (the game goes on without this pet, which becomes a spectator). */
   function leave() {
     if (lobby && lobby.joined.includes(id)) {
-      leaveLobby(lobby, id);
+      leaveLobby(lobby, id, now());
       send({ t: 'gleave', r: lobby.r });
       say('Saliste del juego');
       return true;
@@ -82,10 +82,10 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
         say(GAME_RULES[m.g].invite, 'invite');
         return;
       }
-      case 'gjoin': if (lobby && lobby.r === m.r) joinLobby(lobby, from); return;
-      case 'grole': if (lobby && lobby.r === m.r) volunteerSeeker(lobby, from); return;
+      case 'gjoin': if (lobby && lobby.r === m.r) joinLobby(lobby, from, now()); return;
+      case 'grole': if (lobby && lobby.r === m.r) volunteerSeeker(lobby, from, now()); return;
       case 'gleave':
-        if (lobby && lobby.r === m.r) leaveLobby(lobby, from);
+        if (lobby && lobby.r === m.r) leaveLobby(lobby, from, now());
         else if (game && game.r === m.r) { const i = game.roster.indexOf(from); if (i >= 0) game.gone.add(i); }
         return;
       case 'gstart':
@@ -166,6 +166,11 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
     while (notices.length && notices[0].until < t) notices.shift();
     if (results && t > results.until) results = null;
     if (lobby) {
+      if (lobby.joined.includes(id) && t - echoAt >= ECHO_MS) {                       // say it again now and then: a message a peer dropped heals
+        echoAt = t;
+        send({ t: 'gjoin', r: lobby.r });
+        if (lobby.seekers.includes(id)) send({ t: 'grole', r: lobby.r, role: 'seek' });
+      }
       const ref = referee();
       if (ref === id && lobbyReady(lobby, t, everyone())) {
         const start = buildStart(lobby, everyone(), seekCount);

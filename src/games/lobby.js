@@ -1,34 +1,36 @@
 // The lobby of a game and who is the referee. Pure functions over plain data: the manager owns the clock and the network.
 //
-// A lobby is `{ g, r, opener, openedAt, deadline, joined: [ids in the order they joined], seekers: [ids that asked to search, in order] }`.
+// A lobby is `{ g, r, opener, openedAt, deadline, joined: [ids in the order they joined], seekers: [ids that asked to search, in order], changedAt }`
+// (`changedAt`: the last moment somebody joined, left or asked to search, so a start never lands right on top of a late button press).
 // Nobody owns it: whoever presses "Jugar a ..." opens it and joins it like everyone else. Two lobbies opened at the same moment converge
 // on the smaller `lobbyKey` on every browser.
-import { GAME_RULES, MAX_PLAYERS, EARLY_START_MS } from './rules.js';
+import { GAME_RULES, MAX_PLAYERS, EARLY_START_MS, SETTLE_MS } from './rules.js';
 
 export const lobbyKey = (l) => `${l.r}:${l.opener}`;
 
 export function openLobby({ g, r, opener, now, leftMs }) {
-  return { g, r, opener, openedAt: now, deadline: now + leftMs, joined: [opener], seekers: [] };
+  return { g, r, opener, openedAt: now, changedAt: now, deadline: now + leftMs, joined: [opener], seekers: [] };
 }
 
-export function joinLobby(l, id) {
+export function joinLobby(l, id, now = l.changedAt) {
   if (l.joined.includes(id) || l.joined.length >= MAX_PLAYERS) return false;
-  l.joined.push(id);
+  l.joined.push(id); l.changedAt = now;
   return true;
 }
 
-export function leaveLobby(l, id) {
+export function leaveLobby(l, id, now = l.changedAt) {
   const i = l.joined.indexOf(id);
   if (i < 0) return false;
   l.joined.splice(i, 1);
   l.seekers = l.seekers.filter((s) => s !== id);
+  l.changedAt = now;
   return true;
 }
 
 /** "¡Yo busco!": only a player who joined, once. */
-export function volunteerSeeker(l, id) {
+export function volunteerSeeker(l, id, now = l.changedAt) {
   if (!l.joined.includes(id) || l.seekers.includes(id)) return false;
-  l.seekers.push(id);
+  l.seekers.push(id); l.changedAt = now;
   return true;
 }
 
@@ -39,10 +41,13 @@ export function electReferee(ids, present) {
   return best;
 }
 
-/** True when the lobby should start now: its time is up, or everybody present joined and the short minimum has passed. */
+/**
+ * True when the lobby should start now: its time is up, or everybody present joined, the short minimum has passed and nobody changed
+ * anything for SETTLE_MS (a player who just joined still has to find "¡Yo busco!" or choose the zone).
+ */
 export function lobbyReady(l, now, present) {
   if (now >= l.deadline) return true;
-  return now - l.openedAt >= EARLY_START_MS && Array.from(present).every((id) => l.joined.includes(id));
+  return now - l.openedAt >= EARLY_START_MS && now - l.changedAt >= SETTLE_MS && Array.from(present).every((id) => l.joined.includes(id));
 }
 
 /**
