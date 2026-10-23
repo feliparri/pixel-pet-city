@@ -1,0 +1,10 @@
+{
+  "name": "pixel-pet-city",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The online town of pixel-pet: plain ES modules, no build step",
+  "scripts": {
+    "test": "node --test --test-force-exit tests/*.test.js"
+  }
+}
