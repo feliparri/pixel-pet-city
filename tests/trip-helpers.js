@@ -1,9 +1,9 @@
-// An in-memory database with the interface of supabase/functions/_shared/db.ts, and a way to call the handlers like a board or a browser.
+// An in-memory database with the interface of supabase/functions/trip/db.ts, and a way to call the handlers like a board or a browser.
 import { readFileSync } from 'node:fs';
 import { randomBytes as nodeRandom, randomUUID } from 'node:crypto';
-import { handle } from '../supabase/functions/_shared/handlers.js';
-import { signRequest, toHex } from '../supabase/functions/_shared/crypto.js';
-import { toBase64 } from '../supabase/functions/_shared/travel-package.js';
+import { handle } from '../supabase/functions/trip/handlers.js';
+import { signRequest, toHex } from '../supabase/functions/trip/crypto.js';
+import { toBase64 } from '../supabase/functions/trip/travel-package.js';
 
 export const fixture = (name) => new Uint8Array(readFileSync(new URL(`./fixtures/${name}`, import.meta.url)));
 

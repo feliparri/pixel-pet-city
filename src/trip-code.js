@@ -1,4 +1,4 @@
-// A trip code as people type it: six symbols from an alphabet without 0, 1, O, I or L (mirror of supabase/functions/_shared/trip-code.js).
+// A trip code as people type it: six symbols from an alphabet without 0, 1, O, I or L (mirror of supabase/functions/trip/trip-code.js).
 const ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
 
 export function normalizeTripCode(input) {

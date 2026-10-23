@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { entranceState, entranceDuration, entranceId, devEntrance, flickers, DEFAULT_ENTRANCE, ENTRANCE_IDS, PUBLIC_ENTRANCES } from '../src/entrance.js';
-import { ENTRANCES } from '../supabase/functions/_shared/trip-code.js';
+import { ENTRANCES } from '../supabase/functions/trip/trip-code.js';
 
 test('the town and the server know the same entrance ids, and the default is the parachute', () => {
   assert.deepEqual(ENTRANCE_IDS, ENTRANCES);

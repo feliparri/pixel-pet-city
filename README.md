@@ -71,7 +71,7 @@ for example `#n=Mochi&s=cat&g=2&i=tophat,,scarf,`.
 ## Web trip (a pet visiting from its board)
 
 Open `?trip=<code>` (the board shows the code and a QR): the pet arrives with its entrance animation (parachute by default), lives in the town,
-and leaves when the board recalls it ("Volvió a su casa"). API contract: `docs/trip-api.md`; server: `supabase/` (migration + eight Edge Functions).
+and leaves when the board recalls it ("Volvió a su casa"). API contract: `docs/trip-api.md`; server: `supabase/` (migration + one `trip` Edge Function).
 
 - No Supabase needed: `node tools/local-demo.mjs` serves the town with the real handlers on an in-memory database and prints a code to open;
   `curl -X POST localhost:8099/demo/recall` plays the board's recall (then `return`, `ack`).

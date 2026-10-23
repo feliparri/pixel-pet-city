@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, createHmac } from 'node:crypto';
-import { signRequest, verifyRequest, sha256Hex, WINDOW_S, canonical } from '../supabase/functions/_shared/crypto.js';
-import { newCode, normalizeCode, CODE_ALPHABET, CODE_LEN, isEntrance, ENTRANCES, DEFAULT_ENTRANCE } from '../supabase/functions/_shared/trip-code.js';
+import { signRequest, verifyRequest, sha256Hex, WINDOW_S, canonical } from '../supabase/functions/trip/crypto.js';
+import { newCode, normalizeCode, CODE_ALPHABET, CODE_LEN, isEntrance, ENTRANCES, DEFAULT_ENTRANCE } from '../supabase/functions/trip/trip-code.js';
 
 const secretHex = Array.from({ length: 32 }, (_, i) => i.toString(16).padStart(2, '0')).join('');
 const body = new TextEncoder().encode('{"trip_id":1}');

@@ -1,20 +1,6 @@
 # Only the function settings are kept here; the rest of the project is configured in the Supabase dashboard.
-# Every trip function does its own authentication (device HMAC, or the web session token), so the gateway's JWT check is off.
-# Deploy with: supabase functions deploy <name> --project-ref cyzsawujfcfrorntugrm --no-verify-jwt   (or keep this file's setting)
+# The single `trip` function authenticates each action by itself (device HMAC, or the web session token), so the gateway's JWT check is off.
+# Deploy with: supabase functions deploy trip --project-ref cyzsawujfcfrorntugrm --no-verify-jwt   (or keep this file's setting)
 
-[functions.device-register]
-verify_jwt = false
-[functions.trip-start]
-verify_jwt = false
-[functions.trip-claim]
-verify_jwt = false
-[functions.trip-save]
-verify_jwt = false
-[functions.trip-recall]
-verify_jwt = false
-[functions.trip-status]
-verify_jwt = false
-[functions.trip-return]
-verify_jwt = false
-[functions.trip-ack]
+[functions.trip]
 verify_jwt = false

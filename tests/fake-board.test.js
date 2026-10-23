@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createBoard } from '../tools/fake-board.mjs';
 import { world } from './trip-helpers.js';
-import { handle } from '../supabase/functions/_shared/handlers.js';
+import { handle } from '../supabase/functions/trip/handlers.js';
 
 test('the fake board runs a whole trip against the handlers, with each fixture', async () => {
   for (const fixture of ['plain', 'keepsake']) {
@@ -16,7 +16,7 @@ test('the fake board runs a whole trip against the handlers, with each fixture',
       const out = await handle(fn, { method: init.method, headers, body }, deps);
       return { status: out.status, json: async () => out.body };
     };
-    const board = createBoard({ fetch: fetcher, base: 'https://x/functions/v1', now: () => w.now * 1000, load: () => saved, save: (s) => { saved = s; }, log() {} });
+    const board = createBoard({ fetch: fetcher, base: 'https://x/functions/v1/trip', now: () => w.now * 1000, load: () => saved, save: (s) => { saved = s; }, log() {} });
     assert.ok([200, 201].includes((await board.register()).existed === false ? 201 : 200));
     const s = await board.start({ fixture, entrance: 'blue_bolt' });
     assert.equal(s.pet, 'Mochi');

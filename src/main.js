@@ -195,7 +195,7 @@ async function bootTrip(code) {
   show('gone');
   $('gone-text').textContent = 'Abriendo el viaje…';
   if (!isConfigured(config)) { showGone('La ciudad en línea todavía no está configurada.'); return; }
-  const client = createTripClient({ base: `${config.supabaseUrl}/functions/v1`, storage: (() => { try { return localStorage; } catch { return null; } })() });
+  const client = createTripClient({ base: `${config.supabaseUrl}/functions/v1/trip`, storage: (() => { try { return localStorage; } catch { return null; } })() });
   const r = await client.claim(code, sprites.catalogue);
   if (!r.ok) { showGone(tripErrorText(r.error), true); return; }
   fixedPet = true; me = { name: r.pet.name, look: r.pet.look };

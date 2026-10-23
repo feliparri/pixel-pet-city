@@ -8,7 +8,7 @@ import { readFile } from 'node:fs/promises';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { handle } from '../supabase/functions/_shared/handlers.js';
+import { handle } from '../supabase/functions/trip/handlers.js';
 import { memoryDb } from '../tests/trip-helpers.js';
 import { createBoard } from './fake-board.mjs';
 

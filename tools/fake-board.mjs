@@ -7,13 +7,13 @@
 //       (or Enter) and recalls, downloads the return package, checks it and acks.
 //   node tools/fake-board.mjs register | start | status | recall | return | ack     the same steps one by one (state in .fake-board.json)
 //
-// Options: --state FILE (default .fake-board.json), --base https://<ref>.supabase.co/functions/v1 (default: the project in config.js).
+// Options: --state FILE (default .fake-board.json), --base https://<ref>.supabase.co/functions/v1/trip (default: the project in config.js).
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
-import { signRequest, toHex } from '../supabase/functions/_shared/crypto.js';
-import { parsePackage, toBase64, fromBase64, petView } from '../supabase/functions/_shared/travel-package.js';
+import { signRequest, toHex } from '../supabase/functions/trip/crypto.js';
+import { parsePackage, toBase64, fromBase64, petView } from '../supabase/functions/trip/travel-package.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 
@@ -79,7 +79,7 @@ async function main(args) {
   let base = arg(args, 'base');
   if (!base) {
     const cfg = (await import('../config.js')).default;
-    base = `${cfg.supabaseUrl}/functions/v1`;
+    base = `${cfg.supabaseUrl}/functions/v1/trip`;
   }
   const io = {
     fetch, base, now: Date.now, log: console.log,

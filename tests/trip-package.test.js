@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parsePackage, petView, buildReturn, crc32, BYTES_MAX, fromBase64, toBase64 } from '../supabase/functions/_shared/travel-package.js';
+import { parsePackage, petView, buildReturn, crc32, BYTES_MAX, fromBase64, toBase64 } from '../supabase/functions/trip/travel-package.js';
 import { fixture } from './trip-helpers.js';
 
 const plain = fixture('plain.bin'), kept = fixture('keepsake.bin');

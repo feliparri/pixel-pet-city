@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { world, fixture } from './trip-helpers.js';
-import { parsePackage } from '../supabase/functions/_shared/travel-package.js';
-import { fromBase64, toBase64 } from '../supabase/functions/_shared/travel-package.js';
-import { SESSION_IDLE_S, CLAIM_TTL_S, BODY_MAX } from '../supabase/functions/_shared/handlers.js';
+import { parsePackage } from '../supabase/functions/trip/travel-package.js';
+import { fromBase64, toBase64 } from '../supabase/functions/trip/travel-package.js';
+import { SESSION_IDLE_S, CLAIM_TTL_S, BODY_MAX } from '../supabase/functions/trip/handlers.js';
 
 const plain = fixture('plain.bin');
 const TRIP = 0xA1B2C3D4;
@@ -59,7 +59,7 @@ test('start: validates the package, returns a code and url, is idempotent on ret
 
 test('start: a package that is already a return, or a second trip, supersedes the first', async () => {
   const { w, board, s } = await started();
-  const { buildReturn } = await import('../supabase/functions/_shared/travel-package.js');
+  const { buildReturn } = await import('../supabase/functions/trip/travel-package.js');
   assert.equal((await board.start(buildReturn(plain, 2))).body.reason, 'bad_direction');
   const second = new Uint8Array(fixture('keepsake.bin'));
   const r2 = await board.start(second, { entrance: 'blue_bolt' });

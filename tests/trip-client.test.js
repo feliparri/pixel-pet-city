@@ -4,8 +4,8 @@ import { readFileSync } from 'node:fs';
 import { createTripClient, tripCodeFromSearch, petFromClaim, tripErrorText, POLL_MS } from '../src/trip.js';
 import { parseKeepsake, keepsakeRgba } from '../src/keepsake.js';
 import { normalizeTripCode } from '../src/trip-code.js';
-import { normalizeCode, CODE_ALPHABET } from '../supabase/functions/_shared/trip-code.js';
-import { handle } from '../supabase/functions/_shared/handlers.js';
+import { normalizeCode, CODE_ALPHABET } from '../supabase/functions/trip/trip-code.js';
+import { handle } from '../supabase/functions/trip/handlers.js';
 import { world, fixture } from './trip-helpers.js';
 
 const catalogue = JSON.parse(readFileSync(new URL('../assets/sprites.json', import.meta.url))).items;
@@ -19,7 +19,7 @@ function clientFor(w, extra = {}) {
   const store = new Map();
   const storage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v), removeItem: (k) => store.delete(k) };
   const timers = [];
-  return { storage, timers, client: createTripClient({ base: 'https://x/functions/v1', fetch: fetcher, storage, setInterval: (fn) => { timers.push(fn); return timers.length; }, clearInterval: () => {}, ...extra }) };
+  return { storage, timers, client: createTripClient({ base: 'https://x/functions/v1/trip', fetch: fetcher, storage, setInterval: (fn) => { timers.push(fn); return timers.length; }, clearInterval: () => {}, ...extra }) };
 }
 
 async function startTrip(fixtureName = 'plain', entrance) {

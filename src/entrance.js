@@ -2,7 +2,7 @@
 // Each id has an arrival and an exit. This file holds the timing as pure functions (tested) and the pixel drawing of the effects.
 //   parachute  (default)  falls from the top of the screen under a canopy and lands; leaves lifted by a balloon
 //   blue_bolt  (demo)     arrives as a bolt of blue lightning; leaves the same way
-// More packs (a jungle vine, a barrel cannon...) are new ids here and in the server's list (supabase/functions/_shared/trip-code.js).
+// More packs (a jungle vine, a barrel cannon...) are new ids here and in the server's list (supabase/functions/trip/trip-code.js).
 
 export const DEFAULT_ENTRANCE = 'parachute';
 export const ENTRANCE_IDS = ['parachute', 'blue_bolt'];

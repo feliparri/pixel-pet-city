@@ -4,7 +4,7 @@ The pet travels from the board to the web town. The board uploads its travel pac
 with the pet's time frozen, and shows a short code and a QR. The browser claims the code, the pet arrives in the town and lives there; its
 state lives on the server, so the browser need not stay open. The board recalls it and downloads the return package. One pet, one place.
 
-Base URL: `https://cyzsawujfcfrorntugrm.supabase.co/functions/v1/<function>`. Every function takes `POST` with a JSON body
+There is ONE Edge Function, `trip`, that routes by the last path segment: `POST https://cyzsawujfcfrorntugrm.supabase.co/functions/v1/trip/<action>` with `<action>` one of `device-register trip-start trip-claim trip-save trip-recall trip-status trip-return trip-ack` (anything else: `404 {"error":"unknown_action"}`). In this document "function" means action. Every function takes `POST` with a JSON body
 (`content-type: application/json`, at most 12288 bytes, else `413 too_large`) and answers JSON. Errors are always
 `{ "error": "<code>", ...extra }`; the HTTP status is listed per call. No function needs the Supabase API key: the gateway JWT check is off
 (`verify_jwt = false`, `supabase/config.toml`); each function authenticates by itself as below.
@@ -32,7 +32,7 @@ waiting --claim--> active --recall--> recalled --return--> returned --ack--> clo
 | `x-timestamp` | unix seconds, decimal. The server accepts +-300 s from its clock (`401 stale` otherwise) |
 | `x-signature` | lower-case hex of `HMAC-SHA256(key, "POST" + "|" + fn + "|" + timestamp + "|" + sha256_hex(body))` |
 
-* `fn` is the function name only (`trip-recall`), not the URL path. `body` is the exact bytes sent. `sha256_hex` is 64 lower-case hex chars.
+* `fn` is the action name only (`trip-recall`), not the URL path. `body` is the exact bytes sent. `sha256_hex` is 64 lower-case hex chars.
 * `key` is the 32 bytes `SHA-256(secret)`, where `secret` is the 32 random bytes of `device-register`. The server stores only that hash
   (hex), never the secret. Honest limit: a leaked database would allow forging requests for the registered boards (HMAC is symmetric).
 * A signed request replayed inside the window is harmless: every call is idempotent or refused by the trip state.
@@ -124,7 +124,7 @@ on `trip-claim` yet (add one at the gateway if abused).
 
 1. `supabase db push` / apply `supabase/migrations/20261023120000_trips.sql` (tables `devices`, `trips`, enum `trip_status`, RLS on with no policy,
    `cleanup_trips()`, and an hourly pg_cron job when the extension is enabled).
-2. Deploy the eight functions with `--no-verify-jwt` (or via `supabase/config.toml`): `device-register trip-start trip-claim trip-save
-   trip-recall trip-status trip-return trip-ack`. Optional secret `TOWN_URL` (default `https://feliparri.github.io/pixel-pet-city/`);
+2. Deploy the single function `trip` with `--no-verify-jwt` (or via `supabase/config.toml`). Entrypoint `index.ts`; files (relative to
+   `supabase/functions/trip/`): `index.ts serve.ts db.ts handlers.js crypto.js travel-package.js trip-code.js`. Optional secret `TOWN_URL` (default `https://feliparri.github.io/pixel-pet-city/`);
    `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are provided by Supabase to every function.
 3. End-to-end test: `node tools/fake-board.mjs run` (see the README's "Web trip" section).

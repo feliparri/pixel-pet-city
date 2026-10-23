@@ -14,11 +14,16 @@ const cors = (fn: string) => WEB_FUNCTIONS.has(fn) ? {
   'access-control-max-age': '86400',
 } : {};
 
+const ACTIONS: Record<string, true> = { 'device-register': true, 'trip-start': true, 'trip-claim': true, 'trip-save': true, 'trip-recall': true, 'trip-status': true, 'trip-return': true, 'trip-ack': true };
+
 let db: ReturnType<typeof createDb> | null = null;
 
-export function serveFunction(fn: string) {
-  return async (req: Request): Promise<Response> => {
+export async function serveTrip(req: Request): Promise<Response> {
+  {
+    const fn = new URL(req.url).pathname.split('/').filter(Boolean).pop() ?? '';
+    const known = Object.hasOwn(ACTIONS, fn);
     const headers = { 'content-type': 'application/json', 'cache-control': 'no-store', ...cors(fn) };
+    if (!known) return new Response(JSON.stringify({ error: 'unknown_action' }), { status: 404, headers });
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers });
     if (WEB_FUNCTIONS.has(fn) && req.headers.get('origin') && req.headers.get('origin') !== ORIGIN) {
       return new Response(JSON.stringify({ error: 'forbidden_origin' }), { status: 403, headers });
@@ -40,5 +45,5 @@ export function serveFunction(fn: string) {
       log: (name: string, e: unknown) => console.error(name, e instanceof Error ? e.message : 'error'),
     });
     return new Response(JSON.stringify(out.body), { status: out.status, headers });
-  };
+  }
 }
