@@ -1,11 +1,12 @@
 // The running town: the local pet, the other pets, input (taps, arrows/WASD), the net session and the draw loop.
 import { findPath, dirVector } from './path.js';
-import { isWalkable, SPAWNS, TILE } from './map.js';
+import { isWalkable, doorAt, SPAWNS } from './map.js';
 import { Walker } from './walker.js';
 import { createRenderer, EMOTE_MS } from './render.js';
-import { renderMap } from './art.js';
+import { ambientAt, hourNow } from './daynight.js';
 import { entranceState } from './entrance.js';
 
+const FADE_MS = 240;                                  // the fade-in after a door
 const KEY_DIRS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', w: 'up', s: 'down', a: 'left', d: 'right', W: 'up', S: 'down', A: 'left', D: 'right' };
 
 function spawnFor(id) {
@@ -18,20 +19,21 @@ function spawnFor(id) {
  * Returns { onNetEvent, emote, playExit, destroy }. */
 export function startTown({ canvas, stage, sprites, font, net, me, entrance = null }) {
   const [sx, sy] = spawnFor(net.id);
-  const self = { id: net.id, name: me.name, look: me.look, walker: new Walker(sx, sy), emote: null };
+  const self = { id: net.id, name: me.name, look: me.look, walker: new Walker(sx, sy), emote: null, area: 'town' };
   if (entrance) self.fx = { id: entrance, phase: 'arrive', t0: performance.now(), resolve: null };
   const others = new Map();
-  const state = { me: self, others: [], marker: null };
-  const renderer = createRenderer({ canvas, sprites, font, mapCanvas: renderMap() });
+  const state = { me: self, others: [], marker: null, area: 'town', amb: ambientAt(hourNow(location.search)), fade: 0 };
+  const renderer = createRenderer({ canvas, sprites, font });
+  let fadeT0 = -Infinity, ambAt = -Infinity;
   const held = [];                                   // direction keys held, the latest last
   let raf = 0, last = performance.now(), alive = true;
 
-  self.walker.onStep = (x, y, d) => net.sendPos(x, y, d);
-  net.sendPos(sx, sy, 'down');
+  self.walker.onStep = (x, y, d) => net.sendPos(x, y, d, self.area);
+  net.sendPos(sx, sy, 'down', 'town');
 
   const addPeer = (p) => {
     const w = new Walker(p.x ?? 0, p.y ?? 0, p.d || 'down');
-    others.set(p.id, { id: p.id, name: p.name, look: p.look, walker: w, emote: null, placed: p.x != null });
+    others.set(p.id, { id: p.id, name: p.name, look: p.look, walker: w, emote: null, placed: p.x != null, area: p.area || 'town' });
   };
   for (const p of net.peers()) addPeer(p);
 
@@ -42,7 +44,7 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
     else if (ev.type === 'pos') {
       const o = others.get(ev.id);
       if (!o) return;
-      if (!o.placed) { o.walker.snap(ev.x, ev.y, ev.d); o.placed = true; } else o.walker.goTo(ev.x, ev.y, ev.d, isWalkable);
+      if (!o.placed || o.area !== ev.area) { o.walker.snap(ev.x, ev.y, ev.d); o.placed = true; o.area = ev.area; } else o.walker.goTo(ev.x, ev.y, ev.d, o.area);
     } else if (ev.type === 'emote') {
       const o = others.get(ev.id);
       if (o) o.emote = { e: ev.e, until: performance.now() + EMOTE_MS };
@@ -72,11 +74,18 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
       const d = held[held.length - 1];
       const [dx, dy] = dirVector(d);
       const nx = w.tileX + dx, ny = w.tileY + dy;
-      if (isWalkable(nx, ny)) w.stepToward(nx, ny); else w.face(d);
+      if (isWalkable(nx, ny, self.area)) w.stepToward(nx, ny); else w.face(d);
     }
     w.update(dt);
+    if (!w.busy && !self.fx) {                                    // arrived on a door: go through it
+      const door = doorAt(w.tileX, w.tileY, self.area);
+      if (door) { self.area = door.to.area; w.snap(door.to.x, door.to.y, door.to.d); net.sendPos(door.to.x, door.to.y, door.to.d, self.area); state.marker = null; fadeT0 = t; }
+    }
+    if (t - ambAt > 2000) { ambAt = t; state.amb = ambientAt(hourNow(location.search)); }
+    state.area = self.area;
+    state.fade = 1 - (t - fadeT0) / FADE_MS;
     for (const o of others.values()) o.walker.update(dt);
-    state.others = Array.from(others.values()).filter((o) => o.placed);
+    state.others = Array.from(others.values()).filter((o) => o.placed && o.area === self.area);
     renderer.draw(state, t);
     raf = requestAnimationFrame(frame);
   }
@@ -87,7 +96,7 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
     const tile = renderer.pointToTile(ev.clientX, ev.clientY);
     if (!tile) return;
     ev.preventDefault();
-    const path = findPath(self.walker.tileX, self.walker.tileY, tile[0], tile[1]);
+    const path = findPath(self.walker.tileX, self.walker.tileY, tile[0], tile[1], self.area);
     if (path.length) {
       self.walker.setPath(path);
       state.marker = { x: tile[0], y: tile[1], until: performance.now() + 500 };
