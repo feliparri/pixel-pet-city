@@ -1,6 +1,6 @@
 // Everything that arrives from another player is untrusted: this module turns a raw payload into a clean message or null,
 // and limits how often each peer may speak. Nothing else in the app reads a network payload directly.
-import { isWalkable, isArea, inZone, DEFAULT_AREA } from './map.js';
+import { isWalkable, isArea, chickenTile, DEFAULT_AREA } from './map.js';
 import { isPlayable, MAX_PLAYERS } from './games/rules.js';
 
 export const MAX_NAME = 12;
@@ -138,7 +138,7 @@ function validateGameMessage(m) {
     case 'gfound':
       return isRound(m.r) && int(m.i, 0, MAX_PLAYERS - 1) && int(m.at, 0, 999) ? { ...base, r: m.r, i: m.i, at: m.at } : null;
     case 'gchick':
-      return isRound(m.r) && inZone('chicken', m.x, m.y) && isWalkable(m.x, m.y) && DIRS.includes(m.d) && ['w', 'f', 't'].includes(m.m) && (m.s === 0 || m.s === 1)
+      return isRound(m.r) && chickenTile(m.x, m.y) && DIRS.includes(m.d) && ['w', 'f', 't'].includes(m.m) && (m.s === 0 || m.s === 1)
         ? { ...base, r: m.r, x: m.x, y: m.y, d: m.d, m: m.m, s: m.s } : null;
     case 'gcatch':
       return isRound(m.r) && int(m.i, 0, MAX_PLAYERS - 1) && int(m.n, 1, 99) ? { ...base, r: m.r, i: m.i, n: m.n } : null;

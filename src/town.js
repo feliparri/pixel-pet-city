@@ -7,6 +7,7 @@ import { ambientAt, hourNow } from './daynight.js';
 import { entranceState } from './entrance.js';
 import { createGames } from './games/manager.js';
 import { GAME_RULES } from './games/rules.js';
+import { CHICKEN } from './games/chicken.js';
 
 const FADE_MS = 240;                                  // the fade-in after a door
 const KEY_DIRS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', w: 'up', s: 'down', a: 'left', d: 'right', W: 'up', S: 'down', A: 'left', D: 'right' };
@@ -72,13 +73,14 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
   resize();
 
   /** Is this tile allowed for this pet now? A pet playing cannot leave its game's zone (the walls are soft: it just stays). */
-  function canEnter(x, y, zone) {
+  function canEnter(x, y, zone, closed = false) {
+    if (closed && self.area === 'town' && doorAt(x, y, 'town')) { games.notify('Ahora no se puede entrar', 'wall'); return false; }      // the doors are shut while playing
     if (!zone) return true;
     if (inZone(zone, x, y)) return true;
     games.notify(zone === 'hide' ? 'Vuelve al parque' : 'Quédate cerca del gallinero', 'wall');
     return false;
   }
-  const walkableFor = (zone) => (x, y) => isWalkable(x, y, 'town') && (!zone || inZone(zone, x, y));
+  const walkableFor = (mv) => (x, y) => isWalkable(x, y, 'town') && (!mv.zone || inZone(mv.zone, x, y)) && !(mv.closed && doorAt(x, y, 'town'));
 
   function frame(t) {
     if (!alive) return;
@@ -102,12 +104,12 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
       const d = held[held.length - 1];
       const [dx, dy] = dirVector(d);
       const nx = w.tileX + dx, ny = w.tileY + dy;
-      if (isWalkable(nx, ny, self.area) && canEnter(nx, ny, mv.zone)) w.stepToward(nx, ny); else w.face(d);
+      if (isWalkable(nx, ny, self.area) && canEnter(nx, ny, mv.zone, mv.closed)) w.stepToward(nx, ny); else w.face(d);
     }
     w.update(dt);
     if (!w.busy && !self.fx) {                                    // arrived on a door: go through it
       const door = doorAt(w.tileX, w.tileY, self.area);
-      if (door) { self.area = door.to.area; w.snap(door.to.x, door.to.y, door.to.d); net.sendPos(door.to.x, door.to.y, door.to.d, self.area); state.marker = null; fadeT0 = t; }
+      if (door && !mv.closed) { self.area = door.to.area; w.snap(door.to.x, door.to.y, door.to.d); net.sendPos(door.to.x, door.to.y, door.to.d, self.area); state.marker = null; fadeT0 = t; }
     }
     if (t - ambAt > 2000) { ambAt = t; state.amb = ambientAt(hourNow(location.search)); }
     state.area = self.area;
@@ -120,6 +122,7 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
     const gv = games.view();
     const ck = gv.game && gv.game.chick;
     if (ck && ck.seq !== chickSeq) { chickSeq = ck.seq; if (ck.snap) chickWalker.snap(ck.x, ck.y, ck.d); else chickWalker.goTo(ck.x, ck.y, ck.d, 'town'); }
+    chickWalker.stepOverride = ck && ck.m === 'f' ? CHICKEN.fleeMs : null;                // a sprint is drawn at the sprint's pace
     chickWalker.update(dt);
     if (ck && self.area === 'town') {
       const cp = chickWalker.pos();
@@ -140,8 +143,8 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
     ev.preventDefault();
     const mv = games.movement();
     if (mv.frozen) return;
-    if (mv.zone && !canEnter(tile[0], tile[1], mv.zone)) return;
-    const path = findPath(self.walker.tileX, self.walker.tileY, tile[0], tile[1], mv.zone ? walkableFor(mv.zone) : self.area);
+    if ((mv.zone || mv.closed) && !canEnter(tile[0], tile[1], mv.zone, mv.closed)) return;
+    const path = findPath(self.walker.tileX, self.walker.tileY, tile[0], tile[1], mv.zone || mv.closed ? walkableFor(mv) : self.area);
     if (path.length) {
       self.walker.setPath(path);
       state.marker = { x: tile[0], y: tile[1], until: performance.now() + 500 };
@@ -176,7 +179,7 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
     /** For manual testing in the console (two tabs): where this pet is, and walk to a tile like a tap would. */
     debug: {
       pos: () => [self.walker.tileX, self.walker.tileY],
-      goTo(x, y) { const mv = games.movement(); const path = findPath(self.walker.tileX, self.walker.tileY, x, y, mv.zone ? walkableFor(mv.zone) : self.area); if (path.length) self.walker.setPath(path); return path.length; },
+      goTo(x, y) { const mv = games.movement(); const path = findPath(self.walker.tileX, self.walker.tileY, x, y, mv.zone || mv.closed ? walkableFor(mv) : self.area); if (path.length) self.walker.setPath(path); return path.length; },
     },
     games: {
       play: () => { const g = spotAt(self.walker.tileX, self.walker.tileY); return !!g && games.open(g); },

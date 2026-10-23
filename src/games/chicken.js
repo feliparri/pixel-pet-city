@@ -4,12 +4,13 @@ import { GAME_RULES } from './rules.js';
 import { touching } from './hide.js';
 
 export const CHICKEN = {
-  wanderMs: 480,            // a calm step
-  fleeMs: 150,              // a dash step (a pet needs 160 ms)
-  dashSteps: 7,             // a dash this long ...
-  tiredMs: 1600,            // ... and then it stands panting this long
-  fleeRadius: 4,            // it runs from a pet this close
+  wanderMs: 480,            // a calm step (2 tiles a second)
+  fleeMs: 120,              // a sprint step (8 tiles a second; a pet needs 160 ms, 6)
+  dashSteps: 12,            // a sprint this long (about 1.4 s) ...
+  tiredMs: 1800,            // ... and then it stands panting this long, which lets a chaser close about 11 tiles
+  fleeRadius: 4,            // it sprints when a pet comes this close
 };
+const LOOKAHEAD = 8;
 export const catchesToWin = GAME_RULES.chicken.goal;
 const DIRS = [[0, -1, 'up'], [1, 0, 'right'], [0, 1, 'down'], [-1, 0, 'left']];
 
@@ -50,12 +51,27 @@ export function stepChicken(ch, pets, now, rng, walkable) {
   if (near <= CHICKEN.fleeRadius) {
     if (ch.dash >= CHICKEN.dashSteps) { ch.mode = 'tired'; ch.tiredUntil = now + CHICKEN.tiredMs; ch.dash = 0; return false; }
     ch.mode = 'flee';
-    const open = (x, y) => DIRS.filter(([dx, dy]) => walkable(x + dx, y + dy)).length;
+    const dist = (x, y) => pets.reduce((m, p) => Math.min(m, Math.hypot(p.x - x, p.y - y)), Infinity);
+    // looks a few steps ahead: how far from the pets can it get from there? (so it goes round a wall instead of into a corner)
+    const reach = (sx, sy) => {
+      const seen = new Set([`${ch.x},${ch.y}`, `${sx},${sy}`]);
+      let frontier = [[sx, sy]], far = dist(sx, sy);
+      for (let depth = 0; depth < LOOKAHEAD && frontier.length; depth++) {
+        const next = [];
+        for (const [x, y] of frontier) for (const [dx, dy] of DIRS) {
+          const nx = x + dx, ny = y + dy, k = `${nx},${ny}`;
+          if (seen.has(k) || !walkable(nx, ny)) continue;
+          seen.add(k); next.push([nx, ny]);
+          far = Math.max(far, dist(nx, ny));
+        }
+        frontier = next;
+      }
+      return far;
+    };
     let best = null, bs = -Infinity;
     for (const [dx, dy, d] of options) {
       const x = ch.x + dx, y = ch.y + dy;
-      const away = pets.reduce((m, p) => Math.min(m, Math.hypot(p.x - x, p.y - y)), Infinity);
-      const score = away * 2 + open(x, y) * 0.7 + rng() * 0.5;
+      const score = dist(x, y) + reach(x, y) * 1.5 + rng() * 0.5;
       if (score > bs) { bs = score; best = { x, y, d }; }
     }
     ch.x = best.x; ch.y = best.y; ch.d = best.d; ch.dash++; ch.nextAt = now + CHICKEN.fleeMs;

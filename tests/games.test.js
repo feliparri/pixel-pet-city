@@ -7,7 +7,7 @@ import { openLobby, joinLobby, leaveLobby, volunteerSeeker, electReferee, lobbyR
 import { seekerSees, touching, createHide, tickHide, hideStars, hideResults } from '../src/games/hide.js';
 import { createChicken, stepChicken, catcher, spawnTile, CHICKEN } from '../src/games/chicken.js';
 import { createGames } from '../src/games/manager.js';
-import { GAME_PLACES, isWalkable, tileAt, TILES } from '../src/map.js';
+import { GAME_PLACES, DOORS, chickenTile, isWalkable, tileAt, TILES } from '../src/map.js';
 
 const A = 'aaaaaap', B = 'bbbbbbp', C = 'ccccccp', D = 'ddddddp';
 const ok = (m) => validateMessage({ id: A, ...m }, {});
@@ -19,7 +19,7 @@ test('game messages: well-formed ones pass, and only the known fields survive', 
   assert.ok(ok({ t: 'gstate', g: 'hide', r: 'abc123', ph: 'search', left: 5000, f: [-1, 12, -2] }));
   assert.ok(ok({ t: 'gstate', g: 'chicken', r: 'abc123', ph: 'play', left: 5000, f: [0, 2] }));
   assert.ok(ok({ t: 'gfound', r: 'abc123', i: 2, at: 40 }));
-  assert.ok(ok({ t: 'gchick', r: 'abc123', x: 30, y: 40, d: 'left', m: 'f', s: 0 }));
+  assert.ok(ok({ t: 'gchick', r: 'abc123', x: 31, y: 42, d: 'left', m: 'f', s: 0 }));
   assert.ok(ok({ t: 'gcatch', r: 'abc123', i: 0, n: 1 }));
   assert.ok(ok({ t: 'gend', g: 'hide', r: 'abc123', rs: 'time', f: [-1, 20] }));
   assert.ok(ok({ t: 'gend', g: 'hide', r: 'abc123', rs: 'few', f: [] }));
@@ -34,12 +34,14 @@ test('game messages: unknown games, bad round ids, out-of-range numbers, wrong p
     { t: 'gstate', g: 'hide', r: 'abc123', ph: 'play', left: 1, f: [] }, { t: 'gstate', g: 'chicken', r: 'abc123', ph: 'search', left: 1, f: [] },
     { t: 'gstate', g: 'hide', r: 'abc123', ph: 'search', left: -1, f: [] }, { t: 'gstate', g: 'hide', r: 'abc123', ph: 'search', left: 1, f: [1000] },
     { t: 'gfound', r: 'abc123', i: 13, at: 1 }, { t: 'gfound', r: 'abc123', i: 0, at: -1 },
-    { t: 'gchick', r: 'abc123', x: 23, y: 20, d: 'left', m: 'f', s: 0 }, { t: 'gchick', r: 'abc123', x: 32, y: 39, d: 'left', m: 'f', s: 0 },
+    { t: 'gchick', r: 'abc123', x: 0, y: 0, d: 'left', m: 'f', s: 0 }, { t: 'gchick', r: 'abc123', x: 99, y: 20, d: 'left', m: 'f', s: 0 },
+    { t: 'gchick', r: 'abc123', x: DOORS.town[0].x, y: DOORS.town[0].y, d: 'left', m: 'f', s: 0 }, { t: 'gchick', r: 'abc123', x: 8, y: 14, d: 'left', m: 'f', s: 0 },
     { t: 'gchick', r: 'abc123', x: 30, y: 40, d: 'sideways', m: 'f', s: 0 }, { t: 'gchick', r: 'abc123', x: 30, y: 40, d: 'left', m: 'x', s: 0 },
     { t: 'gcatch', r: 'abc123', i: 0, n: 0 }, { t: 'gend', g: 'hide', r: 'abc123', rs: 'won', f: [] }, { t: 'gend', g: 'hide', r: 'abc123', rs: 'time', f: 'no' },
   ];
   for (const m of bad) assert.equal(ok(m), null, JSON.stringify(m));
-  assert.equal(ok({ t: 'gchick', r: 'abc123', x: 30, y: 40, d: 'left', m: 'f', s: 0 }) !== null, true);
+  assert.equal(ok({ t: 'gchick', r: 'abc123', x: 31, y: 42, d: 'left', m: 'f', s: 0 }) !== null, true);
+  assert.equal(ok({ t: 'gchick', r: 'abc123', x: 23, y: 30, d: 'left', m: 'f', s: 0 }) !== null, true, 'the chicken may be anywhere in the town, on the road too');
 });
 
 test('the biggest game message fits the payload limit', () => {
@@ -189,6 +191,39 @@ test('chicken: runs from a pet that keeps chasing it, stays in its area, and get
   t += CHICKEN.tiredMs;
   stepChicken(ch, [pet], t, seq(0.5), open);
   assert.notEqual(ch.mode, 'tired');
+});
+
+test('chicken: a pet within 4 tiles makes it sprint faster than a pet walks; farther away it stays calm', () => {
+  const calm = createChicken(31, 40, 0), spooked = createChicken(31, 40, 0);
+  let t = 0, calmSteps = [], sprint = [];
+  for (let i = 0; i < 80; i++, t += 40) {
+    const ax = calm.x, ay = calm.y;
+    if (stepChicken(calm, [{ x: ax + 6, y: ay }], t, seq(0.9, 0.1, 0.7), open)) calmSteps.push(t);                 // 6 tiles: out of range
+  }
+  assert.ok(calmSteps.length > 3 && calmSteps.every((v, i) => i === 0 || v - calmSteps[i - 1] >= CHICKEN.wanderMs - 1), 'calm steps are at least 480 ms apart');
+  t = 0;
+  for (let i = 0; i < 80 && spooked.mode !== 'tired'; i++, t += 20) if (stepChicken(spooked, [{ x: spooked.x, y: spooked.y + 4 }], t, seq(0.5), open)) sprint.push(t);   // 4 tiles: in range
+  assert.equal(spooked.mode, 'flee');
+  assert.ok(sprint.length > 5 && sprint.every((v, i) => i === 0 || v - sprint[i - 1] === CHICKEN.fleeMs));
+  assert.ok(CHICKEN.fleeMs < 160, 'faster than a walking pet');
+  assert.equal(CHICKEN.fleeRadius, 4);
+});
+
+test('chicken: chased for a long time it runs across the town, only on open tiles, with a rest after each sprint', () => {
+  const ch = createChicken(20, 23, 0), pet = { x: 20, y: 26 };
+  let t = 0, tired = 0, minY = 99, farthest = 0, prev = ch.mode;
+  const rnd = seq(0.3, 0.8, 0.15, 0.6, 0.95, 0.45);
+  for (let i = 0; i < 9000; i++, t += 40) {
+    if (i % 4 === 0 && Math.hypot(ch.x - pet.x, ch.y - pet.y) > 2.5) {                                    // the pet walks at 160 ms a tile after the chicken, keeping close
+      if (Math.abs(ch.x - pet.x) > Math.abs(ch.y - pet.y)) pet.x += Math.sign(ch.x - pet.x); else pet.y += Math.sign(ch.y - pet.y);
+    }
+    stepChicken(ch, [pet], t, rnd, chickenTile);
+    assert.ok(chickenTile(ch.x, ch.y), `${ch.x},${ch.y}`);
+    if (ch.mode === 'tired' && prev !== 'tired') tired++;
+    prev = ch.mode; minY = Math.min(minY, ch.y); farthest = Math.max(farthest, Math.hypot(ch.x - 20, ch.y - 23));
+  }
+  assert.ok(tired >= 3, 'it gets tired after its sprints');
+  assert.ok(farthest > 15, `it ran far from where it started, out of the plaza and the gallinero's area (${farthest.toFixed(1)} tiles)`);
 });
 
 test('chicken: with nobody near it wanders calmly and never leaves the area', () => {
@@ -366,7 +401,7 @@ test('a pet that did not join watches: no zone, no darkness, but sees the game',
   r.run(10500);
   const v = r.mgr(C).view();
   assert.equal(v.game.role, 'spectator');
-  assert.deepEqual(r.mgr(C).movement(), { frozen: false, zone: null });
+  assert.deepEqual(r.mgr(C).movement(), { frozen: false, zone: null, closed: false });
   assert.equal(r.mgr(C).seekerVision(), null);
   assert.equal(r.mgr(C).view().game.phase, 'count');
 });
@@ -391,7 +426,7 @@ test('catch the chicken, alone: the browser is its own referee; each catch is 3 
   r.run(3500);
   assert.equal(r.mgr(A).view().game.g, 'chicken');
   assert.equal(r.mgr(A).view().game.referee, true);
-  assert.equal(r.mgr(A).movement().zone, 'chicken');
+  assert.deepEqual(r.mgr(A).movement(), { frozen: false, zone: null, closed: true }, 'no soft wall for the chicken, but the doors are shut');
   r.place(A, 27, 39);
   r.run(1000);
   let catches = 0;
@@ -409,7 +444,7 @@ test('catch the chicken, alone: the browser is its own referee; each catch is 3 
   assert.ok(catches >= 0);
 });
 
-test('catch the chicken: with nobody chasing, it wanders inside its area and the round ends at 60 seconds', () => {
+test('catch the chicken: with nobody chasing, it wanders calmly, starts at the gallinero, and the round ends at 60 seconds', () => {
   const r = room([A, B]);
   r.mgr(A).open('chicken'); r.mgr(B).join();
   r.run(3500);
@@ -417,7 +452,7 @@ test('catch the chicken: with nobody chasing, it wanders inside its area and the
   for (let i = 0; i < 200; i++) {
     r.run(100);
     const c = r.mgr(B).view().game && r.mgr(B).view().game.chick;
-    if (c) { seen.add(`${c.x},${c.y}`); assert.ok(open(c.x, c.y), `${c.x},${c.y} is playable`); }
+    if (c) { seen.add(`${c.x},${c.y}`); assert.ok(chickenTile(c.x, c.y), `${c.x},${c.y} is playable`); }
   }
   assert.ok(seen.size > 3, 'the chicken wandered');
   r.run(41000);

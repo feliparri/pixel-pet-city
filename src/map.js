@@ -226,5 +226,9 @@ export const inMap = (x, y, area = DEFAULT_AREA) => {
 };
 export const tileAt = (x, y, area = DEFAULT_AREA) => (inMap(x, y, area) ? AREAS[area].grid[y][x] : 'x');
 export const isWalkable = (x, y, area = DEFAULT_AREA) => inMap(x, y, area) && !TILES[AREAS[area].grid[y][x]].solid;
+/** The fenced pen of the gallinero (its gate is at (29, 41)): the chicken of the game never goes in, it would be a dead end. */
+export const PEN = { x: 28, y: 38, w: 7, h: 4 };
+/** Where the chicken of Pillar la gallina may stand: any open tile of the town, but not a hiding bush, the pen, and never a door (it never goes inside). */
+export const chickenTile = (x, y) => isWalkable(x, y, 'town') && !(x >= PEN.x && y >= PEN.y && x < PEN.x + PEN.w && y < PEN.y + PEN.h) && !TILES[tileAt(x, y)].hide && !(DOORS.town || []).some((d) => d.x === x && d.y === y);
 /** The door at a tile, or null. */
 export const doorAt = (x, y, area = DEFAULT_AREA) => (DOORS[area] || []).find((d) => d.x === x && d.y === y) || null;

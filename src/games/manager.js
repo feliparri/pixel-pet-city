@@ -7,7 +7,7 @@ import { GAME_RULES, isPlayable, STATE_MS, LOBBY_MS, ECHO_MS, GONE_GRACE_MS } fr
 import { openLobby, joinLobby, leaveLobby, volunteerSeeker, electReferee, lobbyReady, buildStart, lobbyKey } from './lobby.js';
 import { tickHide, hideResults, hideStars, seekerSees } from './hide.js';
 import { createChicken, stepChicken, catcher, spawnTile, catchesToWin } from './chicken.js';
-import { GAME_PLACES, inZone, isWalkable, tileAt, TILES } from '../map.js';
+import { GAME_PLACES, inZone, chickenTile, tileAt } from '../map.js';
 
 const NOTICE_MS = 3200;
 const STALL_MS = 1500;                                // a gap between two updates this long means this tab was asleep: the clocks wait for it
@@ -205,7 +205,7 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
 
   const stateMsg = (extra = {}) => ({ t: 'gstate', g: game.g, r: game.r, ph: game.phase, left: Math.max(0, Math.min(120000, Math.round(game.phaseEnd - now()))), f: game.f.slice(), ...extra });
   const broadcastState = (t) => { if (t - stateAt >= STATE_MS) { stateAt = t; send(stateMsg()); } };
-  const petPos = (pid) => { const p = tile(pid); return p && inZone(game.g, p.x, p.y) ? p : null; };
+  const petPos = (pid) => { const p = tile(pid); return p && (game.g === 'chicken' || inZone(game.g, p.x, p.y)) ? p : null; };
 
   function refereeHide(t) {
     const s = { roster: game.roster, seeker: game.seeker, phase: game.phase, phaseEnd: game.phaseEnd, found: game.f };
@@ -223,10 +223,10 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
 
   const chickenTiles = () => {
     const z = GAME_PLACES.chicken.zone, out = [];
-    for (let y = z.y; y < z.y + z.h; y++) for (let x = z.x; x < z.x + z.w; x++) if (chickenWalkable(x, y) && tileAt(x, y) !== 'p') out.push([x, y]);
+    for (let y = z.y; y < z.y + z.h; y++) for (let x = z.x; x < z.x + z.w; x++) if (chickenTile(x, y) && tileAt(x, y) !== 'p') out.push([x, y]);
     return out;
   };
-  const chickenWalkable = (x, y) => inZone('chicken', x, y) && isWalkable(x, y) && !TILES[tileAt(x, y)].hide;
+  const chickenWalkable = chickenTile;               // the chicken runs across the whole town; only its first spot is at the gallinero
 
   function refereeChicken(t) {
     const pets = game.roster.filter((_, i) => !game.gone.has(i)).map((pid) => ({ id: pid, ...petPos(pid) })).filter((p) => p.x !== undefined);
@@ -277,12 +277,14 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
     return out;
   }
 
-  /** What a pet at tile (x, y) may do now: `frozen` (the seeker during the countdown), `zone` (the game it cannot leave) or none. */
+  /**
+   * What this pet may do now: `frozen` (the seeker during the countdown), `zone` (the game whose area it cannot leave, or null: the chicken
+   * runs across the whole town) and `closed` (the doors do not take it inside while it plays).
+   */
   function movement() {
-    if (!game || !game.play) return { frozen: false, zone: null };
-    const zone = game.g;
+    if (!game || !game.play) return { frozen: false, zone: null, closed: false };
     const frozen = game.g === 'hide' && game.phase === 'count' && game.roster[game.seeker] === id;
-    return { frozen, zone };
+    return { frozen, zone: game.g === 'hide' ? 'hide' : null, closed: true };
   }
 
   /** For the seeker's screen: null, or `{ full, see(pet tile, inBush) }`. `full` = the countdown (everything dark). */

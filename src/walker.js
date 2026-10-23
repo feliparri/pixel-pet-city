@@ -14,6 +14,7 @@ export class Walker {
     this.d = d;
     this.queue = [];                    // tiles still to walk
     this.onStep = null;                 // (x, y, d) when a step starts
+    this.stepOverride = null;           // ms per step when something (the chicken sprinting) goes at its own pace
   }
 
   get tileX() { return this.tx; }
@@ -27,7 +28,7 @@ export class Walker {
     return { x: this.fx + (this.tx - this.fx) * k, y: this.fy + (this.ty - this.fy) * k };
   }
 
-  stepMs() { return this.queue.length > 3 ? STEP_MS / 2 : STEP_MS; }   // a pet that fell behind hurries
+  stepMs() { return this.stepOverride || (this.queue.length > 3 ? STEP_MS / 2 : STEP_MS); }   // a pet that fell behind hurries
 
   /** Replace what is left to walk (the step in progress finishes first). */
   setPath(tiles) {
