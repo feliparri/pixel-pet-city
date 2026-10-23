@@ -1,6 +1,7 @@
 // Everything that arrives from another player is untrusted: this module turns a raw payload into a clean message or null,
 // and limits how often each peer may speak. Nothing else in the app reads a network payload directly.
-import { isWalkable, isArea, DEFAULT_AREA } from './map.js';
+import { isWalkable, isArea, inZone, DEFAULT_AREA } from './map.js';
+import { isPlayable, MAX_PLAYERS } from './games/rules.js';
 
 export const MAX_NAME = 12;
 export const MAX_PEERS = 12;
@@ -75,7 +76,11 @@ export function validateMessage(raw, catalogue) {
   switch (m.t) {
     case 'hello': {
       const look = validateLook(m.look, catalogue);
-      return look ? { t: 'hello', id: m.id, name: sanitizeName(m.name), look } : null;
+      if (!look) return null;
+      const out = { t: 'hello', id: m.id, name: sanitizeName(m.name), look };
+      const area = m.area === undefined ? DEFAULT_AREA : m.area;                  // a heartbeat may carry the position: kept only when it is a real tile
+      if (m.x !== undefined && isArea(area) && Number.isInteger(m.x) && Number.isInteger(m.y) && isWalkable(m.x, m.y, area) && DIRS.includes(m.d)) out.pos = { x: m.x, y: m.y, d: m.d, area };
+      return out;
     }
     case 'pos':
     {
@@ -88,6 +93,58 @@ export function validateMessage(raw, catalogue) {
     case 'bye':
       return { t: 'bye', id: m.id };
     default:
+      return GAME_TYPES.has(m.t) ? validateGameMessage(m) : null;
+  }
+}
+
+// ---- the games' messages -------------------------------------------------------------------------------------------------------------
+// A game has no host: the players' browsers agree on a referee (the lowest peer id among the players, see games/lobby.js) and only the
+// referee's `gstate`, `gfound`, `gchick`, `gcatch` and `gend` count. This module only checks shapes and ranges; who may say what is checked
+// by the receiver (games/manager.js).
+export const GAME_TYPES = new Set(['gopen', 'gjoin', 'gleave', 'grole', 'gstart', 'gstate', 'gfound', 'gchick', 'gcatch', 'gend']);
+export const PHASES = { hide: ['count', 'search'], chicken: ['play'] };
+export const END_REASONS = ['all', 'time', 'goal', 'left', 'few'];
+const isRound = (v) => typeof v === 'string' && /^[a-z0-9]{4,10}$/.test(v);
+const int = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
+const intList = (v, lo, hi) => Array.isArray(v) && v.length <= MAX_PLAYERS && v.every((n) => int(n, lo, hi));
+
+/**
+ *   gopen  { g, r, left }       someone opens a lobby for game g (round id r) that closes in `left` ms
+ *   gjoin  { r }                "Me sumo"            gleave { r }   "Salir del juego"
+ *   grole  { r, role: 'seek' }  "¡Yo busco!"
+ *   gstart { g, r, p, s }       the referee starts: roster p (peer ids, in order), seeker index s (-1 for games without a seeker)
+ *   gstate { g, r, ph, left, f }  the shared clock: phase, ms left in it, and per roster index: seconds a hider was found (-1 not yet, -2 gone) or a score
+ *   gfound { r, i, at }         roster index i was found `at` seconds into the search
+ *   gchick { r, x, y, d, m, s } the chicken's tile, facing, mood (w wander, f flee, t tired); s = 1 when it appeared there
+ *   gcatch { r, i, n }          roster index i caught it (n: its catches so far)
+ *   gend   { g, r, rs, f }      the game (or a lobby that could not start: rs 'few') is over, with the final f
+ */
+function validateGameMessage(m) {
+  const base = { t: m.t, id: m.id };
+  switch (m.t) {
+    case 'gopen':
+      return isPlayable(m.g) && isRound(m.r) && int(m.left, 0, 15000) ? { ...base, g: m.g, r: m.r, left: m.left } : null;
+    case 'gjoin': case 'gleave':
+      return isRound(m.r) ? { ...base, r: m.r } : null;
+    case 'grole':
+      return isRound(m.r) && m.role === 'seek' ? { ...base, r: m.r, role: 'seek' } : null;
+    case 'gstart': {
+      if (!isPlayable(m.g) || !isRound(m.r) || !Array.isArray(m.p) || m.p.length < 1 || m.p.length > MAX_PLAYERS || !m.p.every(isId) || new Set(m.p).size !== m.p.length) return null;
+      return int(m.s, -1, m.p.length - 1) ? { ...base, g: m.g, r: m.r, p: m.p.slice(), s: m.s } : null;
+    }
+    case 'gstate':
+      return isPlayable(m.g) && isRound(m.r) && PHASES[m.g].includes(m.ph) && int(m.left, 0, 120000) && intList(m.f, -2, 999)
+        ? { ...base, g: m.g, r: m.r, ph: m.ph, left: m.left, f: m.f.slice() } : null;
+    case 'gfound':
+      return isRound(m.r) && int(m.i, 0, MAX_PLAYERS - 1) && int(m.at, 0, 999) ? { ...base, r: m.r, i: m.i, at: m.at } : null;
+    case 'gchick':
+      return isRound(m.r) && inZone('chicken', m.x, m.y) && isWalkable(m.x, m.y) && DIRS.includes(m.d) && ['w', 'f', 't'].includes(m.m) && (m.s === 0 || m.s === 1)
+        ? { ...base, r: m.r, x: m.x, y: m.y, d: m.d, m: m.m, s: m.s } : null;
+    case 'gcatch':
+      return isRound(m.r) && int(m.i, 0, MAX_PLAYERS - 1) && int(m.n, 1, 99) ? { ...base, r: m.r, i: m.i, n: m.n } : null;
+    case 'gend':
+      return isPlayable(m.g) && isRound(m.r) && END_REASONS.includes(m.rs) && intList(m.f, -2, 999) ? { ...base, g: m.g, r: m.r, rs: m.rs, f: m.f.slice() } : null;
+    default:
       return null;
   }
 }
@@ -98,6 +155,16 @@ export const LIMITS = {
   emote: { burst: 3, perSec: 1 },
   hello: { burst: 4, perSec: 0.5 },   // the heartbeat is every 2 s
   bye: { burst: 2, perSec: 0.2 },
+  gopen: { burst: 2, perSec: 0.2 },
+  gjoin: { burst: 3, perSec: 0.5 },
+  gleave: { burst: 3, perSec: 0.5 },
+  grole: { burst: 3, perSec: 0.5 },
+  gstart: { burst: 2, perSec: 0.3 },
+  gstate: { burst: 6, perSec: 4 },     // the referee sends two a second
+  gfound: { burst: 13, perSec: 2 },
+  gchick: { burst: 14, perSec: 10 },   // one per chicken step (at most about 7 a second)
+  gcatch: { burst: 4, perSec: 1 },
+  gend: { burst: 2, perSec: 0.3 },
 };
 
 export function createRateLimiter(now = () => Date.now()) {

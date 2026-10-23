@@ -306,3 +306,42 @@ test('checkConfig: placeholders, urls and service_role keys', () => {
   assert.equal(checkConfig({ supabaseUrl: url, supabaseAnonKey: 'short' }), 'bad-key');
   assert.equal(checkConfig({ supabaseUrl: url, supabaseAnonKey: jwt('anon') + 'x'.repeat(20) }), 'ok');
 });
+
+test('a lost pos message is corrected by the next heartbeat, which repeats the position', async () => {
+  const { a, b } = pair();
+  await a.net.join(CODE, { name: 'Ana', look });
+  await b.net.join(CODE, { name: 'Beto', look });
+  a.net.sendPos(19, 18, 'down');
+  b.events.length = 0;
+  a.net.sendPos(20, 18, 'right');                       // throttled by the pos interval: never sent on its own
+  a.timers.timeouts.length = 0;                          // ... and the timer that would send it is lost
+  a.timers.intervals[0]();                               // the heartbeat
+  const pos = b.events.filter((e) => e.type === 'pos').at(-1);
+  assert.ok(pos, 'b heard a position');
+  assert.deepEqual(b.net.peers().find((p) => p.name === 'Ana').x, 19, 'the heartbeat repeats the last position that was sent');
+  a.net.resync();
+  assert.equal(b.net.peers().find((p) => p.name === 'Ana').x, 20, 'resync sends the latest');
+});
+
+test('a peer dropped by a timeout is reinstated at its position by its next heartbeat', async () => {
+  const { a, b, advance } = pair();
+  await a.net.join(CODE, { name: 'Ana', look });
+  await b.net.join(CODE, { name: 'Beto', look });
+  a.net.sendPos(19, 18, 'down');
+  advance(PEER_TIMEOUT_MS + 1000);
+  b.timers.intervals[0]();                               // b's heartbeat drops the silent a
+  assert.equal(b.net.peers().length, 0);
+  assert.ok(b.events.some((e) => e.type === 'leave'));
+  b.events.length = 0;
+  a.timers.intervals[0]();                               // a is alive after all
+  const join = b.events.find((e) => e.type === 'join');
+  assert.ok(join, 'a is back at once');
+  assert.deepEqual([join.peer.x, join.peer.y, join.peer.area], [19, 18, 'town']);
+});
+
+test('a hello with a position that is not a real tile is still a hello, without the position', async () => {
+  const { validateMessage } = await import('../src/protocol.js');
+  const m = validateMessage({ t: 'hello', id: 'aaaaaap', name: 'A', look, x: 0, y: 0, d: 'down' }, CAT);
+  assert.ok(m && !m.pos);
+  assert.deepEqual(validateMessage({ t: 'hello', id: 'aaaaaap', name: 'A', look, x: 19, y: 18, d: 'down' }, CAT).pos, { x: 19, y: 18, d: 'down', area: 'town' });
+});

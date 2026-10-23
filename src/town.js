@@ -44,7 +44,7 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
     else if (ev.type === 'pos') {
       const o = others.get(ev.id);
       if (!o) return;
-      if (!o.placed || o.area !== ev.area) { o.walker.snap(ev.x, ev.y, ev.d); o.placed = true; o.area = ev.area; } else o.walker.goTo(ev.x, ev.y, ev.d, o.area);
+      if (!o.placed || o.area !== ev.area || Math.abs(o.walker.tileX - ev.x) + Math.abs(o.walker.tileY - ev.y) > 3) { o.walker.snap(ev.x, ev.y, ev.d); o.placed = true; o.area = ev.area; } else o.walker.goTo(ev.x, ev.y, ev.d, o.area);
     } else if (ev.type === 'emote') {
       const o = others.get(ev.id);
       if (o) o.emote = { e: ev.e, until: performance.now() + EMOTE_MS };
@@ -118,6 +118,8 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
   window.addEventListener('blur', () => { held.length = 0; });
+  const onVisibility = () => net.resync();                    // timers sleep in a hidden tab: say where we are going in and coming out
+  document.addEventListener('visibilitychange', onVisibility);
 
   return {
     onNetEvent,
@@ -138,6 +140,7 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
       canvas.removeEventListener('pointerdown', onPointer);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
+      document.removeEventListener('visibilitychange', onVisibility);
     },
   };
 }
