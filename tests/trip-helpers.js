@@ -1,0 +1,67 @@
+// An in-memory database with the interface of supabase/functions/_shared/db.ts, and a way to call the handlers like a board or a browser.
+import { readFileSync } from 'node:fs';
+import { randomBytes as nodeRandom, randomUUID } from 'node:crypto';
+import { handle } from '../supabase/functions/_shared/handlers.js';
+import { signRequest, toHex } from '../supabase/functions/_shared/crypto.js';
+import { toBase64 } from '../supabase/functions/_shared/travel-package.js';
+
+export const fixture = (name) => new Uint8Array(readFileSync(new URL(`./fixtures/${name}`, import.meta.url)));
+
+export function memoryDb() {
+  const devices = new Map(), trips = new Map();
+  const matches = (row, where) => Object.entries(where).every(([k, vs]) => vs.some((v) => row[k] === v));
+  const db = {
+    devices, trips,
+    async getDevice(id) { return devices.get(id) ?? null; },
+    async insertDevice(row) { if (devices.has(row.id)) return false; devices.set(row.id, { ...row }); return true; },
+    async getTripByDevice(d, t) { return [...trips.values()].find((x) => x.device_id === d && x.trip_id === t) ?? null; },
+    async getTripByCode(c) { return [...trips.values()].find((x) => x.code === c) ?? null; },
+    async getTripById(id) { return trips.get(id) ?? null; },
+    async insertTrip(row) {
+      if ([...trips.values()].some((x) => x.code === row.code)) return 'code_taken';
+      if ([...trips.values()].some((x) => x.device_id === row.device_id && x.trip_id === row.trip_id)) return 'conflict';
+      trips.set(row.id, { ...row });
+      return 'ok';
+    },
+    async updateTrip(id, where, patch) {
+      const row = trips.get(id);
+      if (!row || !matches(row, where)) return null;
+      Object.assign(row, patch);
+      return { ...row };
+    },
+    async cancelOpenTrips(d) {
+      for (const t of trips.values()) if (t.device_id === d && ['waiting', 'active', 'recalled', 'returned'].includes(t.status)) Object.assign(t, { status: 'cancelled', session_hash: null });
+    },
+    async cleanup() {},
+  };
+  return db;
+}
+
+/** A world: a database, a clock, and `board()` / `web()` callers. */
+export function world({ now = 1_800_000_000, randomBytes } = {}) {
+  const w = { db: memoryDb(), now };
+  const deps = {
+    db: w.db, nowS: () => w.now, randomBytes: randomBytes ?? ((n) => new Uint8Array(nodeRandom(n))), uuid: randomUUID,
+    townUrl: 'https://feliparri.github.io/pixel-pet-city/',
+  };
+  const send = async (fn, headers, obj) => handle(fn, { method: 'POST', headers, body: new TextEncoder().encode(JSON.stringify(obj)) }, deps);
+  w.raw = (fn, body, headers = {}, method = 'POST') => handle(fn, { method, headers, body }, deps);
+  w.board = () => {
+    const deviceId = toHex(nodeRandom(16)), secretHex = toHex(nodeRandom(32));
+    const b = {
+      deviceId, secretHex,
+      call: async (fn, obj, over = {}) => {
+        const body = new TextEncoder().encode(JSON.stringify(obj));
+        const headers = await signRequest({ deviceId, secretHex, fn, body, ts: w.now, ...over });
+        return handle(fn, { method: 'POST', headers, body }, deps);
+      },
+      register: () => send('device-register', {}, { device_id: deviceId, secret: secretHex }),
+      start: (pkg, extra = {}) => b.call('trip-start', { package: toBase64(pkg), ...extra }),
+    };
+    return b;
+  };
+  w.web = (token) => ({
+    call: (fn, obj) => send(fn, token ? { 'x-trip-token': token } : {}, obj),
+  });
+  return w;
+}
