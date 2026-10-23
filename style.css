@@ -29,7 +29,7 @@ input:focus-visible, select:focus-visible, .btn:focus-visible { outline: 3px sol
 .bar { display: flex; align-items: center; gap: .5rem; padding: max(.4rem, env(safe-area-inset-top)) .6rem .4rem; background: var(--face); border-bottom: 2px solid var(--edge); flex-wrap: wrap; }
 .bar .label { color: var(--muted); font-size: .8rem; }
 .bar strong { color: var(--gold); letter-spacing: .08em; margin-right: auto; user-select: all; }
-#stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: #0e101a; overflow: hidden; touch-action: none; }
+#stage { position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: #0e101a; overflow: hidden; touch-action: none; }
 #view { image-rendering: pixelated; image-rendering: crisp-edges; display: block; touch-action: none; }
 #status { margin: 0; padding: .2rem .6rem; font-size: .8rem; color: var(--muted); background: var(--bg); min-height: 1.6em; }
 .emotes { display: flex; gap: .4rem; padding: .4rem .6rem max(.5rem, env(safe-area-inset-bottom)); background: var(--face); border-top: 2px solid var(--edge); overflow-x: auto; justify-content: center; }
@@ -44,3 +44,25 @@ input:focus-visible, select:focus-visible, .btn:focus-visible { outline: 3px sol
 .visit-join { display: inline-flex; align-items: center; gap: .4rem; margin-left: auto; }
 .visit-join input.small { min-height: 2.25rem; padding: .25rem .4rem; width: 9.5rem; text-transform: uppercase; letter-spacing: .06em; font-size: .85rem; }
 a.btn { display: inline-block; text-decoration: none; }
+
+/* the games: stars, the game bar, invitations, big buttons, banners and the results */
+.stars { font-weight: 700; color: var(--gold); font-size: 1.05rem; white-space: nowrap; }
+.hud { position: absolute; inset: 0; pointer-events: none; display: flex; flex-direction: column; align-items: center; padding: .4rem; gap: .4rem; }
+.hud .btn { pointer-events: auto; }
+.game-bar { display: flex; align-items: center; gap: .5rem; background: rgba(24,28,44,.9); border: 2px solid var(--edge); padding: .25rem .5rem; pointer-events: auto; max-width: 100%; }
+.game-bar span { font-weight: 700; font-size: .95rem; }
+.invite { display: flex; align-items: center; gap: .6rem; background: var(--gold); color: var(--bg); border: 3px solid #b89420; padding: .4rem .6rem; font-weight: 800; font-size: 1.1rem; pointer-events: auto; }
+.invite .btn.primary { background: var(--bg); color: var(--gold); border-color: var(--edge); }
+.btn.big { font-size: 1.25rem; padding: .7rem 1.4rem; min-height: 3.4rem; }
+.game-actions { margin-top: auto; display: flex; gap: .6rem; flex-wrap: wrap; justify-content: center; padding-bottom: .4rem; }
+.banner { position: absolute; top: 38%; left: 0; right: 0; text-align: center; font-size: clamp(1.6rem, 9vw, 3rem); font-weight: 800; color: #fff; text-shadow: 0 3px 0 #000, 0 0 12px #000; letter-spacing: .03em; }
+.toasts { position: absolute; top: 3.4rem; left: .4rem; right: .4rem; display: flex; flex-direction: column; align-items: center; gap: .3rem; }
+.toast { background: rgba(244,246,250,.95); color: var(--bg); font-weight: 800; font-size: 1.1rem; padding: .35rem .8rem; border: 2px solid var(--bg); }
+.toast.found { background: var(--gold); }
+.toast.wall { background: #ffd0cc; }
+.results { position: absolute; top: 12%; left: 6%; right: 6%; background: var(--face); border: 3px solid var(--gold); padding: .8rem 1rem; text-align: center; pointer-events: auto; max-height: 78%; overflow: auto; }
+.results h2 { margin: 0 0 .5rem; color: var(--gold); }
+.results ul { list-style: none; margin: 0 0 .6rem; padding: 0; display: grid; gap: .25rem; text-align: left; }
+.results li { display: flex; justify-content: space-between; gap: .5rem; background: var(--down); padding: .25rem .5rem; }
+.results li.win { border-left: 4px solid var(--gold); }
+#results-stars { font-size: 1.3rem; font-weight: 800; color: var(--gold); margin: 0 0 .6rem; }

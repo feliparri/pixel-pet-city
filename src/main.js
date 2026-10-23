@@ -10,6 +10,8 @@ import { startTown } from './town.js';
 import { createTripClient, tripCodeFromSearch, tripErrorText } from './trip.js';
 import { devEntrance } from './entrance.js';
 import { drawKeepsake } from './keepsake.js';
+import { createHud } from './hud.js';
+import { createStars } from './stars.js';
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -19,6 +21,7 @@ const store = {
 
 let sprites, font, net = null, town = null, mode = null, netMode = null;
 let visit = null;                                 // a pet visiting from its board: { client, entrance, stop, solo }
+let hud = null, stars = null;                    // the games' overlay and this pet's star counter
 let me = null;                                   // { name, look }
 let fixedPet = false;                            // the pet came from the Android app: no chooser
 
@@ -103,7 +106,11 @@ async function enter(code, { transport = mode, arrival = null, solo = false } = 
   if (visit) visit.solo = solo;
   paintVisitBar();
   show('town');
-  town = startTown({ canvas: $('view'), stage: $('stage'), sprites, font, net, me, entrance: arrival });
+  stars = createStars({ getItem: store.get, setItem: store.set }, me.name);
+  const showStars = () => { $('stars-n').textContent = String(stars.get()); };
+  showStars();
+  const counter = { add(n) { stars.add(n); showStars(); } };
+  town = startTown({ canvas: $('view'), stage: $('stage'), sprites, font, net, me, entrance: arrival, stars: counter, onHud: (info) => hud && hud.update(info) });
   setStatus('connected');
   return true;
 }
@@ -114,6 +121,7 @@ function setStatus(status) {
 }
 
 function closeRoom() {
+  if (hud) hud.update({ lobby: null, game: null, results: null, notices: [], spot: null });
   if (town) { town.destroy(); town = null; }
   if (net) { net.leave(); net = null; }
 }
@@ -225,6 +233,7 @@ async function boot() {
   }
   fillItemSelects();
   buildEmotes();
+  hud = createHud($, { onPlay: () => town && town.games.play(), onJoin: () => town && town.games.join(), onSeek: () => town && town.games.seek(), onLeave: () => town && town.games.leave(), onDismiss: () => town && town.games.dismiss() });
   const tripCode = tripCodeFromSearch(location.search);
   if (tripCode) {
     $('copy').addEventListener('click', copyCode);

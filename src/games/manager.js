@@ -275,5 +275,7 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
   }
 
   const dismiss = () => { results = null; };
-  return { open, join, volunteer, leave, onMessage, update, view, movement, seekerVision, dismiss, referee, get id() { return id; } };
+  /** A short hint on the screen (for example the soft wall). */
+  const notify = (text, kind = 'info') => { if (!notices.some((n) => n.text === text)) say(text, kind); };
+  return { open, join, volunteer, leave, onMessage, update, view, movement, seekerVision, dismiss, notify, referee, get id() { return id; } };
 }
