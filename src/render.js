@@ -100,7 +100,7 @@ export function createRenderer({ canvas, sprites, font, mapCanvas }) {
         }
         if (!(fx && flickers(e.fx.id, e.fx.phase, now - e.fx.t0))) {
           const flap = (e.walker.moving || lift > 0) && Math.floor(now / 140) % 2 === 1;
-          drawPet(sctx, sprites, e.look, px - CELL / 2, by - CELL + 2 - hop - lift, { frame: lift > 0 ? 'happy' : headFrame(e, now, e.id), flip: e.walker.d === 'left', flap });
+          drawPet(sctx, sprites, e.look, px - CELL / 2, by - CELL + 2 - hop - lift, { frame: lift > 0 ? 'happy' : headFrame(e, now, e.id), flip: e.walker.d === 'right', flap });
         }
         drawText(sctx, font, e.name, px - Math.floor(textWidth(font, e.name) / 2), by + 2 - lift, e === state.me ? '#f8d040' : '#f4f6fa');
       }
