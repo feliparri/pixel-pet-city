@@ -11,6 +11,7 @@ import { rippleSpots } from './art/ground.js';
 import { fountainFrame } from './art/props.js';
 import { P } from './art/palette.js';
 import { badge, bobY, BADGE } from './art/icons.js';
+import { drawChicken, CHICKEN_SIZE } from './art/chicken.js';
 
 export const VIEW_W = 224;
 export const VIEW_H = 288;
@@ -40,7 +41,7 @@ const headFrame = (e, now, id) => {
  * opts: { area (name), cam {x, y}, entities [{ id, name, look, walker, emote?, fx?, gone? }], me, now, amb {tint, night}, sprites, font, marker?, fade? }.
  * Returns the emote bubbles to draw at the final size: [{ x, y, e }] in view pixels.
  */
-export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now, amb = NO_LIGHT, sprites, font, marker = null, fade = 0 }) {
+export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now, amb = NO_LIGHT, sprites, font, marker = null, fade = 0, chicken = null, dark = null }) {
   const area = getArea(areaName), baked = bakeArea(area);
   sctx.imageSmoothingEnabled = false;
   sctx.fillStyle = '#0e101a';
@@ -95,6 +96,14 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
     } });
     if (e.emote && now < e.emote.until && !lift && !(fx && fx.hidden)) bubbles.push({ x: bx, y: by - CELL - hop, e: e.emote.e });
   }
+  if (chicken && areaName === 'town') {                                      // the chicken of Pillar la gallina
+    const cx = Math.round(chicken.x * TILE + TILE / 2 - cam.x), cy = Math.round(chicken.y * TILE + TILE - cam.y);
+    const hop = chicken.frame === 1 ? (Math.floor(now / 110) % 2) * 2 : 0;
+    items.push({ sortY: chicken.y * TILE + TILE, order: 1, draw: () => {
+      sctx.fillStyle = 'rgba(24,28,44,0.35)'; sctx.fillRect(cx - 5, cy - 2, 10, 2);
+      drawChicken(sctx, cx - CHICKEN_SIZE / 2, cy - CHICKEN_SIZE - hop, chicken.frame, chicken.flip);
+    } });
+  }
   items.sort((a, b) => a.sortY - b.sortY || a.order - b.order);
   for (const it of items) it.draw();
 
@@ -126,8 +135,36 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
     if (b && bx > -BADGE.w && bx < vw && by > -BADGE.h && by < vh) sctx.drawImage(b, bx, by);
   }
   for (const l of labels) drawText(sctx, font, l.text, l.x, l.y, l.colour);
+  if (dark) {
+    const p = me.walker.pos();
+    drawDark(sctx, vw, vh, Math.round(p.x * TILE + TILE / 2 - cam.x), Math.round(p.y * TILE + TILE / 2 - cam.y), dark.full ? 0 : dark.r);
+  }
   if (fade > 0) { sctx.fillStyle = `rgba(14,16,26,${Math.min(1, fade)})`; sctx.fillRect(0, 0, vw, vh); }
   return bubbles;
+}
+
+/**
+ * The seeker's darkness: everything is almost black except a circle of light of radius `r` px around (cx, cy), with a soft stepped edge
+ * (six rings, each a little darker). r = 0 darkens the whole view (the countdown).
+ */
+export function drawDark(sctx, vw, vh, cx, cy, r) {
+  const RINGS = 6, NIGHT = 0.975;
+  const edges = Array.from({ length: RINGS + 1 }, (_, k) => r * (0.7 + (0.45 * k) / RINGS));       // light fades between 0.7 r and 1.15 r
+  const band = (ro, ri, alpha) => {
+    sctx.fillStyle = `rgba(8,10,20,${alpha})`;
+    for (let y = 0; y < vh; y++) {
+      const dy = y + 0.5 - cy;
+      const wo = Math.abs(dy) < ro ? Math.sqrt(ro * ro - dy * dy) : 0, wi = Math.abs(dy) < ri ? Math.sqrt(ri * ri - dy * dy) : 0;
+      if (wo > wi) { sctx.fillRect(Math.round(cx - wo), y, Math.round(wo - wi), 1); sctx.fillRect(Math.round(cx + wi), y, Math.round(wo - wi), 1); }
+    }
+  };
+  if (r <= 0) { sctx.fillStyle = `rgba(8,10,20,${NIGHT})`; sctx.fillRect(0, 0, vw, vh); return; }
+  for (let k = RINGS; k >= 1; k--) band(edges[k], edges[k - 1], (NIGHT * k) / RINGS * 0.9);
+  sctx.fillStyle = `rgba(8,10,20,${NIGHT})`;                                                    // outside the last ring
+  for (let y = 0; y < vh; y++) {
+    const dy = y + 0.5 - cy, wo = Math.abs(dy) < edges[RINGS] ? Math.sqrt(edges[RINGS] ** 2 - dy * dy) : 0;
+    sctx.fillRect(0, y, Math.max(0, Math.round(cx - wo)), 1); sctx.fillRect(Math.round(cx + wo), y, Math.max(0, vw - Math.round(cx + wo)), 1);
+  }
 }
 
 /** Additive glow: stepped discs around the lamps, a soft rectangle under the lit windows and the shop door. */
@@ -180,7 +217,7 @@ export function createRenderer({ canvas, sprites, font }) {
   }
 
   /**
-   * state: { area, me, others, marker, amb, fade } where an entity is { id, name, look, walker, emote? }.
+   * state: { area, me, others, marker, amb, fade, chicken?, dark? } where an entity is { id, name, look, walker, emote? }.
    * `now` is a millisecond clock.
    */
   function draw(state, now) {
@@ -188,7 +225,7 @@ export function createRenderer({ canvas, sprites, font }) {
     const a = getArea(areaName);
     const mp = state.me.walker.pos();
     cam = cameraFor(mp.x * TILE + TILE / 2, mp.y * TILE + TILE / 2, a.w * TILE, a.h * TILE);
-    const bubbles = drawScene(sctx, { area: areaName, cam, vw: VIEW_W, vh: VIEW_H, entities: state.others, me: state.me, now, amb: state.amb, sprites, font, marker: state.marker, fade: state.fade || 0 });
+    const bubbles = drawScene(sctx, { area: areaName, cam, vw: VIEW_W, vh: VIEW_H, entities: state.others, me: state.me, now, amb: state.amb, sprites, font, marker: state.marker, fade: state.fade || 0, chicken: state.chicken || null, dark: state.dark || null });
     ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = '#0e101a';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
