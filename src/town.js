@@ -114,7 +114,7 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
     state.area = self.area;
     state.fade = 1 - (t - fadeT0) / FADE_MS;
     for (const o of others.values()) o.walker.update(dt);
-    state.others = Array.from(others.values()).filter((o) => o.placed && o.area === self.area);
+    state.others = Array.from(others.values()).filter((o) => o.placed && o.area === self.area && games.canSee(o.id));      // in a game: only the players, and their names, are drawn
     const vision = games.seekerVision();                         // the seeker sees only a circle of light, and not what hides in bushes
     state.dark = vision ? { full: vision.full, r: GAME_RULES.hide.lightRadius * 16 } : null;
     if (vision) state.others = vision.full ? [] : state.others.filter((o) => vision.see({ x: o.walker.tileX, y: o.walker.tileY }, !!TILES[tileAt(o.walker.tileX, o.walker.tileY)].hide));

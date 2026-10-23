@@ -303,8 +303,18 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
     return { full: game.phase === 'count', see: (p, inBush) => !!me && seekerSees(me, p, inBush) };
   }
 
+  /**
+   * Is this pet (and its name) drawn on this screen? A player of a running game sees only the players who joined it, so a pet that did not
+   * join is hidden, and so is one that left the game; a spectator (who never joined) keeps seeing everybody. A found hider is still a player.
+   */
+  function canSee(pid) {
+    if (!game || !game.play || pid === id) return true;
+    const i = game.roster.indexOf(pid);
+    return i >= 0 && !game.gone.has(i);
+  }
+
   const dismiss = () => { results = null; };
   /** A short hint on the screen (for example the soft wall). */
   const notify = (text, kind = 'info') => { if (!notices.some((n) => n.text === text)) say(text, kind); };
-  return { open, join, volunteer, pickZone, leave, onMessage, update, view, movement, seekerVision, dismiss, notify, referee, get id() { return id; } };
+  return { open, join, volunteer, pickZone, leave, onMessage, update, view, movement, seekerVision, canSee, dismiss, notify, referee, get id() { return id; } };
 }

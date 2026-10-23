@@ -637,3 +637,24 @@ test('zones: the whole town has no wall but the doors stay shut; the park and th
   assert.deepEqual(r.mgr(A).movement(), { frozen: r.mgr(A).movement().frozen, zone: null, closed: true });
   assert.equal(r.mgr(A).view().game.zoneName, 'Todo el pueblo');
 });
+
+// ---- who is drawn ----
+test('visibility: in a game its players see only the players; spectators, the lobby and the time after the game show everybody', () => {
+  const r = room([A, B, C, D]);
+  r.mgr(A).open('hide'); r.mgr(B).join(); r.mgr(C).join(); r.mgr(C).volunteer();              // D never joins
+  for (const id of [A, B, C, D]) for (const o of [A, B, C, D]) assert.equal(r.mgr(id).canSee(o), true, 'in the lobby everybody sees everybody');
+  r.run(10500);
+  for (const id of [A, B, C]) {
+    assert.deepEqual([A, B, C, D].filter((o) => r.mgr(id).canSee(o)), [A, B, C], `${id} sees the players only`);
+  }
+  assert.deepEqual([A, B, C, D].filter((o) => r.mgr(D).canSee(o)), [A, B, C, D], 'D watches and sees everybody');
+  r.place(A, 3, 34); r.place(B, 40, 38); r.place(C, 4, 34); r.place(D, 4, 35);
+  r.run(15500);                                                                        // C finds A: A becomes a spectator of the game, still seeing the players
+  assert.equal(r.mgr(A).view().game.role, 'found');
+  assert.deepEqual([A, B, C, D].filter((o) => r.mgr(A).canSee(o)), [A, B, C]);
+  r.mgr(B).leave();
+  assert.equal(r.mgr(C).canSee(B), false, 'a player who left the game is no longer drawn for the players');
+  r.run(95000);
+  assert.equal(r.mgr(A).view().game, null);
+  for (const o of [A, B, C, D]) assert.equal(r.mgr(A).canSee(o), true, 'after the game everybody is back');
+});
