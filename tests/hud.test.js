@@ -28,3 +28,8 @@ test('results: who was found when, who survived, who searched; the chicken winne
   const hen = { g: 'chicken', names: ['Ana', 'Beto'], rows: [{ i: 0, found: 3 }, { i: 1, found: 1 }] };
   assert.deepEqual(resultLines(hen).map((l) => l.win), [true, false]);
 });
+
+test('the bars name the hide and seek zone', () => {
+  assert.match(barText({ lobby: { name: 'Escondida', zoneName: 'Plaza', joined: 2, left: 6400 } }), /^Escondida · Plaza: esperando/);
+  assert.equal(barText({ game: { g: 'hide', name: 'Escondida', zoneName: 'Parque', phase: 'search', left: 83000, hidersLeft: 2, play: true } }), 'Escondida (Parque) · 1:23 · Faltan 2');
+});

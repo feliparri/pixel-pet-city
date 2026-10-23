@@ -220,6 +220,18 @@ export const GRID = AREAS.town.grid;
 export const MAP_W = AREAS.town.w;
 export const MAP_H = AREAS.town.h;
 
+/**
+ * Where a game of hide and seek is played, chosen in its lobby: `has(x, y)` is the zone, `pad` the tile a pet that is somewhere else starts on,
+ * `wall` what the soft wall says. "Todo el pueblo" has no wall at all: only the doors are shut while a game is on.
+ */
+export const HIDE_ZONES = {
+  park: { name: 'Parque', wall: 'Vuelve al parque', pad: [17, 34], has: (x, y) => inZone('hide', x, y) },
+  plaza: { name: 'Plaza', wall: 'Vuelve a la plaza', pad: [20, 23], has: (x, y) => inPlaza(x, y) },
+  town: { name: 'Todo el pueblo', wall: '', pad: [17, 34], has: (x, y) => Number.isInteger(x) && Number.isInteger(y) && x >= 0 && y >= 0 && x < MAP_W && y < MAP_H },
+};
+export const HIDE_ZONE_KEYS = Object.keys(HIDE_ZONES);
+export const DEFAULT_HIDE_ZONE = 'town';
+
 export const inMap = (x, y, area = DEFAULT_AREA) => {
   const a = AREAS[area];
   return !!a && Number.isInteger(x) && Number.isInteger(y) && x >= 0 && y >= 0 && x < a.w && y < a.h;

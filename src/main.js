@@ -234,7 +234,7 @@ async function boot() {
   }
   fillItemSelects();
   buildEmotes();
-  hud = createHud($, { onPlay: () => town && town.games.play(), onJoin: () => town && town.games.join(), onSeek: () => town && town.games.seek(), onLeave: () => town && town.games.leave(), onDismiss: () => town && town.games.dismiss() });
+  hud = createHud($, { onPlay: () => town && town.games.play(), onJoin: () => town && town.games.join(), onSeek: () => town && town.games.seek(), onZone: (z) => town && town.games.zone(z), onLeave: () => town && town.games.leave(), onDismiss: () => town && town.games.dismiss() });
   const tripCode = tripCodeFromSearch(location.search);
   if (tripCode) {
     $('copy').addEventListener('click', copyCode);

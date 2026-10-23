@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import { validateMessage, createRateLimiter, LIMITS, GAME_TYPES } from '../src/protocol.js';
 import { GAME_RULES, MAX_PLAYERS } from '../src/games/rules.js';
 import { SETTLE_MS, ECHO_MS, GONE_GRACE_MS } from '../src/games/rules.js';
-import { openLobby, joinLobby, leaveLobby, volunteerSeeker, electReferee, lobbyReady, pickSeeker, buildStart, lobbyKey } from '../src/games/lobby.js';
+import { openLobby, joinLobby, leaveLobby, volunteerSeeker, chooseZone, electReferee, lobbyReady, pickSeeker, buildStart, lobbyKey } from '../src/games/lobby.js';
 import { seekerSees, touching, createHide, tickHide, hideStars, hideResults } from '../src/games/hide.js';
 import { createChicken, stepChicken, catcher, spawnTile, CHICKEN } from '../src/games/chicken.js';
 import { createGames } from '../src/games/manager.js';
-import { GAME_PLACES, DOORS, chickenTile, isWalkable, tileAt, TILES } from '../src/map.js';
+import { GAME_PLACES, HIDE_ZONES, DOORS, chickenTile, isWalkable, tileAt, TILES } from '../src/map.js';
 
 const A = 'aaaaaap', B = 'bbbbbbp', C = 'ccccccp', D = 'ddddddp';
 const ok = (m) => validateMessage({ id: A, ...m }, {});
@@ -119,8 +119,8 @@ test('start: hide needs two, chicken one; players who left are dropped; the seek
   const l = openLobby({ g: 'hide', r: 'abc123', opener: B, now: 0, leftMs: 10000 });
   assert.equal(buildStart(l, new Set([B]), new Map()), null, 'alone');
   joinLobby(l, A); joinLobby(l, C); volunteerSeeker(l, C);
-  assert.deepEqual(buildStart(l, new Set([A, B, C]), new Map()), { g: 'hide', r: 'abc123', p: [B, A, C], s: 2 });
-  assert.deepEqual(buildStart(l, new Set([A, B]), new Map()), { g: 'hide', r: 'abc123', p: [B, A], s: 0 }, 'C left before the start: the rotation picks the first');
+  assert.deepEqual(buildStart(l, new Set([A, B, C]), new Map()), { g: 'hide', r: 'abc123', p: [B, A, C], s: 2, z: 'town' });
+  assert.deepEqual(buildStart(l, new Set([A, B]), new Map()), { g: 'hide', r: 'abc123', p: [B, A], s: 0, z: 'town' }, 'C left before the start: the rotation picks the first');
   const c = openLobby({ g: 'chicken', r: 'abc123', opener: A, now: 0, leftMs: 10000 });
   assert.deepEqual(buildStart(c, new Set([A]), new Map()), { g: 'chicken', r: 'abc123', p: [A], s: -1 });
 });
@@ -559,4 +559,81 @@ test('a hider whose tab goes quiet for a few seconds (a missed heartbeat) is not
   r.gone.add(A); r.gone.add(B);                                         // but really leaving ends it
   r.run(GONE_GRACE_MS + 1000);
   assert.equal(r.mgr(C).view().game, null);
+});
+
+// ---- the hide and seek zone ----
+test('zones: park, plaza or the whole town; every pad is on open ground inside its own zone', () => {
+  assert.deepEqual(Object.keys(HIDE_ZONES), ['park', 'plaza', 'town']);
+  assert.deepEqual(Object.values(HIDE_ZONES).map((z) => z.name), ['Parque', 'Plaza', 'Todo el pueblo']);
+  for (const z of Object.values(HIDE_ZONES)) { assert.ok(z.has(...z.pad), z.name); assert.ok(isWalkable(...z.pad), z.name); }
+  assert.equal(HIDE_ZONES.plaza.has(20, 23), true); assert.equal(HIDE_ZONES.plaza.has(20, 33), false);
+  assert.equal(HIDE_ZONES.park.has(20, 33), true); assert.equal(HIDE_ZONES.park.has(20, 23), false);
+  assert.equal(HIDE_ZONES.town.has(20, 5), true); assert.equal(HIDE_ZONES.town.has(48, 5), false);
+});
+
+test('zones: the first joined player to choose decides; the default is the whole town; chicken has none', () => {
+  const l = openLobby({ g: 'hide', r: 'abc123', opener: A, now: 0, leftMs: 10000 });
+  assert.equal(l.zone, 'town');
+  assert.equal(chooseZone(l, B, 'plaza'), false, 'B has not joined');
+  assert.equal(chooseZone(l, A, 'moon'), false);
+  assert.equal(chooseZone(l, A, 'park'), true);
+  joinLobby(l, B);
+  assert.equal(chooseZone(l, B, 'plaza'), false, 'too late: the first choice stays');
+  assert.equal(l.zone, 'park');
+  assert.equal(chooseZone(openLobby({ g: 'chicken', r: 'abc123', opener: A, now: 0, leftMs: 1 }), A, 'park'), false);
+});
+
+test('zones: messages are validated', () => {
+  assert.ok(ok({ t: 'gzone', r: 'abc123', z: 'plaza' }));
+  assert.equal(ok({ t: 'gzone', r: 'abc123', z: 'moon' }), null);
+  assert.equal(ok({ t: 'gstart', g: 'hide', r: 'abc123', p: [A, B], s: 0, z: 'moon' }), null);
+  assert.equal(ok({ t: 'gstart', g: 'hide', r: 'abc123', p: [A, B], s: 0, z: 'park' }).z, 'park');
+  assert.equal(ok({ t: 'gstart', g: 'hide', r: 'abc123', p: [A, B], s: 0 }).z, undefined, 'older senders: no zone, the whole town');
+});
+
+test('zones: the lobby shows the choice to everybody, the game is played in the chosen zone, and the walls follow it', () => {
+  const r = room([A, B, C]);
+  r.mgr(A).open('hide'); r.mgr(B).join(); r.mgr(C).join(); r.mgr(C).volunteer();
+  const v = (id) => r.mgr(id).view().lobby;
+  assert.deepEqual([v(A).zone, v(A).zoneName, v(A).canPickZone], ['town', 'Todo el pueblo', true]);
+  assert.equal(r.mgr(B).pickZone('plaza'), true);
+  assert.equal(r.mgr(A).pickZone('park'), false, 'B was first');
+  for (const id of [A, B, C]) assert.deepEqual([v(id).zone, v(id).zoneName, v(id).zoneLocked, v(id).canPickZone], ['plaza', 'Plaza', true, false]);
+  r.run(10500);
+  for (const id of [A, B, C]) {
+    const g = r.mgr(id).view().game;
+    assert.deepEqual([g.zone, g.zoneName], ['plaza', 'Plaza']);
+    assert.equal(r.mgr(id).movement().zone, HIDE_ZONES.plaza);
+    assert.equal(r.mgr(id).movement().zone.wall, 'Vuelve a la plaza');
+    assert.equal(r.mgr(id).movement().closed, true);
+  }
+  r.place(C, 20, 23); r.place(A, 21, 33); r.place(B, 40, 38);          // C seeks in the plaza; A is outside the zone; B is in the park
+  r.run(15000);
+  r.place(A, 20, 24);                                                  // A inside the plaza next to C: found
+  r.run(500);
+  assert.equal(r.mgr(C).view().game.hidersLeft, 1);
+  r.place(B, 21, 24);                                                  // B comes into the plaza next to C: the last hider is found
+  r.run(500);
+  assert.equal(r.mgr(C).view().game, null);
+  assert.equal(r.mgr(C).view().results.reason, 'all');
+});
+
+test('zones: a pet outside the chosen zone is never found, even touching the seeker', () => {
+  const r = room([A, B]);
+  r.mgr(A).open('hide'); r.mgr(B).join(); r.mgr(B).volunteer(); r.mgr(A).pickZone('plaza');
+  r.run(10500);
+  r.place(B, 3, 34); r.place(A, 4, 34);                               // both in the park, neither in the plaza
+  r.run(16000);
+  assert.equal(r.mgr(B).view().game.hidersLeft, 1);
+  r.place(B, 20, 23); r.place(A, 20, 24);                              // now both are in the plaza
+  r.run(500);
+  assert.equal(r.mgr(B).view().game, null, 'found, and the only hider: the game is over');
+});
+
+test('zones: the whole town has no wall but the doors stay shut; the park and the plaza have a wall', () => {
+  const r = room([A, B]);
+  r.mgr(A).open('hide'); r.mgr(B).join();
+  r.run(10500);
+  assert.deepEqual(r.mgr(A).movement(), { frozen: r.mgr(A).movement().frozen, zone: null, closed: true });
+  assert.equal(r.mgr(A).view().game.zoneName, 'Todo el pueblo');
 });

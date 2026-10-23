@@ -4,10 +4,10 @@
 // Everything that arrives was validated by protocol.js; here the receiver also checks who is allowed to say it: shared state is only
 // believed from the current referee, never from another player.
 import { GAME_RULES, isPlayable, STATE_MS, LOBBY_MS, ECHO_MS, GONE_GRACE_MS } from './rules.js';
-import { openLobby, joinLobby, leaveLobby, volunteerSeeker, electReferee, lobbyReady, buildStart, lobbyKey } from './lobby.js';
+import { openLobby, joinLobby, leaveLobby, volunteerSeeker, chooseZone, electReferee, lobbyReady, buildStart, lobbyKey } from './lobby.js';
 import { tickHide, hideResults, hideStars, seekerSees } from './hide.js';
 import { createChicken, stepChicken, catcher, spawnTile, catchesToWin } from './chicken.js';
-import { GAME_PLACES, inZone, chickenTile, tileAt } from '../map.js';
+import { GAME_PLACES, HIDE_ZONES, DEFAULT_HIDE_ZONE, chickenTile, tileAt } from '../map.js';
 
 const NOTICE_MS = 3200;
 const STALL_MS = 1500;                                // a gap between two updates this long means this tab was asleep: the clocks wait for it
@@ -61,6 +61,12 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
     send({ t: 'grole', r: lobby.r, role: 'seek' });
     return true;
   }
+  /** The hide and seek zone ('park', 'plaza' or 'town'): a joined player, once; the first choice wins. */
+  function pickZone(z) {
+    if (!lobby || !chooseZone(lobby, id, z, now())) return false;
+    send({ t: 'gzone', r: lobby.r, z });
+    return true;
+  }
   /** "Salir del juego": leaves the lobby or the game (the game goes on without this pet, which becomes a spectator). */
   function leave() {
     if (lobby && lobby.joined.includes(id)) {
@@ -91,6 +97,7 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
         return;
       }
       case 'gjoin': if (lobby && lobby.r === m.r) joinLobby(lobby, from, now()); return;
+      case 'gzone': if (lobby && lobby.r === m.r) chooseZone(lobby, from, m.z, now()); return;
       case 'grole': if (lobby && lobby.r === m.r) volunteerSeeker(lobby, from, now()); return;
       case 'gleave':
         if (lobby && lobby.r === m.r) leaveLobby(lobby, from, now());
@@ -128,7 +135,7 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
     game = {
       g: m.g, r: m.r, roster: m.p.slice(), seeker: m.s, play: m.p.includes(id) && !!lobby && lobby.joined.includes(id), gone: new Set(),
       f: m.p.map(() => (hide ? -1 : 0)), phase: hide ? 'count' : 'play', phaseEnd: t + (hide ? rules.countMs : rules.roundMs),
-      chick: null, sim: null, respawnAt: t + 800,
+      zone: hide ? (HIDE_ZONES[m.z] ? m.z : DEFAULT_HIDE_ZONE) : null, chick: null, sim: null, respawnAt: t + 800,
     };
     lobby = null; results = null;
     stateAt = -Infinity; absentSince.clear();
@@ -183,6 +190,7 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
         echoAt = t;
         send({ t: 'gjoin', r: lobby.r });
         if (lobby.seekers.includes(id)) send({ t: 'grole', r: lobby.r, role: 'seek' });
+        if (lobby.zoneBy === id) send({ t: 'gzone', r: lobby.r, z: lobby.zone });
       }
       const ref = referee();
       if (ref === id && lobbyReady(lobby, t, everyone())) {
@@ -205,7 +213,7 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
 
   const stateMsg = (extra = {}) => ({ t: 'gstate', g: game.g, r: game.r, ph: game.phase, left: Math.max(0, Math.min(120000, Math.round(game.phaseEnd - now()))), f: game.f.slice(), ...extra });
   const broadcastState = (t) => { if (t - stateAt >= STATE_MS) { stateAt = t; send(stateMsg()); } };
-  const petPos = (pid) => { const p = tile(pid); return p && (game.g === 'chicken' || inZone(game.g, p.x, p.y)) ? p : null; };
+  const petPos = (pid) => { const p = tile(pid); return p && (game.g === 'chicken' || HIDE_ZONES[game.zone].has(p.x, p.y)) ? p : null; };
 
   function refereeHide(t) {
     const s = { roster: game.roster, seeker: game.seeker, phase: game.phase, phaseEnd: game.phaseEnd, found: game.f };
@@ -263,7 +271,8 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
     const out = { lobby: null, game: null, results, notices: notices.slice() };
     if (lobby) {
       const rules = GAME_RULES[lobby.g];
-      out.lobby = { g: lobby.g, name: rules.name, invite: rules.invite, left: Math.max(0, lobby.deadline - t), joined: lobby.joined.length, iJoined: lobby.joined.includes(id), iVolunteered: lobby.seekers.includes(id), canVolunteer: lobby.g === 'hide' && lobby.joined.includes(id), seekers: lobby.seekers.length };
+      out.lobby = { g: lobby.g, name: rules.name, invite: rules.invite, left: Math.max(0, lobby.deadline - t), joined: lobby.joined.length, iJoined: lobby.joined.includes(id), iVolunteered: lobby.seekers.includes(id), canVolunteer: lobby.g === 'hide' && lobby.joined.includes(id), seekers: lobby.seekers.length,
+        zone: lobby.g === 'hide' ? lobby.zone : null, zoneName: lobby.g === 'hide' ? HIDE_ZONES[lobby.zone].name : null, canPickZone: lobby.g === 'hide' && lobby.joined.includes(id) && !lobby.zoneSet, zoneLocked: lobby.zoneSet };
     }
     if (game) {
       const mine = myIndex(), rules = GAME_RULES[game.g];
@@ -271,20 +280,20 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
       out.game = {
         g: game.g, name: rules.name, phase: game.phase, left: Math.max(0, game.phaseEnd - t), role, play: game.play, seekerId: game.seeker >= 0 ? game.roster[game.seeker] : null,
         hidersLeft: game.g === 'hide' ? game.f.filter((v, i) => i !== game.seeker && v === -1).length : 0, scores: game.g === 'chicken' ? game.roster.map((p, i) => ({ id: p, name: name(p), n: game.f[i] })) : null,
-        chick: game.chick, referee: referee() === id,
+        zone: game.zone, zoneName: game.zone ? HIDE_ZONES[game.zone].name : null, chick: game.chick, referee: referee() === id,
       };
     }
     return out;
   }
 
   /**
-   * What this pet may do now: `frozen` (the seeker during the countdown), `zone` (the game whose area it cannot leave, or null: the chicken
-   * runs across the whole town) and `closed` (the doors do not take it inside while it plays).
+   * What this pet may do now: `frozen` (the seeker during the countdown), `zone` (the hide zone it cannot leave: an entry of HIDE_ZONES, or
+   * null when there is no wall: the chicken and "Todo el pueblo" run across the whole town) and `closed` (the doors are shut while it plays).
    */
   function movement() {
     if (!game || !game.play) return { frozen: false, zone: null, closed: false };
     const frozen = game.g === 'hide' && game.phase === 'count' && game.roster[game.seeker] === id;
-    return { frozen, zone: game.g === 'hide' ? 'hide' : null, closed: true };
+    return { frozen, zone: game.g === 'hide' && game.zone !== 'town' ? HIDE_ZONES[game.zone] : null, closed: true };
   }
 
   /** For the seeker's screen: null, or `{ full, see(pet tile, inBush) }`. `full` = the countdown (everything dark). */
@@ -297,5 +306,5 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
   const dismiss = () => { results = null; };
   /** A short hint on the screen (for example the soft wall). */
   const notify = (text, kind = 'info') => { if (!notices.some((n) => n.text === text)) say(text, kind); };
-  return { open, join, volunteer, leave, onMessage, update, view, movement, seekerVision, dismiss, notify, referee, get id() { return id; } };
+  return { open, join, volunteer, pickZone, leave, onMessage, update, view, movement, seekerVision, dismiss, notify, referee, get id() { return id; } };
 }

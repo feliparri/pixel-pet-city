@@ -4,12 +4,13 @@
 // (`changedAt`: the last moment somebody joined, left or asked to search, so a start never lands right on top of a late button press).
 // Nobody owns it: whoever presses "Jugar a ..." opens it and joins it like everyone else. Two lobbies opened at the same moment converge
 // on the smaller `lobbyKey` on every browser.
+import { DEFAULT_HIDE_ZONE, HIDE_ZONE_KEYS } from '../map.js';
 import { GAME_RULES, MAX_PLAYERS, EARLY_START_MS, SETTLE_MS } from './rules.js';
 
 export const lobbyKey = (l) => `${l.r}:${l.opener}`;
 
 export function openLobby({ g, r, opener, now, leftMs }) {
-  return { g, r, opener, openedAt: now, changedAt: now, deadline: now + leftMs, joined: [opener], seekers: [] };
+  return { g, r, opener, openedAt: now, changedAt: now, deadline: now + leftMs, joined: [opener], seekers: [], zone: DEFAULT_HIDE_ZONE, zoneSet: false };
 }
 
 export function joinLobby(l, id, now = l.changedAt) {
@@ -24,6 +25,13 @@ export function leaveLobby(l, id, now = l.changedAt) {
   l.joined.splice(i, 1);
   l.seekers = l.seekers.filter((s) => s !== id);
   l.changedAt = now;
+  return true;
+}
+
+/** The zone of a hide and seek game: any player who joined may choose it, once; the first choice wins and everybody then sees it. */
+export function chooseZone(l, id, zone, now = l.changedAt) {
+  if (l.g !== 'hide' || l.zoneSet || !l.joined.includes(id) || !HIDE_ZONE_KEYS.includes(zone)) return false;
+  l.zone = zone; l.zoneSet = true; l.zoneBy = id; l.changedAt = now;
   return true;
 }
 
@@ -63,7 +71,7 @@ export function pickSeeker(roster, volunteers, seekCount) {
 }
 
 /**
- * The start message's content for a lobby that is ready: `{ g, r, p: roster, s: seeker index }`, or null when too few players are still here
+ * The start message's content for a lobby that is ready: `{ g, r, p: roster, s: seeker index, z: the hide zone }`, or null when too few players are still here
  * (the lobby is cancelled). Only players who are present stay on the roster.
  */
 export function buildStart(l, present, seekCount) {
@@ -71,5 +79,5 @@ export function buildStart(l, present, seekCount) {
   const roster = l.joined.filter((id) => present.has(id));
   if (!rules || roster.length < rules.min) return null;
   const seeker = l.g === 'hide' ? pickSeeker(roster, l.seekers, seekCount) : null;
-  return { g: l.g, r: l.r, p: roster, s: seeker === null ? -1 : roster.indexOf(seeker) };
+  return { g: l.g, r: l.r, p: roster, s: seeker === null ? -1 : roster.indexOf(seeker), ...(l.g === 'hide' ? { z: l.zone } : {}) };
 }

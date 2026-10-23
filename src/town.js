@@ -1,6 +1,6 @@
 // The running town: the local pet, the other pets, input (taps, arrows/WASD), the net session and the draw loop.
 import { findPath, dirVector } from './path.js';
-import { isWalkable, doorAt, inZone, spotAt, tileAt, TILES, GAME_PLACES, SPAWNS } from './map.js';
+import { isWalkable, doorAt, spotAt, tileAt, TILES, GAME_PLACES, SPAWNS } from './map.js';
 import { Walker } from './walker.js';
 import { createRenderer, EMOTE_MS } from './render.js';
 import { ambientAt, hourNow } from './daynight.js';
@@ -75,12 +75,11 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
   /** Is this tile allowed for this pet now? A pet playing cannot leave its game's zone (the walls are soft: it just stays). */
   function canEnter(x, y, zone, closed = false) {
     if (closed && self.area === 'town' && doorAt(x, y, 'town')) { games.notify('Ahora no se puede entrar', 'wall'); return false; }      // the doors are shut while playing
-    if (!zone) return true;
-    if (inZone(zone, x, y)) return true;
-    games.notify(zone === 'hide' ? 'Vuelve al parque' : 'Quédate cerca del gallinero', 'wall');
+    if (!zone || zone.has(x, y)) return true;
+    games.notify(zone.wall, 'wall');
     return false;
   }
-  const walkableFor = (mv) => (x, y) => isWalkable(x, y, 'town') && (!mv.zone || inZone(mv.zone, x, y)) && !(mv.closed && doorAt(x, y, 'town'));
+  const walkableFor = (mv) => (x, y) => isWalkable(x, y, 'town') && (!mv.zone || mv.zone.has(x, y)) && !(mv.closed && doorAt(x, y, 'town'));
 
   function frame(t) {
     if (!alive) return;
@@ -96,8 +95,8 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
     games.update();
     const mv = games.movement();
     if (mv.frozen) { w.queue = []; held.length = 0; }
-    if (mv.zone && self.area === 'town' && !w.busy && !inZone(mv.zone, w.tileX, w.tileY)) {      // outside the game's area when it starts: run to its pad
-      const [sx, sy] = GAME_PLACES[mv.zone].spot[0];
+    if (mv.zone && self.area === 'town' && !w.busy && !mv.zone.has(w.tileX, w.tileY)) {      // outside the game's area when it starts: run to its pad
+      const [sx, sy] = mv.zone.pad;
       w.snap(sx, sy, 'down'); net.sendPos(sx, sy, 'down', 'town'); fadeT0 = t;
     }
     if (!w.busy && held.length && !self.fx) {                    // a held arrow key keeps walking
@@ -183,13 +182,14 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
     },
     games: {
       play: () => { const g = spotAt(self.walker.tileX, self.walker.tileY); return !!g && games.open(g); },
-      join() {                                                  // "Me sumo": from anywhere; the pet runs to the pad if it is outside the game's area
+      join() {                                                  // "Me sumo": from anywhere; a pet inside a building comes out on the pad
         const ok = games.join();
         const lv = games.view().lobby;
-        if (ok && lv) { const [sx, sy] = GAME_PLACES[lv.g].spot[0]; if (!inZone(lv.g, self.walker.tileX, self.walker.tileY) || self.area !== 'town') { self.area = 'town'; self.walker.snap(sx, sy, 'down'); net.sendPos(sx, sy, 'down', 'town'); fadeT0 = performance.now(); } }
+        if (ok && lv) { const [sx, sy] = GAME_PLACES[lv.g].spot[0]; if (self.area !== 'town') { self.area = 'town'; self.walker.snap(sx, sy, 'down'); net.sendPos(sx, sy, 'down', 'town'); fadeT0 = performance.now(); } }
         return ok;
       },
       seek: () => games.volunteer(),
+      zone: (z) => games.pickZone(z),
       leave: () => games.leave(),
       dismiss: () => games.dismiss(),
     },

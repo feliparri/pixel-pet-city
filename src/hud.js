@@ -1,7 +1,7 @@
 // The game's overlay: the play button on a pad, the invitation, the lobby and game bars, banners, toasts and the results.
 // It only reads what the town reports (`update(info)`, see town.js) and calls back what the buttons do; no game rules here.
 import { GAME_RULES } from './games/rules.js';
-import { GAME_PLACES } from './map.js';
+import { GAME_PLACES, HIDE_ZONES } from './map.js';
 
 const secs = (ms) => Math.max(0, Math.ceil(ms / 1000));
 const clock = (ms) => { const s = secs(ms); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -17,10 +17,10 @@ export function bannerText(game) {
 /** The line in the game bar. */
 export function barText(info) {
   const { lobby, game } = info;
-  if (lobby) return `${lobby.name}: esperando jugadores (${lobby.joined}) ${secs(lobby.left)}`;
+  if (lobby) return `${lobby.name}${lobby.zoneName ? ` · ${lobby.zoneName}` : ''}: esperando jugadores (${lobby.joined}) ${secs(lobby.left)}`;
   if (!game) return '';
   const watching = game.play ? '' : ' · Mirando';
-  if (game.g === 'hide') return `${game.name} · ${game.phase === 'count' ? `Cuenta ${secs(game.left)}` : clock(game.left)} · Faltan ${game.hidersLeft}${watching}`;
+  if (game.g === 'hide') return `${game.name}${game.zoneName ? ` (${game.zoneName})` : ''} · ${game.phase === 'count' ? `Cuenta ${secs(game.left)}` : clock(game.left)} · Faltan ${game.hidersLeft}${watching}`;
   const score = game.scores.map((s) => `${s.name} ${s.n}`).join(' · ');
   return `${game.name} · ${clock(game.left)} · ${score}${watching}`;
 }
@@ -37,12 +37,14 @@ export function resultLines(res) {
   });
 }
 
-export function createHud($, { onPlay, onJoin, onSeek, onLeave, onDismiss }) {
+export function createHud($, { onPlay, onJoin, onSeek, onLeave, onDismiss, onZone = () => {} }) {
   $('game-play').addEventListener('click', onPlay);
   $('invite-join').addEventListener('click', onJoin);
   $('game-seek').addEventListener('click', onSeek);
   $('game-exit').addEventListener('click', onLeave);
   $('results-close').addEventListener('click', onDismiss);
+  const zoneButtons = Array.from($('zone-pick').querySelectorAll('button'));
+  for (const b of zoneButtons) { b.textContent = HIDE_ZONES[b.dataset.zone].name; b.addEventListener('click', () => onZone(b.dataset.zone)); }
   let toastKey = '', resultKey = null;
 
   return {
@@ -61,6 +63,8 @@ export function createHud($, { onPlay, onJoin, onSeek, onLeave, onDismiss }) {
       const seekBtn = $('game-seek');
       seekBtn.hidden = !(lobby && lobby.canVolunteer);
       if (lobby) { seekBtn.disabled = lobby.iVolunteered; seekBtn.textContent = lobby.iVolunteered ? '¡Tú buscas!' : '¡Yo busco!'; }
+      $('zone-pick').hidden = !(lobby && lobby.zone && lobby.iJoined);                 // the zone of a hide and seek: the first to choose decides
+      if (lobby && lobby.zone) for (const b of zoneButtons) { b.setAttribute('aria-pressed', String(b.dataset.zone === lobby.zone)); b.disabled = !lobby.canPickZone; }
       const inGame = !!(lobby && lobby.iJoined) || !!(game && game.play);
       $('game-bar').hidden = !(inGame || game);
       $('game-info').textContent = barText(info);
