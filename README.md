@@ -11,12 +11,19 @@ small top-down town, walk around and greet each other with presets. Plain HTML, 
 - Games, played in the Parque on their own marked places (a signpost, a pad and a big floating icon each). The town is social only:
   pets are not cared for here. Stand on a game's pad and press **Jugar a ...**: a 10 s lobby opens and everybody in the room gets
   "¡Escondida! ¿Juegan?" with **Me sumo** (or just walk onto the pad). Anyone can start; the creator of the room has no special power.
-  - **Escondida** (hide and seek, the whole Parque): during the lobby anyone can press **¡Yo busco!**; if nobody does the seeker
+  - **Escondida** (hide and seek): in the lobby any pet that joined picks the zone, **Parque**, **Plaza** or **Todo el pueblo** (the
+    default); the first choice wins and everybody sees it. Players cannot leave the zone (a soft "Vuelve al parque"). During the lobby anyone can press **¡Yo busco!**; if nobody does the seeker
     rotates (who searched least, then who joined first). 15 s countdown (the seeker is frozen in the dark), then 90 s search seeing
     only a 3-tile circle of light; bushes hide a pet unless the seeker is next to it. Touching a hider finds it. Stars: +1 per survivor,
     +1 for the seeker per find.
-  - **Pillar la gallina** (the gallinero and around it, works solo): a chicken that flees and tires; first to touch it scores 3 stars;
-    60 s or first to 3 catches.
+  - **Pillar la gallina** (works solo): the chicken starts at the gallinero and wanders calmly (2 tiles a second); when a pet comes within
+    4 tiles it sprints (8 tiles a second, a pet walks 6) for about 12 tiles across the whole town, then pants for 1.8 s. First to touch it
+    scores 3 stars; 60 s or first to 3 catches.
+  - While a game is on its players see only the players who joined (pets and names); pets that did not join keep seeing everybody, and
+    so do found hiders (as spectators of the game). Doors do not take a player inside during a game.
+  - The lobby waits 2.5 s after the last join or button before an early start, and players repeat their join and "¡Yo busco!" every 2 s
+    until it closes. Game clocks are referee-relative (the referee sends the milliseconds left): a tab that slept does not use the
+    countdown or the search up, and a player missing for under 12 s is not given up.
   - The cancha (football) and the pista (race) are drawn and signed but not playable yet.
   - Stars show in the HUD (`⭐ 12`), kept in `localStorage` per pet name; the shop that spends them is a later stage.
   - No host: one browser among the players is the invisible *referee* (the lowest peer id among the players) that simulates the shared

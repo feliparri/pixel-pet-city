@@ -12,15 +12,16 @@ import { ambientAt } from './daynight.js';
 import { Walker } from './walker.js';
 
 const q = new URLSearchParams(location.search);
-const kind = ['town', 'shop', 'view', 'park', 'seek', 'coop'].includes(q.get('shot')) ? q.get('shot') : 'town';
+const kind = ['town', 'shop', 'view', 'park', 'seek', 'coop', 'sprint'].includes(q.get('shot')) ? q.get('shot') : 'town';
 const hour = q.has('hour') && Number.isFinite(Number(q.get('hour'))) ? Number(q.get('hour')) : 13;
-const scale = Math.max(1, Math.min(6, Number(q.get('scale')) | 0 || (kind === 'shop' ? 4 : kind === 'view' || kind === 'seek' || kind === 'coop' ? 3 : 2)));
+const scale = Math.max(1, Math.min(6, Number(q.get('scale')) | 0 || (kind === 'shop' ? 4 : kind === 'view' || kind === 'seek' || kind === 'coop' || kind === 'sprint' ? 3 : 2)));
 
 const pet = (id, species, stage, items, x, y, d = 'down') => ({ id, name: id, look: { species, stage, items }, walker: new Walker(x, y, d), emote: null });
 const CAST = {
   town: [pet('Mochi', 'cat', 2, ['tophat', '', '', ''], 20, 24), pet('Luna', 'seal', 1, ['', '', '', ''], 27, 18, 'left'), pet('Rana', 'frog', 2, ['', '', '', ''], 24, 24, 'right'), pet('Nube', 'cat', 0, ['', '', '', ''], 35, 11), pet('Pipo', 'frog', 1, ['', '', '', ''], 20, 36, 'right'), pet('Coco', 'seal', 2, ['', '', '', ''], 13, 33)],
   seek: [pet('Mochi', 'cat', 2, ['tophat', '', '', ''], 22, 38, 'right'), pet('Rana', 'frog', 2, ['', '', '', ''], 24, 39, 'left'), pet('Luna', 'seal', 1, ['', '', '', ''], 30, 40), pet('Pipo', 'frog', 1, ['', '', '', ''], 22, 37), pet('Coco', 'seal', 2, ['', '', '', ''], 19, 37)],
   coop: [pet('Mochi', 'cat', 2, ['tophat', '', '', ''], 29, 42, 'up'), pet('Luna', 'seal', 1, ['', '', '', ''], 35, 39, 'left'), pet('Rana', 'frog', 2, ['', '', '', ''], 27, 40, 'right')],
+  sprint: [pet('Mochi', 'cat', 2, ['tophat', '', '', ''], 19, 24, 'right'), pet('Luna', 'seal', 1, ['', '', '', ''], 17, 26, 'right')],
   shop: [pet('Mochi', 'cat', 2, ['', '', '', ''], 6, 8, 'up'), pet('Luna', 'seal', 1, ['', '', '', ''], 9, 7, 'left')],
 };
 
@@ -39,6 +40,7 @@ async function main() {
     dark = { full: false, r: 3 * TILE };
   }
   if (kind === 'coop') { cam = cameraFor(31 * TILE + 8, 40 * TILE + 8, area.w * TILE, area.h * TILE); vw = VIEW_W; vh = VIEW_H; chicken = { x: 32, y: 42, frame: 1, flip: false }; }
+  if (kind === 'sprint') { cam = cameraFor(24 * TILE + 8, 24 * TILE + 8, area.w * TILE, area.h * TILE); vw = VIEW_W; vh = VIEW_H; chicken = { x: 25.5, y: 24, frame: 1, flip: false }; }   // the chicken sprinting across the plaza, a pet chasing it
   const scene = document.createElement('canvas');
   scene.width = vw; scene.height = vh;
   const sctx = scene.getContext('2d');
