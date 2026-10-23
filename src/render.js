@@ -1,7 +1,7 @@
 // Draws the world: a fixed 224 x 288 px view (portrait) scaled up by a whole number with nearest-neighbour, centred and letterboxed.
 // The scene is drawn at 1 px = 1 game pixel on a small canvas and enlarged; only the emote bubbles are drawn at the final size (emoji).
 // Layers: ground (baked), animated water, props and pets sorted by their feet, the day/night tint, the night lights, labels.
-import { TILE, SIGNS, getArea } from './map.js';
+import { TILE, SIGNS, PLACES, getArea } from './map.js';
 import { drawPet, CELL } from './sprites.js';
 import { drawText, textWidth, textCanvas } from './font.js';
 import { EMOTES } from './protocol.js';
@@ -10,6 +10,7 @@ import { bakeArea } from './art/bake.js';
 import { rippleSpots } from './art/ground.js';
 import { fountainFrame } from './art/props.js';
 import { P } from './art/palette.js';
+import { badge, bobY, BADGE } from './art/icons.js';
 
 export const VIEW_W = 224;
 export const VIEW_H = 288;
@@ -118,6 +119,11 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
     sctx.fillStyle = '#f4e4a8'; sctx.fillRect(x, y, w, 22);
     sctx.drawImage(textCanvas(font, s.text, '#403020'), x + 3, y);
     sctx.drawImage(textCanvas(font, s.sub, '#8a5a28'), x + 3, y + 11);
+  }
+  for (const pl of PLACES) {                                                  // the floating icons over the main places
+    if (pl.area !== area.name) continue;
+    const b = badge(pl.icon), bx = Math.round(pl.x * TILE - BADGE.w / 2 - cam.x), by = bobY(pl, now) - BADGE.h - cam.y;
+    if (b && bx > -BADGE.w && bx < vw && by > -BADGE.h && by < vh) sctx.drawImage(b, bx, by);
   }
   for (const l of labels) drawText(sctx, font, l.text, l.x, l.y, l.colour);
   if (fade > 0) { sctx.fillStyle = `rgba(14,16,26,${Math.min(1, fade)})`; sctx.fillRect(0, 0, vw, vh); }

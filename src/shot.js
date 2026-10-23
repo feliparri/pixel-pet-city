@@ -27,7 +27,7 @@ async function main() {
   const entities = (kind === 'shop' ? CAST.shop : CAST.town).filter((e) => e.look.items.every((i) => !i || sprites.catalogue[i]));
   const me = entities[0], others = entities.slice(1);
   let vw = area.w * TILE, vh = area.h * TILE, cam = { x: 0, y: 0 };
-  if (kind === 'park') { cam = { x: 0, y: 29 * TILE }; vh = 15 * TILE; }
+  if (kind === 'park') { cam = { x: 0, y: 28 * TILE }; vh = 16 * TILE; }
   if (kind === 'view') { vw = VIEW_W; vh = VIEW_H; cam = cameraFor(24 * TILE, 22 * TILE, area.w * TILE, area.h * TILE); }
   const scene = document.createElement('canvas');
   scene.width = vw; scene.height = vh;

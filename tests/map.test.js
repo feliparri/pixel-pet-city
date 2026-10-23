@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { AREAS, AREA_NAMES, TILES, SIGNS, SPAWNS, ENTRY, HOUSES, DOORS, GAME_PLACES, GAME_IDS, PLACES, inZone, spotAt, isWalkable, inMap, tileAt, doorAt, getArea, TILE } from '../src/map.js';
+import { ICON_NAMES } from '../src/art/icons.js';
 import { findPath, stepDir } from '../src/path.js';
 
 test('every area is a rectangle of known tiles', () => {
@@ -157,5 +158,6 @@ test('the gallinero is a closed pen with one open gate and a coop; the cancha ha
 test('every place has a floating icon, and the icons sit above their pads', () => {
   const ids = PLACES.map((p) => p.id).sort();
   assert.deepEqual(ids, ['chicken', 'hide', 'park', 'race', 'shop', 'soccer']);
+  for (const p of PLACES) assert.ok(ICON_NAMES.includes(p.icon), `icon ${p.icon} is drawn`);
   for (const g of GAME_IDS) { const p = PLACES.find((e) => e.id === g); assert.ok(p.y < GAME_PLACES[g].spot[0][1]); }
 });

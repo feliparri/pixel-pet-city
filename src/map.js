@@ -73,7 +73,7 @@ export const DOORS = {
 export const SIGNS = [
   { area: 'town', x: 21, y: 31, text: 'Parque', sub: 'Para jugar' },
   { area: 'town', x: 33, y: 10, text: 'Tienda', sub: 'Próximamente', below: true },
-  { area: 'town', x: 20, y: 34, text: 'Escondida', sub: 'Jugar' },
+  { area: 'town', x: 16, y: 34, text: 'Escondida', sub: 'Jugar' },
   { area: 'town', x: 33, y: 42, text: 'Gallina', sub: 'Jugar' },
   { area: 'town', x: 40, y: 42, text: 'Cancha', sub: 'Pronto' },
   { area: 'town', x: 12, y: 39, text: 'Pista', sub: 'Pronto' },
@@ -85,7 +85,7 @@ export const SIGNS = [
  * tiles the game is played on (pets playing cannot leave it). `playable: false` places are drawn and signed but have no game yet.
  */
 export const GAME_PLACES = {
-  hide: { name: 'Escondida', area: 'town', spot: [[21, 34]], sign: [20, 34], zone: { x: 1, y: 32, w: 46, h: 11 } },
+  hide: { name: 'Escondida', area: 'town', spot: [[17, 34]], sign: [16, 34], zone: { x: 1, y: 32, w: 46, h: 11 } },
   chicken: { name: 'Pillar la gallina', area: 'town', spot: [[29, 42]], sign: [33, 42], zone: { x: 26, y: 37, w: 11, h: 6 } },
   soccer: { name: 'Cancha', area: 'town', playable: false, spot: [[41, 42]], sign: [40, 42], zone: { x: 37, y: 37, w: 9, h: 6 } },
   race: { name: 'Pista', area: 'town', playable: false, spot: [[12, 40]], sign: [12, 39], zone: { x: 12, y: 38, w: 10, h: 5 } },
@@ -183,7 +183,7 @@ function buildTown() {
     fill(38, 37, 7, 5, 'y'); fill(37, 38, 1, 3, 'g'); fill(45, 38, 1, 3, 'g');
     // the rest of the park: trees at the edges and bushes to hide in
     for (const [x, y] of [[12, 42], [22, 40], [36, 42], [46, 42], [46, 37], [27, 40], [42, 42], [26, 42]]) set(x, y, (x + y) % 3 ? 't' : 'T');
-    for (const [x, y] of [[14, 37], [18, 38], [21, 37], [15, 42], [20, 42], [22, 38], [22, 42], [26, 38], [26, 41], [36, 38], [36, 41], [37, 42], [44, 42], [46, 39], [46, 41], [17, 34], [22, 33], [28, 34], [32, 32], [38, 34], [45, 34], [11, 33], [26, 32], [39, 32]]) set(x, y, 'b');
+    for (const [x, y] of [[14, 37], [18, 38], [21, 37], [15, 42], [20, 42], [22, 38], [22, 42], [26, 38], [26, 41], [36, 38], [36, 41], [37, 42], [44, 42], [46, 39], [46, 41], [19, 34], [22, 33], [28, 34], [32, 32], [38, 34], [45, 34], [11, 33], [26, 32], [39, 32]]) set(x, y, 'b');
     // trees: the border and some clumps between the houses (never on a path)
     for (let x = 0; x < w; x++) { set(x, 0, x % 2 ? 'T' : 't'); set(x, h - 1, x % 2 ? 't' : 'T'); }
     for (let x = 1; x < w - 1; x++) set(x, h - 1, 'h');          // the park's south edge is a low hedge: tall trees there would cover the game pads
