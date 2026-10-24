@@ -6,9 +6,10 @@
 import { GAME_RULES, isPlayable, STATE_MS, LOBBY_MS, ECHO_MS, GONE_GRACE_MS } from './rules.js';
 import { openLobby, joinLobby, leaveLobby, volunteerSeeker, chooseZone, electReferee, lobbyReady, buildStart, lobbyKey } from './lobby.js';
 import { tickHide, hideResults, hideStars, seekerSees } from './hide.js';
-import { createChicken, stepChicken, catcher, spawnTile, catchesToWin } from './chicken.js';
+import { createChicken, stepChicken, catcher, spawnTile, catchesToWin, planRoute, encodeRoute, decodeRoute, CHICKEN } from './chicken.js';
 import { GAME_PLACES, HIDE_ZONES, DEFAULT_HIDE_ZONE, chickenTile, tileAt } from '../map.js';
 
+const CHICK_SEND_MS = 400;
 const NOTICE_MS = 3200;
 const STALL_MS = 1500;                                // a gap between two updates this long means this tab was asleep: the clocks wait for it
 const LOBBY_GRACE_MS = 4000;                          // a lobby whose start never came is dropped this long after its time
@@ -25,6 +26,7 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
   const seekCount = new Map();      // id -> rounds searched in this room (everyone counts them from the same gstart messages)
   const notices = [];
   const awarded = new Set();
+  let chickSentAt = -Infinity;      // the referee: when the chicken's motion was last sent
   let stateAt = -Infinity, echoAt = -Infinity, lastAt = null;
   const absentSince = new Map();    // id -> when it was first missed (cleared when it is back)
 
@@ -121,7 +123,7 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
       applyFound(m.i, m.at);
     } else if (m.t === 'gchick') {
       if (game.g !== 'chicken') return;
-      game.chick = { x: m.x, y: m.y, d: m.d, m: m.m, snap: m.s === 1, seq: (game.chick ? game.chick.seq : 0) + 1 };
+      game.chick = { x: m.x, y: m.y, d: m.d, m: m.m, snap: m.s === 1, seq: (game.chick ? game.chick.seq : 0) + 1, v: m.v || 0, o: m.o || 0, route: decodeRoute(m.x, m.y, m.p) };
     } else if (m.t === 'gcatch') {
       applyCatch(m.i, m.n);
     } else if (m.t === 'gend') {
@@ -242,15 +244,22 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
     if (!game.sim && t >= game.respawnAt) {
       const [x, y] = spawnTile(chickenTiles(), pets, rng);
       game.sim = createChicken(x, y, t);
-      game.chick = { x, y, d: 'left', m: 'w', snap: true, seq: (game.chick ? game.chick.seq : 0) + 1 };
+      game.chick = { x, y, d: 'left', m: 'w', snap: true, seq: (game.chick ? game.chick.seq : 0) + 1, v: 0, o: 0, route: [[x, y]] };
+      chickSentAt = t;
       send({ t: 'gchick', r: game.r, x, y, d: 'left', m: 'w', s: 1 });
     }
     const ch = game.sim;
     if (ch) {
-      if (stepChicken(ch, pets, t, rng, chickenWalkable) || (ch.mode === 'tired') !== (game.chick && game.chick.m === 't')) {
-        const m = ch.mode === 'tired' ? 't' : ch.mode === 'flee' ? 'f' : 'w';
-        game.chick = { x: ch.x, y: ch.y, d: ch.d, m, snap: false, seq: (game.chick ? game.chick.seq : 0) + 1 };
-        send({ t: 'gchick', r: game.r, x: ch.x, y: ch.y, d: ch.d, m, s: 0 });
+      const moved = stepChicken(ch, pets, t, rng, chickenWalkable);
+      if (moved) game.chickAt = t;                                  // when it arrived at its tile
+      const flee = ch.mode === 'flee', m = flee ? 'f' : 'w';
+      // wandering: one message per step; fleeing: a motion (the route ahead) every CHICK_SEND_MS, so the others glide instead of stop and go
+      if ((!!game.chick && game.chick.m !== m) || (flee ? t - chickSentAt >= CHICK_SEND_MS : moved)) {
+        const route = flee ? planRoute(ch, pets, chickenWalkable) : [];
+        const p = encodeRoute(ch.x, ch.y, route), o = Math.max(0, Math.min(2000, Math.round(t - (game.chickAt || t))));
+        chickSentAt = t;
+        game.chick = { x: ch.x, y: ch.y, d: ch.d, m, snap: false, seq: (game.chick ? game.chick.seq : 0) + 1, v: flee ? CHICKEN.fleeMs : 0, o, route: decodeRoute(ch.x, ch.y, p) };
+        send({ t: 'gchick', r: game.r, x: ch.x, y: ch.y, d: ch.d, m, s: 0, ...(flee ? { v: CHICKEN.fleeMs, p, o } : {}) });
       }
       const who = catcher(ch, pets);
       if (who) {

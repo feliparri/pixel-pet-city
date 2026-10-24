@@ -60,6 +60,33 @@ export class Walker {
     if (!this.moving) this.begin();
   }
 
+  /**
+   * Follow a route a referee sent: [[x, y], ...] where the first tile is where the mover is on the referee's side now. If this walker's
+   * current target is on the route it just continues down it (no stop, no jump back); if it is near it walks there by the map's paths;
+   * if it is far (more than `far` tiles) it jumps. `where`: an area name; `pastMs`: how far into its first step the mover already is.
+   */
+  follow(route, where, far = 6, pastMs = 0) {
+    if (!route.length) return;
+    const at = route.findIndex((p) => p[0] === this.tx && p[1] === this.ty);
+    if (at >= 0) {
+      this.queue = route.slice(at + 1).map((p) => [p[0], p[1]]);
+      if (!this.moving) { this.begin(); if (this.moving && pastMs) this.t = Math.min(pastMs, this.stepMs() - 1); }
+      return;
+    }
+    const [x, y] = route[0];
+    const path = Math.abs(x - this.tx) + Math.abs(y - this.ty) <= far ? findPath(this.tx, this.ty, x, y, where) : [];
+    if (Math.abs(x - this.tx) + Math.abs(y - this.ty) > far || (!path.length && !(x === this.tx && y === this.ty))) {
+      const d = route[1] ? stepDir(x, y, route[1][0], route[1][1]) : this.d;
+      this.snap(x, y, d);
+      this.queue = route.slice(1).map((p) => [p[0], p[1]]);
+      this.begin();
+      if (this.moving && pastMs) this.t = Math.min(pastMs, this.stepMs() - 1);
+      return;
+    }
+    this.queue = [...path, ...route.slice(1)].map((p) => [p[0], p[1]]);
+    if (!this.moving) this.begin();
+  }
+
   snap(x, y, d) {
     this.fx = this.tx = x; this.fy = this.ty = y;
     this.moving = false; this.t = 0; this.queue = []; this.d = d;

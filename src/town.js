@@ -7,7 +7,6 @@ import { ambientAt, hourNow } from './daynight.js';
 import { entranceState } from './entrance.js';
 import { createGames } from './games/manager.js';
 import { GAME_RULES } from './games/rules.js';
-import { CHICKEN } from './games/chicken.js';
 
 const FADE_MS = 240;                                  // the fade-in after a door
 const KEY_DIRS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', w: 'up', s: 'down', a: 'left', d: 'right', W: 'up', S: 'down', A: 'left', D: 'right' };
@@ -120,12 +119,15 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
     if (vision) state.others = vision.full ? [] : state.others.filter((o) => vision.see({ x: o.walker.tileX, y: o.walker.tileY }, !!TILES[tileAt(o.walker.tileX, o.walker.tileY)].hide));
     const gv = games.view();
     const ck = gv.game && gv.game.chick;
-    if (ck && ck.seq !== chickSeq) { chickSeq = ck.seq; if (ck.snap) chickWalker.snap(ck.x, ck.y, ck.d); else chickWalker.goTo(ck.x, ck.y, ck.d, 'town'); }
-    chickWalker.stepOverride = ck && ck.m === 'f' ? CHICKEN.fleeMs : null;                // a sprint is drawn at the sprint's pace
+    if (ck && ck.seq !== chickSeq) {                                                       // a new motion: continue along its route, correct only what differs
+      chickSeq = ck.seq;
+      chickWalker.stepOverride = ck.v || null;                                              // a flight is drawn at the pace the referee runs it
+      if (ck.snap) chickWalker.snap(ck.x, ck.y, ck.d); else chickWalker.follow(ck.route, 'town', 6, ck.o);
+    }
     chickWalker.update(dt);
     if (ck && self.area === 'town') {
       const cp = chickWalker.pos();
-      state.chicken = { x: cp.x, y: cp.y, frame: ck.m === 't' ? 2 : chickWalker.moving && Math.floor(t / 110) % 2 ? 1 : 0, flip: chickWalker.d === 'left' };
+      state.chicken = { x: cp.x, y: cp.y, frame: chickWalker.moving && Math.floor(t / 110) % 2 ? 1 : 0, flip: chickWalker.d === 'left' };
     } else state.chicken = null;
     const here = !w.busy && self.area === 'town' ? spotAt(w.tileX, w.tileY) : null;      // standing on a game's pad: the button; walking onto the pad of an open lobby joins it
     if (here && gv.lobby && gv.lobby.g === here && !gv.lobby.iJoined) games.join();

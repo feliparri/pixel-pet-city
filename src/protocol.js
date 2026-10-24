@@ -116,7 +116,8 @@ const intList = (v, lo, hi) => Array.isArray(v) && v.length <= MAX_PLAYERS && v.
  *   gstart { g, r, p, s, z? }   the referee starts: roster p (peer ids, in order), seeker index s (-1 for games without a seeker), z the hide zone
  *   gstate { g, r, ph, left, f }  the shared clock: phase, ms left in it, and per roster index: seconds a hider was found (-1 not yet, -2 gone) or a score
  *   gfound { r, i, at }         roster index i was found `at` seconds into the search
- *   gchick { r, x, y, d, m, s } the chicken's tile, facing, mood (w wander, f flee, t tired); s = 1 when it appeared there
+ *   gchick { r, x, y, d, m, s, v?, p?, o? } the chicken's tile, facing, mood (w wander, f flee); s = 1 when it appeared there. A motion:
+ *                               v = ms per step, p = its next moves from (x, y) as "uurrd" (at most 8), o = ms since it arrived at (x, y)
  *   gcatch { r, i, n }          roster index i caught it (n: its catches so far)
  *   gend   { g, r, rs, f }      the game (or a lobby that could not start: rs 'few') is over, with the final f
  */
@@ -142,8 +143,11 @@ function validateGameMessage(m) {
     case 'gfound':
       return isRound(m.r) && int(m.i, 0, MAX_PLAYERS - 1) && int(m.at, 0, 999) ? { ...base, r: m.r, i: m.i, at: m.at } : null;
     case 'gchick':
-      return isRound(m.r) && chickenTile(m.x, m.y) && DIRS.includes(m.d) && ['w', 'f', 't'].includes(m.m) && (m.s === 0 || m.s === 1)
-        ? { ...base, r: m.r, x: m.x, y: m.y, d: m.d, m: m.m, s: m.s } : null;
+      if (!(isRound(m.r) && chickenTile(m.x, m.y) && DIRS.includes(m.d) && ['w', 'f'].includes(m.m) && (m.s === 0 || m.s === 1))) return null;
+      if (m.v !== undefined && !int(m.v, 60, 2000)) return null;
+      if (m.o !== undefined && !int(m.o, 0, 2000)) return null;
+      if (m.p !== undefined && !(typeof m.p === 'string' && /^[udlr]{0,8}$/.test(m.p))) return null;
+      return { ...base, r: m.r, x: m.x, y: m.y, d: m.d, m: m.m, s: m.s, ...(m.v !== undefined ? { v: m.v } : {}), ...(m.p ? { p: m.p } : {}), ...(m.o !== undefined ? { o: m.o } : {}) };
     case 'gcatch':
       return isRound(m.r) && int(m.i, 0, MAX_PLAYERS - 1) && int(m.n, 1, 99) ? { ...base, r: m.r, i: m.i, n: m.n } : null;
     case 'gend':
@@ -167,7 +171,7 @@ export const LIMITS = {
   gstart: { burst: 2, perSec: 0.3 },
   gstate: { burst: 6, perSec: 4 },     // the referee sends two a second
   gfound: { burst: 13, perSec: 2 },
-  gchick: { burst: 14, perSec: 10 },   // one per chicken step (at most about 7 a second)
+  gchick: { burst: 8, perSec: 4 },     // a motion every 400 ms while it flees, a message per step while it wanders (2 a second)
   gcatch: { burst: 4, perSec: 1 },
   gend: { burst: 2, perSec: 0.3 },
 };

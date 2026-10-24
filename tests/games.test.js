@@ -5,7 +5,8 @@ import { GAME_RULES, MAX_PLAYERS } from '../src/games/rules.js';
 import { SETTLE_MS, ECHO_MS, GONE_GRACE_MS } from '../src/games/rules.js';
 import { openLobby, joinLobby, leaveLobby, volunteerSeeker, chooseZone, electReferee, lobbyReady, pickSeeker, buildStart, lobbyKey } from '../src/games/lobby.js';
 import { seekerSees, touching, createHide, tickHide, hideStars, hideResults } from '../src/games/hide.js';
-import { createChicken, stepChicken, catcher, spawnTile, CHICKEN } from '../src/games/chicken.js';
+import { createChicken, stepChicken, catcher, spawnTile, CHICKEN, planRoute, encodeRoute, decodeRoute } from '../src/games/chicken.js';
+import { Walker } from '../src/walker.js';
 import { createGames } from '../src/games/manager.js';
 import { GAME_PLACES, HIDE_ZONES, DOORS, chickenTile, isWalkable, tileAt, TILES } from '../src/map.js';
 
@@ -172,58 +173,145 @@ test('hide: touching during the countdown finds nobody; a hider that leaves is n
 const open = (x, y) => isWalkable(x, y) && x >= 26 && x < 37 && y >= 37 && y < 43 && !TILES[tileAt(x, y)].hide;
 const seq = (...v) => { let i = 0; return () => v[i++ % v.length]; };
 
-test('chicken: runs from a pet that keeps chasing it, stays in its area, and gets tired after a dash', () => {
-  const ch = createChicken(35, 40, 0);
-  let t = 1000, moved = 0;
-  const trail = [];
-  for (let i = 0; i < 60 && ch.mode !== 'tired'; i++) {
-    const pet = { x: ch.x, y: ch.y + 2 };                       // always two tiles behind
+// an open field with a house in the middle, for the chases
+const FW = 30, FH = 20;
+const field = (x, y) => x >= 0 && y >= 0 && x < FW && y < FH && !(x >= 12 && x <= 15 && y >= 7 && y <= 12);
+const bfs = (sx, sy, tx, ty) => {
+  const prev = new Map([[`${sx},${sy}`, null]]), q = [[sx, sy]];
+  for (let i = 0; i < q.length; i++) {
+    const [x, y] = q[i];
+    if (x === tx && y === ty) break;
+    for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) { const k = `${x + dx},${y + dy}`; if (field(x + dx, y + dy) && !prev.has(k)) { prev.set(k, [x, y]); q.push([x + dx, y + dy]); } }
+  }
+  const out = []; let c = prev.has(`${tx},${ty}`) ? [tx, ty] : null;
+  while (c && prev.get(`${c[0]},${c[1]}`)) { out.push(c); c = prev.get(`${c[0]},${c[1]}`); }
+  return out.reverse();
+};
+/** Runs a chase in the field: the pet steps every 160 ms by `ai`; returns { caught: ms or Infinity, steps: [[ms, x, y, mode]] }. */
+function chase(chickenAt, petAt, ai, maxMs = 30000) {
+  const ch = createChicken(chickenAt[0], chickenAt[1], 0), pet = { x: petAt[0], y: petAt[1] }, steps = [];
+  let petNext = 0;
+  for (let t = 0; t < maxMs; t += 20) {
+    if (t >= petNext) { ai(pet, ch); petNext += 160; }
+    if (stepChicken(ch, [pet], t, () => 0.5, field)) steps.push([t, ch.x, ch.y, ch.mode, pet.x, pet.y]);
+    if (Math.hypot(ch.x - pet.x, ch.y - pet.y) < 1.01) return { caught: t, steps, ch };
+  }
+  return { caught: Infinity, steps, ch };
+}
+const tail = (pet, ch) => { const p = bfs(pet.x, pet.y, ch.x, ch.y); if (p.length > 1) { pet.x = p[0][0]; pet.y = p[0][1]; } };
+
+test('chicken: chased, it runs at one constant speed (5 tiles a second) with no sprints and no rests, and never steps toward the pet', () => {
+  const ch = createChicken(5, 3, 0), pet = { x: 5, y: 0 };
+  let t = 0, last = null;
+  const gaps = [];
+  for (; t < 60000; t += 20) {
+    if (t % 160 === 0 && Math.hypot(ch.x - pet.x, ch.y - pet.y) > 4) { if (Math.abs(ch.x - pet.x) > Math.abs(ch.y - pet.y)) pet.x += Math.sign(ch.x - pet.x); else pet.y += Math.sign(ch.y - pet.y); }   // a pet keeping 4 tiles behind
     const before = Math.hypot(ch.x - pet.x, ch.y - pet.y);
-    if (stepChicken(ch, [pet], t, seq(0.5), open)) { moved++; trail.push([ch.x, ch.y]); assert.ok(Math.hypot(ch.x - pet.x, ch.y - pet.y) >= before, 'every step goes away from the pet'); }
-    t += 160;
+    if (stepChicken(ch, [pet], t, () => 0.5, field)) {
+      assert.equal(ch.mode, 'flee');
+      assert.ok(field(ch.x, ch.y));
+      if (t < 3500) assert.ok(Math.hypot(ch.x - pet.x, ch.y - pet.y) >= before, 'on open ground every step goes away from the pet (a corner can force it back)');
+      if (last !== null) gaps.push(t - last);
+      last = t;
+    } else assert.notEqual(ch.mode, 'tired');
   }
-  assert.equal(ch.mode, 'tired');
-  assert.equal(moved, CHICKEN.dashSteps);
-  assert.ok(trail.every(([x, y]) => open(x, y)), 'never leaves the play area or walks into a wall');
-  const where = [ch.x, ch.y], pet = { x: ch.x, y: ch.y + 2 };
-  assert.equal(stepChicken(ch, [pet], t, seq(0.5), open), false, 'panting');
-  assert.deepEqual([ch.x, ch.y], where);
-  t += CHICKEN.tiredMs;
-  stepChicken(ch, [pet], t, seq(0.5), open);
-  assert.notEqual(ch.mode, 'tired');
+  assert.ok(gaps.length > 200, 'it kept running the whole minute');
+  assert.ok(gaps.every((g) => g === CHICKEN.fleeMs), `every step ${CHICKEN.fleeMs} ms apart (${[...new Set(gaps)]})`);
+  assert.equal(1000 / CHICKEN.fleeMs, 5);
+  assert.ok(CHICKEN.fleeMs > 160 && CHICKEN.fleeMs < 240, 'a little slower than a walking pet (160 ms)');
 });
 
-test('chicken: a pet within 4 tiles makes it sprint faster than a pet walks; farther away it stays calm', () => {
-  const calm = createChicken(31, 40, 0), spooked = createChicken(31, 40, 0);
-  let t = 0, calmSteps = [], sprint = [];
-  for (let i = 0; i < 80; i++, t += 40) {
-    const ax = calm.x, ay = calm.y;
-    if (stepChicken(calm, [{ x: ax + 6, y: ay }], t, seq(0.9, 0.1, 0.7), open)) calmSteps.push(t);                 // 6 tiles: out of range
-  }
-  assert.ok(calmSteps.length > 3 && calmSteps.every((v, i) => i === 0 || v - calmSteps[i - 1] >= CHICKEN.wanderMs - 1), 'calm steps are at least 480 ms apart');
-  t = 0;
-  for (let i = 0; i < 80 && spooked.mode !== 'tired'; i++, t += 20) if (stepChicken(spooked, [{ x: spooked.x, y: spooked.y + 4 }], t, seq(0.5), open)) sprint.push(t);   // 4 tiles: in range
-  assert.equal(spooked.mode, 'flee');
-  assert.ok(sprint.length > 5 && sprint.every((v, i) => i === 0 || v - sprint[i - 1] === CHICKEN.fleeMs));
-  assert.ok(CHICKEN.fleeMs < 160, 'faster than a walking pet');
-  assert.equal(CHICKEN.fleeRadius, 4);
+test('chicken: it runs while a pet is within 6 tiles and calms down only beyond 8 (hysteresis); calm steps stay slow', () => {
+  const ch = createChicken(15, 3, 0);
+  const at = (d, t) => { stepChicken(ch, [{ x: ch.x, y: ch.y + d }], t, () => 0.5, field); return ch.mode; };
+  assert.equal(at(7, 0), 'wander', '7 tiles: calm');
+  assert.equal(at(6, 20), 'flee', '6 tiles: runs');
+  assert.equal(at(7, 40), 'flee', 'a little farther is not enough to stop');
+  assert.equal(at(8, 60), 'flee');
+  assert.equal(at(9, 80), 'wander', 'beyond 8 it wanders again');
+  assert.equal(at(7, 100), 'wander', 'and 7 tiles does not scare it again');
+  assert.equal(CHICKEN.fleeRadius, 6);
+  const calm = createChicken(5, 3, 0), times = [];
+  for (let t = 0; t < 30000; t += 20) if (stepChicken(calm, [], t, seq(0.9, 0.1, 0.7, 0.55), field)) times.push(t);
+  assert.ok(times.length > 5 && times.every((v, i) => i === 0 || v - times[i - 1] >= CHICKEN.wanderMs), 'wandering steps are at least 480 ms apart');
 });
 
-test('chicken: chased for a long time it runs across the town, only on open tiles, with a rest after each sprint', () => {
-  const ch = createChicken(20, 23, 0), pet = { x: 20, y: 26 };
-  let t = 0, tired = 0, minY = 99, farthest = 0, prev = ch.mode;
-  const rnd = seq(0.3, 0.8, 0.15, 0.6, 0.95, 0.45);
-  for (let i = 0; i < 9000; i++, t += 40) {
-    if (i % 4 === 0 && Math.hypot(ch.x - pet.x, ch.y - pet.y) > 2.5) {                                    // the pet walks at 160 ms a tile after the chicken, keeping close
-      if (Math.abs(ch.x - pet.x) > Math.abs(ch.y - pet.y)) pet.x += Math.sign(ch.x - pet.x); else pet.y += Math.sign(ch.y - pet.y);
+test('chicken: it commits to a heading: straight lines until something blocks the way, no zigzag, no turning back', () => {
+  const ch = createChicken(3, 16, 0), turns = [];
+  let t = 0, prev = null;
+  for (; t < 8000; t += 20) {
+    const pet = { x: ch.x - 4, y: ch.y };                              // always four tiles to its west
+    if (stepChicken(ch, [pet], t, () => 0.5, field)) { if (prev && prev !== ch.d) turns.push([prev, ch.d, ch.x, ch.y]); prev = ch.d; }
+  }
+  assert.ok(turns.length <= 4, `few turns: ${JSON.stringify(turns)}`);
+  const opposite = { up: 'down', down: 'up', left: 'right', right: 'left' };
+  assert.ok(turns.every(([a, b]) => opposite[a] !== b), 'never a U-turn');
+  const plan = planRoute({ x: 3, y: 16, d: 'right' }, [{ x: -1, y: 16 }], field, 8);
+  assert.deepEqual(plan.map(([x]) => x), [4, 5, 6, 7, 8, 9, 10, 11], 'the announced route is a straight run');
+});
+
+test('chicken: its announced route can be read and beaten: a pet that heads for a tile of that route catches it sooner than one that just follows', () => {
+  const start = [[25, 5], [20, 9]];
+  const follow = chase(start[0], start[1], tail);
+  const cut = chase(start[0], start[1], (pet, ch) => {
+    const route = planRoute(ch, [pet], field, 8), goal = route[Math.min(5, route.length - 1)] || [ch.x, ch.y];
+    const p = bfs(pet.x, pet.y, goal[0], goal[1]);
+    if (p.length) { pet.x = p[0][0]; pet.y = p[0][1]; } else tail(pet, ch);
+  });
+  assert.ok(follow.caught < Infinity && cut.caught < Infinity, 'both catch it in the end: a pet is faster than the chicken');
+  assert.ok(cut.caught <= follow.caught - 800, `cutting corners wins at least 0.8 s (${cut.caught} vs ${follow.caught})`);
+});
+
+test('chicken: chased for a long time it runs across the field, only on open tiles', () => {
+  const ch = createChicken(5, 3, 0), pet = { x: 5, y: 0 };
+  let farthest = 0;
+  for (let t = 0; t < 120000; t += 20) {
+    if (t % 160 === 0 && Math.hypot(ch.x - pet.x, ch.y - pet.y) > 3) { const p = bfs(pet.x, pet.y, ch.x, ch.y); if (p.length) { pet.x = p[0][0]; pet.y = p[0][1]; } }
+    stepChicken(ch, [pet], t, () => 0.5, field);
+    assert.ok(field(ch.x, ch.y), `${ch.x},${ch.y}`);
+    farthest = Math.max(farthest, Math.hypot(ch.x - 5, ch.y - 3));
+  }
+  assert.ok(farthest > 15, `it ran across the field (${farthest.toFixed(1)} tiles)`);
+});
+
+test('chicken motion: a route is sent as moves and decoded back to the same tiles', () => {
+  const tiles = [[5, 4], [5, 3], [6, 3], [7, 3], [7, 4]];
+  const moves = encodeRoute(5, 5, tiles);
+  assert.equal(moves, 'uurrd');
+  assert.deepEqual(decodeRoute(5, 5, moves), [[5, 5], ...tiles]);
+  assert.deepEqual(decodeRoute(5, 5, ''), [[5, 5]]);
+  assert.ok(ok({ t: 'gchick', r: 'abc123', x: 31, y: 42, d: 'left', m: 'f', s: 0, v: 200, p: 'uurrdlld', o: 60 }));
+  assert.equal(ok({ t: 'gchick', r: 'abc123', x: 31, y: 42, d: 'left', m: 'f', s: 0, v: 200, p: 'uurrdlldd' }), null, 'at most 8 moves');
+  assert.equal(ok({ t: 'gchick', r: 'abc123', x: 31, y: 42, d: 'left', m: 'f', s: 0, p: 'uxr' }), null);
+  assert.equal(ok({ t: 'gchick', r: 'abc123', x: 31, y: 42, d: 'left', m: 'f', s: 0, v: 5 }), null);
+  assert.equal(ok({ t: 'gchick', r: 'abc123', x: 31, y: 42, d: 'left', m: 't', s: 0 }), null, 'there is no tired mood any more');
+});
+
+test('chicken motion: a remote screen fed a route every 400 ms (200 ms a tile) glides without stopping, and corrects gently', () => {
+  const w = new Walker(10, 10);
+  w.stepOverride = CHICKEN.fleeMs;
+  const refX = (ms) => 10 + Math.floor(ms / CHICKEN.fleeMs);              // the referee's chicken runs east, one tile per 200 ms
+  let idle = 0, jumps = 0, prevX = 10, started = false;
+  for (let t = 0; t <= 6000; t += 16) {
+    if (t % 400 === 0) {                                                 // a message arrives (80 ms late), 8 tiles of route ahead
+      const x = refX(Math.max(0, t - 80));
+      w.follow(Array.from({ length: 9 }, (_, i) => [x + i, 10]), 'town', 6, 0);
     }
-    stepChicken(ch, [pet], t, rnd, chickenTile);
-    assert.ok(chickenTile(ch.x, ch.y), `${ch.x},${ch.y}`);
-    if (ch.mode === 'tired' && prev !== 'tired') tired++;
-    prev = ch.mode; minY = Math.min(minY, ch.y); farthest = Math.max(farthest, Math.hypot(ch.x - 20, ch.y - 23));
+    w.update(16);
+    if (t >= 400 && !started) started = true;
+    if (started && !w.moving) idle++;
+    const p = w.pos();
+    if (Math.abs(p.x - prevX) > 0.25) jumps++;
+    prevX = p.x;
   }
-  assert.ok(tired >= 3, 'it gets tired after its sprints');
-  assert.ok(farthest > 15, `it ran far from where it started, out of the plaza and the gallinero's area (${farthest.toFixed(1)} tiles)`);
+  assert.equal(idle, 0, 'never stands still between updates');
+  assert.equal(jumps, 0, 'never jumps');
+  const far = new Walker(10, 10);
+  far.follow([[25, 10], [26, 10]], 'town', 6, 0);
+  assert.deepEqual([far.tileX, far.tileY], [26, 10], 'a far-away correction snaps and carries on along the route');
+  const near = new Walker(10, 10);
+  near.follow([[8, 10], [9, 10], [10, 10], [11, 10]], 'town', 6, 0);
+  assert.equal(near.tileX, 11, 'a route that includes where it is simply continues forward, never back');
 });
 
 test('chicken: with nobody near it wanders calmly and never leaves the area', () => {
@@ -442,6 +530,23 @@ test('catch the chicken, alone: the browser is its own referee; each catch is 3 
   assert.equal(res.rows[0].found, 3);
   assert.equal(r.stars.get(A), 9);
   assert.ok(catches >= 0);
+});
+
+test('catch the chicken: while it flees the referee sends a motion about every 400 ms, and the other screen gets the route ahead', () => {
+  const r = room([A, B]);
+  r.mgr(A).open('chicken'); r.mgr(B).join();
+  r.run(3500);
+  for (let i = 0; i < 30 && !(r.mgr(A).view().game && r.mgr(A).view().game.chick); i++) r.run(100);
+  const first = r.mgr(A).view().game.chick;
+  r.place(B, Math.min(36, first.x + 3), first.y);                // a chaser close to it; A is the referee and stays away
+  r.place(A, 23, 34);
+  const from = r.log.length;
+  for (let i = 0; i < 40; i++) { const c = r.mgr(A).view().game.chick; r.place(B, c.x - 3, c.y); r.run(100); }       // the chaser keeps three tiles behind it
+  const msgs = r.log.slice(from).filter((m) => m.t === 'gchick' && m.m === 'f');
+  assert.ok(msgs.length >= 5 && msgs.length <= 12, `a few motions, not a message per step (${msgs.length} in 4 s)`);
+  assert.ok(msgs.every((m) => m.v === CHICKEN.fleeMs && typeof m.p === 'string' && m.p.length >= 4 && m.o >= 0), 'each carries its pace and the next moves');
+  const seen = r.mgr(B).view().game.chick;
+  assert.ok(seen.route.length >= 4 && seen.v === CHICKEN.fleeMs, 'the other browser holds a route to glide along');
 });
 
 test('catch the chicken: with nobody chasing, it wanders calmly, starts at the gallinero, and the round ends at 60 seconds', () => {
