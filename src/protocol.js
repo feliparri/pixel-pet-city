@@ -196,16 +196,3 @@ export function createRateLimiter(now = () => Date.now()) {
     forget(id) { for (const k of buckets.keys()) if (k.startsWith(`${id}:`)) buckets.delete(k); },
   };
 }
-
-/**
- * The pet in the page fragment the Android app opens the town with: #n=<name>&s=<species>&g=<stage 0-3>&i=<head,face,neck,back>.
- * Returns { name, look } or null; the look is validated like a peer's.
- */
-export function parsePetFragment(hash, catalogue) {
-  if (typeof hash !== 'string' || hash.length > 300) return null;
-  const q = new URLSearchParams(hash.replace(/^#/, ''));
-  if (!q.has('s')) return null;
-  const items = (q.get('i') || '').split(',');
-  const look = validateLook({ species: q.get('s'), stage: Number(q.get('g')), items }, catalogue);
-  return look ? { name: sanitizeName(q.get('n') || ''), look } : null;
-}

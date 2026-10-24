@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sanitizeName, validateLook, validateMessage, createRateLimiter, parsePetFragment, EMOTES, MAX_NAME, newPeerId } from '../src/protocol.js';
+import { sanitizeName, validateLook, validateMessage, createRateLimiter, EMOTES, MAX_NAME, newPeerId } from '../src/protocol.js';
 
 const CAT = { tophat: { slot: 'head' }, sunglasses: { slot: 'face' }, scarf: { slot: 'neck' }, cape: { slot: 'back' } };
 const look = { species: 'cat', stage: 2, items: ['tophat', '', '', ''] };
@@ -96,13 +96,3 @@ test('a sustained flood is capped at the refill rate', () => {
   assert.ok(passed >= 100);
 });
 
-test('parsePetFragment reads the Android hand-over and refuses the rest', () => {
-  const p = parsePetFragment('#n=Mochi&s=cat&g=2&i=tophat,sunglasses,scarf,cape', CAT);
-  assert.deepEqual(p, { name: 'Mochi', look: { species: 'cat', stage: 2, items: ['tophat', 'sunglasses', 'scarf', 'cape'] } });
-  assert.deepEqual(parsePetFragment('#s=frog&g=0', CAT).look.items, ['', '', '', '']);
-  assert.equal(parsePetFragment('#n=x&s=dog&g=0', CAT), null);
-  assert.equal(parsePetFragment('#n=x&s=cat&g=9', CAT), null);
-  assert.equal(parsePetFragment('', CAT), null);
-  assert.equal(parsePetFragment('#' + 'a'.repeat(400), CAT), null);
-  assert.equal(parsePetFragment('#n=%3Cscript%3E&s=seal&g=1', CAT).name, 'script');
-});

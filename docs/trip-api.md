@@ -99,7 +99,8 @@ for 600 s (then it takes over and the old token stops working: `401 bad_session`
 
 ### `trip-save`
 Request `{ "trip": "<ref>", "base_version": <int>, "state": { ... } , "entrance": "<id>" }` (`state` and `entrance` optional). `state` is a
-small JSON object (at most 2048 characters serialized) for phases 2-3; phase 1 sends none. `base_version` must equal the stored
+small JSON object (at most 2048 characters serialized). The town keeps the pet's stars in it: `{ "v": 1, "stars": <int>, ...other keys kept }`
+(saved a moment after each change, one request at a time, retried after a failure). `base_version` must equal the stored
 version (optimistic concurrency). `200 { "version": base + 1, "entrance" }`. Errors: `401 bad_session`, `400 bad_version | bad_state | bad_entrance`,
 `409 version_conflict` (with the current `version`), `409 trip_recalled`, `409 trip_over`.
 

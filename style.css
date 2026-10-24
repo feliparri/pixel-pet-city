@@ -23,6 +23,10 @@ input:focus-visible, select:focus-visible, .btn:focus-visible { outline: 3px sol
 .join { display: grid; grid-template-columns: 1fr auto; gap: .4rem; align-items: end; }
 .join label { grid-column: 1 / -1; }
 #code-input { text-transform: uppercase; letter-spacing: .08em; }
+.how { margin: 0; padding-left: 1.2rem; display: grid; gap: .3rem; }
+#claim-form { grid-template-columns: 1fr; }
+#claim-form label { font-weight: bold; }
+#claim-code { text-transform: uppercase; letter-spacing: .08em; }
 .error { color: var(--red); min-height: 1.4em; margin: 0; }
 
 .town { max-width: none; height: 100%; display: flex; flex-direction: column; padding: 0; }

@@ -13,6 +13,16 @@ export function tripCodeFromSearch(search) {
   return normalizeTripCode(new URLSearchParams(search).get('trip'));
 }
 
+/**
+ * How the page is entered: 'trip' (?trip=<code>: a real pet from a board or the phone), 'dev' (?local=1&dev=1: the pet chooser and local
+ * rooms, for development only) or 'landing' (anything else, including the old #n=..&s=.. fragment, which is ignored: it proved nothing).
+ */
+export function entryMode(search) {
+  if (tripCodeFromSearch(search)) return 'trip';
+  const p = new URLSearchParams(search);
+  return p.has('local') && p.get('dev') === '1' ? 'dev' : 'landing';
+}
+
 /** What went wrong, as the Spanish sentence the page shows. */
 export function tripErrorText(error) {
   switch (error) {
@@ -36,15 +46,15 @@ export function petFromClaim(pet, catalogue) {
 }
 
 export function createTripClient({ base, fetch: fetcher = globalThis.fetch, storage = null, setInterval: setI = globalThis.setInterval, clearInterval: clearI = globalThis.clearInterval }) {
-  let session = null;                                   // { code, trip, token, version, entrance }
+  let session = null;                                   // { code, trip, token, version, entrance, data (the saved state blob) }
 
   const read = () => { try { return JSON.parse(storage?.getItem(KEY) || 'null'); } catch { return null; } };
   const write = (v) => { try { v ? storage?.setItem(KEY, JSON.stringify(v)) : storage?.removeItem(KEY); } catch { /* private mode */ } };
 
-  async function post(fn, body, token) {
+  async function post(fn, body, token, keepalive = false) {
     let res;
     try {
-      res = await fetcher(`${base}/${fn}`, { method: 'POST', headers: { 'content-type': 'application/json', ...(token ? { 'x-trip-token': token } : {}) }, body: JSON.stringify(body) });
+      res = await fetcher(`${base}/${fn}`, { method: 'POST', headers: { 'content-type': 'application/json', ...(token ? { 'x-trip-token': token } : {}) }, body: JSON.stringify(body), ...(keepalive ? { keepalive: true } : {}) });
     } catch { return { ok: false, status: 0, error: 'network' }; }
     let json = null;
     try { json = await res.json(); } catch { /* not json */ }
@@ -62,16 +72,16 @@ export function createTripClient({ base, fetch: fetcher = globalThis.fetch, stor
       if (!r.ok) { if (r.error === 'trip_over') write(null); return { ok: false, error: r.error }; }
       const pet = petFromClaim(r.body.pet, catalogue);
       if (!pet) return { ok: false, error: 'bad_pet' };
-      session = { code, trip: r.body.trip, token: r.body.token, version: r.body.state?.version ?? 0, entrance: entranceId(r.body.entrance) };
+      session = { code, trip: r.body.trip, token: r.body.token, version: r.body.state?.version ?? 0, data: r.body.state?.data && typeof r.body.state.data === 'object' ? r.body.state.data : {}, entrance: entranceId(r.body.entrance) };
       write({ code, token: session.token });
-      return { ok: true, resumed: token !== undefined && token === r.body.token, entrance: session.entrance, pet };
+      return { ok: true, resumed: token !== undefined && token === r.body.token, entrance: session.entrance, pet, state: session.data };
     },
 
-    /** Stores the entrance (the dev flag) and, later, the state of the pet. Returns false when the server refused. */
-    async save({ entrance, state } = {}) {
+    /** Stores the entrance (the dev flag) and the state blob of the pet (the stars). Returns false when the server refused. */
+    async save({ entrance, state, keepalive = false } = {}) {
       if (!session) return false;
-      const r = await post('trip-save', { trip: session.trip, base_version: session.version, ...(state ? { state } : {}), ...(entrance ? { entrance } : {}) }, session.token);
-      if (r.ok) { session.version = r.body.version; session.entrance = entranceId(r.body.entrance); return true; }
+      const r = await post('trip-save', { trip: session.trip, base_version: session.version, ...(state ? { state } : {}), ...(entrance ? { entrance } : {}) }, session.token, keepalive);
+      if (r.ok) { session.version = r.body.version; session.entrance = entranceId(r.body.entrance); if (state) session.data = state; return true; }
       if (r.error === 'version_conflict' && Number.isInteger(r.body?.version)) session.version = r.body.version;
       return false;
     },
@@ -95,6 +105,9 @@ export function createTripClient({ base, fetch: fetcher = globalThis.fetch, stor
       tick();
       return () => { stopped = true; clearI(timer); };
     },
+
+    /** The saved state blob as last seen (a copy). */
+    get state() { return session ? { ...session.data } : {}; },
 
     forget() { session = null; write(null); },
   };

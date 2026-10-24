@@ -3,8 +3,10 @@
 The online town of [pixel-pet](https://github.com/feliparri/pixel-pet): pets from different phones and browsers meet in a
 small top-down town, walk around and greet each other with presets. Plain HTML, CSS and ES modules; there is no build step.
 
-- Private rooms by invite code (`FOCA-LUNA-42`): "Crear sala" makes one, "Unirse" needs it. Rooms cannot be listed and end when
-  everyone leaves. No accounts.
+- Only real pets come in: the town is opened with `?trip=<code>` from the board (Opciones > Ciudad) or the phone app (same trip API).
+  A page without a trip shows how to enter and a "Tengo un código" field; there is no free pet chooser on the public page.
+- Private rooms by invite code (`FOCA-LUNA-42`): "Crear sala" makes one, "Unirse" needs it; only a pet whose trip was claimed sees these
+  controls (see "Rooms and real pets" below for what is not enforced yet). Rooms cannot be listed and end when everyone leaves. No accounts.
 - No free-text chat: only the presets (👋 ❤️ 😄 🎉 "¡Hola!", "¡Juguemos!", "¡Chau!"). Only the pet's name and look are shared.
 - A town of 48 x 44 tiles with a plaza and fountain, four houses, the Parque (pond, trees, bushes, open grass) and the Tienda, which can
   be entered (it sells nothing yet: "Próximamente"). The town follows your local clock: dusk, night, lit windows and lamps.
@@ -16,8 +18,11 @@ small top-down town, walk around and greet each other with presets. Plain HTML, 
     rotates (who searched least, then who joined first). 15 s countdown (the seeker is frozen in the dark), then 90 s search seeing
     only a 3-tile circle of light; bushes hide a pet unless the seeker is next to it. Touching a hider finds it. Stars: +1 per survivor,
     +1 for the seeker per find.
-  - **Pillar la gallina** (works solo): the chicken starts at the gallinero and wanders calmly (2 tiles a second); when a pet comes within
-    4 tiles it sprints (8 tiles a second, a pet walks 6) for about 12 tiles across the whole town, then pants for 1.8 s. First to touch it
+  - **Pillar la gallina** (works solo): the chicken starts at the gallinero and wanders calmly (2 tiles a second); while a pet is within
+    6 tiles it runs at one constant speed, 5 tiles a second (a pet walks 6), with no sprints and no rests, and it calms down only when
+    every pet is beyond 8 tiles. It keeps its heading until something blocks the way and never turns back on itself, so its route can be
+    read and cut with a shortcut. The referee sends it as a motion (tile, pace, next 8 moves, ms since it arrived) every 400 ms and
+    every browser glides along that route. First to touch it
     scores 3 stars; 60 s or first to 3 catches.
   - While a game is on its players see only the players who joined (pets and names); pets that did not join keep seeing everybody, and
     so do found hiders (as spectators of the game). Doors do not take a player inside during a game.
@@ -25,11 +30,11 @@ small top-down town, walk around and greet each other with presets. Plain HTML, 
     until it closes. Game clocks are referee-relative (the referee sends the milliseconds left): a tab that slept does not use the
     countdown or the search up, and a player missing for under 12 s is not given up.
   - The cancha (football) and the pista (race) are drawn and signed but not playable yet.
-  - Stars show in the HUD (`⭐ 12`), kept in `localStorage` per pet name; the shop that spends them is a later stage.
+  - Stars show in the HUD (`⭐ 12`) and belong to the real pet: they are kept in the trip's server state (`trip-save`, `{ v: 1, stars }`,
+    saved a moment after each change); the shop that spends them is a later stage.
   - No host: one browser among the players is the invisible *referee* (the lowest peer id among the players) that simulates the shared
     things and broadcasts them; if it leaves, the next lowest id carries on. Shared state is only believed from the referee.
     One lobby or game at a time per room. See `src/games/`.
-- Opened by the pixel-pet Android app with the player's pet in the URL fragment, or in a desktop browser with a pet chooser.
 
 ## Try it locally (two tabs)
 
@@ -37,7 +42,7 @@ small top-down town, walk around and greet each other with presets. Plain HTML, 
 python3 -m http.server 8000      # in this folder
 ```
 
-1. Open <http://localhost:8000/?local=1> (or without `?local=1` and press "Jugar en modo local"). Pick a pet, press **Crear sala**.
+1. Open <http://localhost:8000/?local=1&dev=1> (development only: the pet chooser and local rooms; without `dev=1` you get the landing page). Pick a pet, press **Crear sala**.
 2. Open a second tab at the same address, pick another pet, type the code in **Código** and press **Unirse**.
 3. Walk with the arrows or WASD (or tap the ground on a phone); press an emote and watch it in the other tab. **Salir** in one
    tab removes its pet from the other. A third tab with a different code sees nothing.
@@ -52,7 +57,7 @@ Realtime Broadcast and Presence only, on the free tier. No tables, no accounts. 
 
 1. Create a Supabase project. In Project settings > API copy the project URL and the **anon** public key.
 2. Put both in [`config.js`](config.js). Never a `service_role` key (the app refuses one).
-3. Commit and publish. Until `config.js` is filled in the lobby says the town is not configured and only offers the local mode.
+3. Commit and publish. Until `config.js` is filled in the landing page says the town is not configured.
 
 The code is the only secret: anyone who knows the code and the anon key can listen to the room, so it is meant for friends,
 not for strangers. Everything received is validated and rate-limited (`src/protocol.js`): names are cut to 12 safe characters,
@@ -63,10 +68,13 @@ looks and items must exist in the exported catalogue, positions must be walkable
 Settings > Pages > Deploy from a branch > `main` / root. `.nojekyll` is there, `index.html` is at the root. The Android app only
 opens `https://feliparri.github.io/pixel-pet-city/`.
 
-## The pet in the URL
+## Rooms and real pets
 
-`#n=<name>&s=<frog|seal|cat>&g=<stage 0-3>&i=<head>,<face>,<neck>,<back>` (item ids as in `assets/sprites.json`, empty for none),
-for example `#n=Mochi&s=cat&g=2&i=tophat,,scarf,`.
+The pet comes from a trip (`docs/trip-api.md`): `?trip=<code>`. The old `#n=..&s=..` fragment is ignored, because it proved nothing.
+Known limitation: the room controls are only shown to a claimed trip pet and the page refuses to open an online room without one, but
+Realtime channels are still open to anyone holding the public anon key, so a modified client could join a room without a pet. True
+enforcement needs the server to issue a short-lived room token for a claimed trip and Realtime to check it (private channels with an
+authorization policy); see `docs/room-access.md`.
 
 ## Art
 

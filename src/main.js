@@ -1,17 +1,19 @@
-// The page: lobby (pet, create or join a room) and the town screen (code, copy, leave, emotes).
+// The page: a landing that explains how to enter, the town of a real pet (?trip=<code>: a board or the phone), and, for development only
+// (?local=1&dev=1), a pet chooser with local rooms. The town screen has the code, copy, leave and emotes.
 import config from '../config.js';
 import { isConfigured } from './config-check.js';
 import { generateCode, normalizeCode } from './code.js';
-import { EMOTES, SLOTS, SPECIES, STAGES, parsePetFragment, sanitizeName, validateLook } from './protocol.js';
+import { EMOTES, SLOTS, SPECIES, STAGES, sanitizeName, validateLook } from './protocol.js';
 import { createTownNet } from './net.js';
 import { loadSprites, drawPet } from './sprites.js';
 import { loadFont } from './font.js';
 import { startTown } from './town.js';
-import { createTripClient, tripCodeFromSearch, tripErrorText } from './trip.js';
+import { createTripClient, tripCodeFromSearch, tripErrorText, entryMode } from './trip.js';
+import { normalizeTripCode } from './trip-code.js';
 import { devEntrance } from './entrance.js';
 import { drawKeepsake } from './keepsake.js';
 import { createHud } from './hud.js';
-import { createStars } from './stars.js';
+import { createStars, createStarSaver, starsFromState, stateWithStars } from './stars.js';
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -20,10 +22,10 @@ const store = {
 };
 
 let sprites, font, net = null, town = null, mode = null, netMode = null;
-let visit = null;                                 // a pet visiting from its board: { client, entrance, stop, solo }
-let hud = null, stars = null;                    // the games' overlay and this pet's star counter
+let visit = null;                                 // a real pet visiting (trip): { client, entrance, stop, solo, stars, saver }
+let hud = null, stars = null;                    // the games' overlay and this pet's star counter (kept in the trip's server state)
 let me = null;                                   // { name, look }
-let fixedPet = false;                            // the pet came from the Android app: no chooser
+let fixedPet = false;                            // the pet is a real one (a trip): no chooser
 
 function say(text) { $('error').textContent = text || ''; }
 
@@ -71,13 +73,11 @@ function refreshPet() {
 
 function setMode(m) {
   mode = m;
-  const ready = m !== null;
-  $('actions').hidden = !ready;
-  $('config-note').hidden = ready || isConfigured(config);
-  $('local-mode').hidden = ready || isConfigured(config);
+  $('actions').hidden = m === null;
 }
 
 function show(screen) {
+  $('landing').hidden = screen !== 'landing';
   $('lobby').hidden = screen !== 'lobby';
   $('town').hidden = screen !== 'town';
   $('gone').hidden = screen !== 'gone';
@@ -87,6 +87,7 @@ async function enter(code, { transport = mode, arrival = null, solo = false } = 
   say('');
   refreshPet();
   if (!me.look) { say('Elige una mascota.'); return; }
+  if (transport === 'supabase' && !(visit && visit.client.session)) { say('Entra con tu mascota desde la placa o desde la app.'); return false; }   // rooms are for claimed trip pets only
   $('create').disabled = $('join').disabled = true;
   try {
     netMode = transport;
@@ -106,7 +107,7 @@ async function enter(code, { transport = mode, arrival = null, solo = false } = 
   if (visit) visit.solo = solo;
   paintVisitBar();
   show('town');
-  stars = createStars({ getItem: store.get, setItem: store.set }, me.name);
+  stars = visit ? visit.stars : createStars();                  // dev only: a counter that lives for this visit
   const showStars = () => { $('stars-n').textContent = String(stars.get()); };
   showStars();
   const counter = { add(n) { stars.add(n); showStars(); } };
@@ -133,7 +134,7 @@ function leave() {
   show('lobby');
 }
 window.cityLeave = leave;                          // the Android back button calls this before it closes the page
-window.addEventListener('pagehide', () => { if (net) net.leave(); });
+window.addEventListener('pagehide', () => { if (net) net.leave(); if (visit) visit.saver.flush(); });
 
 async function copyCode() {
   const code = $('room-code').textContent;
@@ -192,6 +193,7 @@ function showGone(text, canGoToLobby = false) {
 
 async function recalled(kind) {
   if (!visit) return;
+  visit.saver.flush();                                          // the stars of the last seconds (the server may refuse after a recall)
   if (kind === 'recalled' && town) await town.playExit(visit.entrance);
   closeRoom();
   visit.client.forget();
@@ -211,7 +213,8 @@ async function bootTrip(code) {
   $('chooser').hidden = true; $('pet-fixed').hidden = false; $('pet-name').textContent = me.name;
   const dev = devEntrance(location.search);
   if (dev && dev !== r.entrance && !r.resumed) { await client.save({ entrance: dev }); }
-  visit = { client, entrance: client.session.entrance, stop: null, solo: true };
+  const saver = createStarSaver((n) => client.save({ state: stateWithStars(client.state, n), keepalive: true }));
+  visit = { client, entrance: client.session.entrance, stop: null, solo: true, saver, stars: createStars({ initial: starsFromState(r.state), persist: (n) => saver.save(n) }) };
   const box = $('keepsakes');
   box.replaceChildren();
   for (const k of r.pet.keepsakes) {
@@ -225,38 +228,47 @@ async function bootTrip(code) {
   await enterSolo(r.resumed ? null : visit.entrance);
 }
 
+function bootLanding() {
+  show('landing');
+  $('config-note').hidden = isConfigured(config);
+  const p = new URLSearchParams(location.search);
+  $('landing-note').hidden = !(location.hash.length > 1 || p.has('trip'));     // an old #n=..&s=.. link, or a ?trip= that is not a code: nothing to enter with
+  if (p.has('trip')) $('claim-error').textContent = tripErrorText('bad_code');
+  $('claim-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const code = normalizeTripCode($('claim-code').value);
+    if (!code) { $('claim-error').textContent = tripErrorText('bad_code'); return; }
+    location.assign(`${location.pathname}?trip=${encodeURIComponent(code)}`);       // the same as opening ?trip=<code>
+  });
+}
+
 async function boot() {
+  const entry = entryMode(location.search);
+  if (entry === 'landing') { bootLanding(); return; }                          // no pet to draw yet: nothing else to load
   try {
     [sprites, font] = await Promise.all([loadSprites(), loadFont()]);
   } catch {
-    say('No se pudieron cargar los dibujos de la ciudad.');
+    showGone('No se pudieron cargar los dibujos de la ciudad.');
     return;
   }
   fillItemSelects();
   buildEmotes();
   hud = createHud($, { onPlay: () => town && town.games.play(), onJoin: () => town && town.games.join(), onSeek: () => town && town.games.seek(), onZone: (z) => town && town.games.zone(z), onLeave: () => town && town.games.leave(), onDismiss: () => town && town.games.dismiss() });
-  const tripCode = tripCodeFromSearch(location.search);
-  if (tripCode) {
+  if (entry === 'trip') {
     $('copy').addEventListener('click', copyCode);
     $('leave').addEventListener('click', leave);
     $('v-create').addEventListener('click', () => visitEnter(generateCode()));
     $('v-join').addEventListener('click', () => { const c = normalizeCode($('v-code').value); if (c) visitEnter(c); else $('status').textContent = 'Código no válido. Ejemplo: FOCA-LUNA-42'; });
     $('v-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('v-join').click(); });
     mode = 'supabase';
-    return bootTrip(tripCode);
+    return bootTrip(tripCodeFromSearch(location.search));
   }
-  const fromApp = parsePetFragment(location.hash, sprites.catalogue);
-  if (fromApp) {
-    fixedPet = true; me = fromApp;
-    $('chooser').hidden = true; $('pet-fixed').hidden = false; $('pet-name').textContent = me.name;
-  } else {
-    applySaved();
-    $('chooser').addEventListener('input', refreshPet);
-  }
+  // development only (?local=1&dev=1): the pet chooser and rooms between tabs of this browser
+  show('lobby');
+  applySaved();
+  $('chooser').addEventListener('input', refreshPet);
   refreshPet();
-  const forceLocal = new URLSearchParams(location.search).has('local');
-  setMode(isConfigured(config) && !forceLocal ? 'supabase' : forceLocal ? 'local' : null);
-  $('local-mode').addEventListener('click', () => setMode('local'));
+  setMode('local');
   $('create').addEventListener('click', () => enter(generateCode()));
   const join = () => {
     const code = normalizeCode($('code-input').value);

@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createTripClient, tripCodeFromSearch, petFromClaim, tripErrorText, POLL_MS } from '../src/trip.js';
+import { createTripClient, tripCodeFromSearch, petFromClaim, tripErrorText, entryMode, POLL_MS } from '../src/trip.js';
+import { stateWithStars, starsFromState } from '../src/stars.js';
 import { parseKeepsake, keepsakeRgba } from '../src/keepsake.js';
 import { normalizeTripCode } from '../src/trip-code.js';
 import { normalizeCode, CODE_ALPHABET } from '../supabase/functions/trip/trip-code.js';
@@ -115,4 +116,36 @@ test('keepsake art decodes: high nibble first, 0 is transparent, bad sizes are r
   assert.equal(parseKeepsake({ slot: 0, name: 'x', w: 3, h: 1, pal, px: Buffer.from([1]).toString('base64') }), null);
   assert.equal(parseKeepsake({ slot: 9, name: 'x', w: 1, h: 1, pal, px: 'AA==' }), null);
   assert.equal(parseKeepsake({ slot: 0, name: 'x', w: 1, h: 1, pal: ['red'], px: 'AA==' }), null);
+});
+
+test('entry: only a trip code enters the town; the chooser needs ?local=1&dev=1; the old fragment and bare pages land on the explanation', () => {
+  assert.equal(entryMode('?trip=K7M2QX'), 'trip');
+  assert.equal(entryMode('?trip=k7m-2qx&dev=1'), 'trip');
+  assert.equal(entryMode(''), 'landing');
+  assert.equal(entryMode('?local=1'), 'landing', 'local rooms without dev are not offered');
+  assert.equal(entryMode('?dev=1'), 'landing');
+  assert.equal(entryMode('?trip=nonsense'), 'landing');
+  assert.equal(entryMode('?local=1&dev=1'), 'dev');
+  assert.equal(entryMode('?local=1&dev=0'), 'landing');
+  assert.equal(entryMode('#n=Mochi&s=cat&g=2'), 'landing', 'a pet in the fragment proves nothing and is ignored');
+});
+
+test('stars live in the trip state: saved with the version, read back on resume, other keys kept', async () => {
+  const { w, s } = await startTrip();
+  const { client, storage } = clientFor(w);
+  const r = await client.claim(s.body.code, catalogue);
+  assert.equal(starsFromState(r.state), 0);
+  assert.equal(await client.save({ state: stateWithStars(client.state, 5) }), true);
+  assert.equal(await client.save({ state: stateWithStars({ ...client.state, shop: ['hat'] }, 8) }), true, 'the version moved on, so the next save goes through');
+  const again = clientFor(w);
+  again.storage.setItem('city.trip', storage.getItem('city.trip'));
+  const r2 = await again.client.claim(s.body.code, catalogue);
+  assert.deepEqual(r2.state, { shop: ['hat'], v: 1, stars: 8 });
+  assert.equal(starsFromState(r2.state), 8);
+  const stale = clientFor(w);
+  stale.storage.setItem('city.trip', storage.getItem('city.trip'));
+  await stale.client.claim(s.body.code, catalogue);
+  assert.equal(await client.save({ state: stateWithStars(client.state, 9) }), true);
+  assert.equal(await stale.client.save({ state: stateWithStars(stale.client.state, 10) }), false, 'a stale version is refused, then learns the current one');
+  assert.equal(await stale.client.save({ state: stateWithStars(stale.client.state, 10) }), true);
 });
