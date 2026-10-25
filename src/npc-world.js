@@ -13,6 +13,9 @@ import { hashSeed, mulberry32 } from './life.js';
 import { msToZoned, zonedToMs } from './admin-time.js';
 import { SHOWS } from './show/timeline.js';
 
+/** A villager strolls: one step takes this long (a player's pet takes STEP_MS; at that pace the villagers looked in a hurry, owner 2026-10-25). */
+export const NPC_STEP_MS = Math.round(STEP_MS * 2.5);
+
 export const DAY_START = '06:00';           // the town's day begins at 06:00 America/Santiago (everybody is in bed then)
 export const EARLIEST_BED = 1;              // nobody goes to bed before 01:00
 export const SHOW_PAD_MS = 5000;            // a show's end plus this: nobody dozes off at the last firework
@@ -129,7 +132,7 @@ class Timeline {
     if (!path.length) return;
     const last = path[path.length - 1], a = path.length > 1 ? path[path.length - 2] : from;
     this.pos = { area, x: last[0], y: last[1], d: dirOf(a, last) };
-    const s = this.push({ kind: 'walk', ms: path.length * STEP_MS, ...extra });
+    const s = this.push({ kind: 'walk', ms: path.length * NPC_STEP_MS, ...extra });
     s.area = area; s.from = from; s.path = path; s.x = last[0]; s.y = last[1];
   }
   /** Gets to `stand` of `area`, crossing the road when the villager is in the other area. */
@@ -183,8 +186,8 @@ class Timeline {
     }
     const s = segs[i], act = { state: s.state, pool: s.pool, aff: s.aff, drive: s.drive };
     if (s.kind === 'walk') {
-      const p = Math.min(Math.max(t - s.t0, 0), s.t1 - s.t0 - 1), n = Math.floor(p / STEP_MS), from = n === 0 ? s.from : s.path[n - 1], to = s.path[n];
-      return { area: s.area, x0: from[0], y0: from[1], x: to[0], y: to[1], k: (p % STEP_MS) / STEP_MS, moving: true, d: dirOf(from, to), asleep: false, act };
+      const p = Math.min(Math.max(t - s.t0, 0), s.t1 - s.t0 - 1), n = Math.floor(p / NPC_STEP_MS), from = n === 0 ? s.from : s.path[n - 1], to = s.path[n];
+      return { area: s.area, x0: from[0], y0: from[1], x: to[0], y: to[1], k: (p % NPC_STEP_MS) / NPC_STEP_MS, moving: true, d: dirOf(from, to), asleep: false, act };
     }
     return { area: s.area, x0: s.x, y0: s.y, x: s.x, y: s.y, k: 0, moving: false, d: s.kind === 'sleep' ? 'down' : s.d, asleep: s.kind === 'sleep', act };
   }

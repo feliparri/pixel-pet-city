@@ -4,9 +4,9 @@
 // say are pure functions of (room code, server time), so every player in the room sees the same one in the same spot; nothing here goes over the
 // network. They say short lines in speech bubbles: from their own pool, or about what they attend to (the object they use or walk to, the drive
 // that moves them, the local player's pet when it is near). The lines are drawn per (villager, time slot).
-import { Walker, STEP_MS } from './walker.js';
+import { Walker } from './walker.js';
 import { hashSeed, mulberry32 } from './life.js';
-import { createWorld } from './npc-world.js';
+import { createWorld, NPC_STEP_MS } from './npc-world.js';
 
 export { npcTile, showSpans } from './npc-world.js';
 export const SLOT_MS = 13000;             // a villager may speak once per slot...
@@ -178,7 +178,7 @@ export function createNpcs({ seed, sprites, variants = createVariants() }) {
       const spans = ctx.shows || [], poses = world.poses(t, spans), pet = ctx.pet;
       return ents.map(({ entity, sayOffset }, i) => {
         const p = poses[i], w = entity.walker;
-        w.fx = p.x0; w.fy = p.y0; w.tx = p.x; w.ty = p.y; w.moving = p.moving; w.t = p.k * STEP_MS; w.d = p.d;
+        w.fx = p.x0; w.fy = p.y0; w.tx = p.x; w.ty = p.y; w.moving = p.moving; w.stepOverride = NPC_STEP_MS; w.t = p.k * NPC_STEP_MS; w.d = p.d;
         entity.area = p.area; entity.asleep = p.asleep;
         if (p.asleep) entity.say = SLEEP_LINE;
         else {
