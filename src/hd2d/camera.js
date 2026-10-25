@@ -69,6 +69,27 @@ export function sortBackToFront(items) {
   return items.map((it, i) => [it, i]).sort((p, q) => q[0].depth - p[0].depth || (p[0].order || 0) - (q[0].order || 0) || p[1] - q[1]).map((p) => p[0]);
 }
 
+/** A sprite's scale snapped to a whole number of screen px per art px (at least 1): every art pixel then covers the same square. */
+export const snapScale = (s) => Math.max(1, Math.round(s));
+
+/** The camera's focus snapped to whole screen pixels at the focus depth, so the ground does not crawl by fractions of a pixel as the camera glides. */
+export function snapFocus(cam, focusX, focusY) {
+  const z = cam.focal / cam.dist;
+  return [Math.round(focusX * z) / z, Math.round(focusY * z) / z];
+}
+
+/**
+ * The tiles that are fully on screen with a margin: { x0, y0, x1, y1 } inclusive, the rectangle between the bottom row's width (the
+ * narrowest) and the rows 14% in from the top and bottom; the top gets two more tiles of room for a pet's height. Null if it is tiny.
+ */
+export function visibleTiles(cam, viewW, viewH) {
+  const top = unproject(cam, viewW / 2, viewH * 0.14), bottom = unproject(cam, viewW / 2, viewH * 0.86);
+  const left = unproject(cam, viewW * 0.1, viewH * 0.86), right = unproject(cam, viewW * 0.9, viewH * 0.86);
+  if (!top || !bottom || !left || !right) return null;
+  const box = { x0: Math.ceil(left.x / TILE), x1: Math.floor(right.x / TILE) - 1, y0: Math.ceil(top.y / TILE) + 2, y1: Math.floor(bottom.y / TILE) - 1 };
+  return box.x1 - box.x0 >= 2 && box.y1 - box.y0 >= 2 ? box : null;
+}
+
 export const MAX_REACH = 680;      // the furthest north (world px beyond the focus) the top row of the screen may show
 
 /**

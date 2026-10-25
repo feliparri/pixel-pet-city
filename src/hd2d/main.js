@@ -4,7 +4,7 @@
 //   &res=0.75         scales the internal resolution
 import { TILE } from '../map.js';
 import { drawPet, CELL, loadSprites } from '../sprites.js';
-import { cameraFor, project, depthOf, sortBackToFront } from './camera.js';
+import { cameraFor, project, sortBackToFront, snapScale, snapFocus, visibleTiles } from './camera.js';
 import { approach } from './light.js';
 import { lightAt } from './light.js';
 import { buildWorld, bakeGround, drawGround, standingItems, drawGlows, fountainItem, grade } from './scene.js';
@@ -47,7 +47,7 @@ function petItem(e, cam, n, now) {
   const k = e.walker.moving ? Math.min(1, e.walker.t / e.walker.stepMs()) : 0;
   const hop = e.walker.moving ? Math.round(Math.abs(Math.sin(k * Math.PI)) * 3) : 0;
   return { depth: g.depth, order: 1, draw: (c) => {
-    const s = g.scale, cx = g.x, cy = g.y;
+    const s = snapScale(g.scale), cx = Math.round(g.x), cy = Math.round(g.y);                // whole-number scale: even art pixels
     const sh = c.globalAlpha;                                           // the soft ground shadow: flattened by the tilt, fading as the pet hops
     c.save(); c.translate(cx, cy - s); c.scale(1, Math.max(0.3, cam.sin) * 0.5);
     for (const [r, a] of [[11, 0.16], [8.5, 0.2], [6, 0.24]]) { c.fillStyle = `rgba(8,10,30,${a * (1 - hop * 0.1)})`; c.beginPath(); c.arc(0, 0, r * s, 0, 6.2832); c.fill(); }
@@ -55,21 +55,42 @@ function petItem(e, cam, n, now) {
     tctx.clearRect(0, 0, 48, 48);
     const flap = e.walker.moving && Math.floor(now / 140) % 2 === 1;
     drawPet(tctx, sprites, e.look, 8, 12 - hop, { frame: headFrame(e, now), flip: e.walker.d === 'right', flap });
-    if (n > 0.02) grade(tctx, tmp, n, lightAt(world.pools, wx, wy));        // night: the veil, and the warm wash where a lamp reaches
+    if (n > 0.02) grade(tctx, tmp, n, lightAt(world.lights, wx, wy));        // night: the veil, and the warm wash where a lamp reaches
     c.drawImage(tmp, 0, 0, 48, 48, cx - 24 * s, cy - 42 * s, 48 * s, 48 * s);
   } };
 }
 
-/** The whole ground shadow pass needs sprites sorted with it, so shadows ride inside each pet item. */
+/** The camera glides towards the first pet, pulled halfway towards the middle of the group so the others stay in frame. */
+function follow(dt, jump = false) {
+  const ps = pets.map((e) => e.walker.pos()), lead = ps[0];
+  const mx = ps.reduce((a, p) => a + p.x, 0) / ps.length, my = ps.reduce((a, p) => a + p.y, 0) / ps.length;
+  const tx = Math.min(FOLLOW_BOX.x1 * TILE, Math.max(FOLLOW_BOX.x0 * TILE, (lead.x * 0.55 + mx * 0.45) * TILE + 8));
+  const ty = Math.min(FOLLOW_BOX.y1 * TILE, Math.max(FOLLOW_BOX.y0 * TILE, (lead.y * 0.55 + my * 0.45) * TILE + 8));
+  const k = jump ? 1 : 1 - Math.exp(-dt / 700);
+  focus.x += (tx - focus.x) * k; focus.y += (ty - focus.y) * k;
+}
+
+const currentCam = () => {
+  const c0 = cameraFor(view.w, view.h, focus.x, focus.y, state.tilt), [fx, fy] = snapFocus(c0, focus.x, focus.y);
+  return cameraFor(view.w, view.h, fx, fy, state.tilt);
+};
+
+/** Moves the pets; they only choose destinations inside the tiles the camera shows (and walk back in if the view moved off them). */
+function stepPets(dt) {
+  const vis = visibleTiles(currentCam(), view.w, view.h);
+  const fxT = Math.round(focus.x / TILE), fyT = Math.round(focus.y / TILE);
+  const box = {
+    x0: Math.max(BOX.x0, vis ? vis.x0 : fxT - 3), x1: Math.min(BOX.x1, vis ? vis.x1 : fxT + 3),
+    y0: Math.max(BOX.y0, vis ? vis.y0 : fyT - 3), y1: Math.min(BOX.y1, vis ? vis.y1 : fyT + 3),
+  };
+  for (const p of pets) { p.box = box; p.update(dt); }
+}
+
 function frame(now, dt) {
   state.night = approach(state.night, state.nightTarget, dt);
   state.tilt = approach(state.tilt, state.tiltTarget, dt, 1.6);
   const n = state.night, t = state.tilt;
-  const lead = pets[0].walker.pos();
-  const tx = Math.min(FOLLOW_BOX.x1 * TILE, Math.max(FOLLOW_BOX.x0 * TILE, lead.x * TILE + 8)), ty = Math.min(FOLLOW_BOX.y1 * TILE, Math.max(FOLLOW_BOX.y0 * TILE, lead.y * TILE + 8));
-  const k = still ? 1 : 1 - Math.exp(-dt / 700);                        // the camera slowly follows the first pet
-  focus.x += (tx - focus.x) * k; focus.y += (ty - focus.y) * k;
-  const cam = cameraFor(view.w, view.h, focus.x, focus.y, t);
+  const cam = currentCam();
 
   const nq = Math.round(n * 16), wf = Math.floor(now / 320) % 3, key = `${nq}:${wf}`;
   if (key !== groundKey) { bakeGround(world, nq / 16, wf, ground); groundKey = key; }
@@ -105,7 +126,8 @@ async function main() {
   setUi();
   if (still) {                                                          // a deterministic frame: simulate 9 seconds, then draw once
     state.tilt = state.tiltTarget;
-    for (let i = 0; i < 270; i++) for (const p of pets) p.update(33);
+    for (let i = 0; i < 270; i++) { follow(33); stepPets(33); }
+    follow(33, true);
     const paint = (left) => { try { frame(9000, 33); } catch (e) { document.title = `error: ${e.message}`; throw e; } if (left) requestAnimationFrame(() => paint(left - 1)); else document.title = 'ready'; };   // a few frames, so the browser presents the canvas before a screenshot
     paint(3);
     return;
@@ -113,7 +135,7 @@ async function main() {
   if (bench) {
     state.tilt = state.tiltTarget;
     const times = [];
-    for (let i = 0; i < 150; i++) { for (const p of pets) p.update(33); const a = performance.now(); frame(i * 33, 33); ctx.getImageData(0, 0, 1, 1); times.push(performance.now() - a); }
+    for (let i = 0; i < 150; i++) { follow(33); stepPets(33); const a = performance.now(); frame(i * 33, 33); ctx.getImageData(0, 0, 1, 1); times.push(performance.now() - a); }
     const run = times.slice(30).sort((a, b) => a - b), avg = run.reduce((s, v) => s + v, 0) / run.length;
     document.body.setAttribute('data-bench', `${view.w}x${view.h} fx=${state.tilt} night=${state.night} avg=${avg.toFixed(2)}ms p50=${run[run.length >> 1].toFixed(2)}ms p95=${run[Math.floor(run.length * 0.95)].toFixed(2)}ms`);
     document.title = 'ready';
@@ -123,7 +145,7 @@ async function main() {
   const loop = (now) => {
     const dt = Math.min(100, stat.last ? now - stat.last : 16);
     stat.last = now;
-    for (const p of pets) p.update(dt);
+    follow(dt); stepPets(dt);
     const a = performance.now();
     frame(now, dt);
     stat.ema += (performance.now() - a - stat.ema) * 0.08;

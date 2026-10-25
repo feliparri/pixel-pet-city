@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { makeCamera, cameraFor, MAX_REACH, project, unproject, groundRow, depthOf, billboardScale, standAt, tileToScreen, screenToTile, sortBackToFront, TILE } from '../src/hd2d/camera.js';
+import { makeCamera, cameraFor, MAX_REACH, snapScale, snapFocus, visibleTiles, project, unproject, groundRow, depthOf, billboardScale, standAt, tileToScreen, screenToTile, sortBackToFront, TILE } from '../src/hd2d/camera.js';
 import { falloff, lightAt, nightMultiply, spriteGrade, approach, LAMP_RADIUS } from '../src/hd2d/light.js';
 import { Wanderer, rng } from '../src/hd2d/wander.js';
 import { isWalkable } from '../src/map.js';
@@ -92,6 +92,29 @@ test('a tall phone view zooms in so the top row never stretches to the horizon',
     assert.ok(top && 20 * 16 - top.y <= MAX_REACH + 1e-6, `${w}x${h}`);
   }
   assert.ok(cameraFor(750, 1136, 0, 0, 1).focal / 330 > 2.5);
+});
+
+test('sprite scale snaps to whole screen pixels per art pixel, never below 1', () => {
+  assert.equal(snapScale(3.4), 3); assert.equal(snapScale(3.5), 4); assert.equal(snapScale(0.4), 1); assert.equal(snapScale(5), 5);
+});
+
+test('the focus snaps to whole screen pixels at the focus depth', () => {
+  const c = cameraFor(1280, 720, 400, 320, 1), z = c.focal / c.dist;
+  const [x, y] = snapFocus(c, 400.123, 320.456);
+  near(x * z, Math.round(x * z), 1e-9); near(y * z, Math.round(y * z), 1e-9);
+  assert.ok(Math.abs(x - 400.123) <= 0.5 / z + 1e-9 && Math.abs(y - 320.456) <= 0.5 / z + 1e-9);
+});
+
+test('visibleTiles is the rectangle of tiles fully on screen: its corners project inside the view, and it follows the focus', () => {
+  const c = cameraFor(1280, 720, 24 * 16, 22 * 16, 1), box = visibleTiles(c, 1280, 720);
+  assert.ok(box && box.x0 < 24 && box.x1 > 24 && box.y0 < 22 && box.y1 > 22);
+  for (const [tx, ty] of [[box.x0, box.y0], [box.x1, box.y0], [box.x0, box.y1], [box.x1, box.y1]]) {
+    const p = tileToScreen(c, tx, ty);
+    assert.ok(p.x > 0 && p.x < 1280 && p.y > 0 && p.y < 720, `${tx},${ty}`);
+  }
+  const moved = visibleTiles(cameraFor(1280, 720, 28 * 16, 22 * 16, 1), 1280, 720);
+  assert.ok(moved.x0 > box.x0 && moved.x1 > box.x1);
+  assert.equal(visibleTiles(makeCamera({ focusX: 0, focusY: 0, pitch: 5, dist: 300, focal: 300, cx: 100, cy: 100 }), 200, 200), null);
 });
 
 test('lamp light: 1 at the lamp, smooth falloff, 0 beyond the radius, overlapping lamps stay under 1', () => {

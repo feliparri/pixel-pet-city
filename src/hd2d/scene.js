@@ -1,9 +1,12 @@
 // The plaza as the HD-2D view needs it: the ground baked into one texture (with its night lighting), the upright things as sprites with
 // a foot point, the lights. Everything is built from the town's own art (src/art/*): nothing is redrawn or forked here.
-import { TILE, HOUSES, getArea } from '../map.js';
+import { TILE, HOUSES, getArea, inPlaza } from '../map.js';
+import * as G from '../art/ground.js';
+import { shadow } from '../art/palette.js';
 import { bakeArea } from '../art/bake.js';
 import { drawHouse, windowsOf, litWindow } from '../art/buildings.js';
-import { fountainFrame } from '../art/props.js';
+import { fountainFrame, drawFountain } from '../art/props.js';
+import { PIECE_KINDS, hedgePiece, fencePiece, benchPiece, bedPiece, fountainWall } from './pieces.js';
 import { groundRow, project, standAt } from './camera.js';
 import { LAMP_RADIUS, lightAt, nightMultiply, spriteGrade } from './light.js';
 
@@ -22,6 +25,7 @@ export function buildWorld() {
   const tex = canvasOf(REGION.w * TILE, REGION.h * TILE);
   tex.getContext('2d').drawImage(baked.ground, -OX, -OY);
   const props = [], houses = [], lamps = [], windows = [], pools = [];
+  for (const it of standUp(tex, getArea('town'))) props.push(it);
   baked.props.forEach((pr, i) => {
     if (!pr.sprite) return;                                          // (the shop's raccoon is a drawing routine, not in this area)
     const x = pr.x + pr.sprite.width / 2, y = pr.y + pr.sprite.height;
@@ -47,8 +51,39 @@ export function buildWorld() {
     } else if (g.kind === 'door' && inRegion(g.x, g.y)) pools.push({ x: g.x + g.w / 2, y: g.y + 10, r: 44, k: 0.6 });
   }
   for (const w of windows) pools.push({ x: w.x, y: Math.round(w.y + 28), r: 30, k: 0.4 });          // the light of a window spills on the road
-  for (const p of props) p.light = lightAt(pools, p.x, p.y);
-  return { tex, props, houses, lamps, windows, pools, cache: new Map() };
+  const lights = pools.map((p) => ({ ...p, r: p.r * 1.5, k: p.k * 0.9 }));                       // what lights a standing thing reaches further than the floor pool
+  for (const p of props) p.light = lightAt(lights, p.x, p.y);
+  return { tex, props, houses, lamps, windows, pools, lights, cache: new Map() };
+}
+
+/**
+ * Takes hedges, fences, benches and flower beds off the ground texture (the ground under them is painted again, as the town does), makes
+ * each an upright piece standing on its tile's front edge, and does the same for the fountain's front rim. Returns the pieces as props.
+ */
+function standUp(tex, area) {
+  const t = tex.getContext('2d'), out = [];
+  const raw = (x, y) => (x >= 0 && y >= 0 && x < area.w && y < area.h ? area.grid[y][x] : '.');
+  const surface = (tx, ty) => (dx, dy) => (inPlaza(tx + dx, ty + dy) ? '+' : raw(tx + dx, ty + dy));
+  const floor = (tx, ty) => (inPlaza(tx, ty) ? G.plaza(t, tx * TILE - OX, ty * TILE - OY, tx, ty, surface(tx, ty)) : G.grass(t, tx * TILE - OX, ty * TILE - OY, tx, ty));
+  const cells = [];
+  for (let ty = REGION.y; ty < REGION.y + REGION.h; ty++) for (let tx = REGION.x; tx < REGION.x + REGION.w; tx++) if (PIECE_KINDS[raw(tx, ty)]) cells.push([tx, ty, raw(tx, ty)]);
+  for (const [tx, ty] of cells) floor(tx, ty);
+  for (const [tx, ty, ch] of cells) {
+    const l = raw(tx - 1, ty) === ch || (ch === 'F' && raw(tx - 1, ty) === 'S'), r = raw(tx + 1, ty) === ch || (ch === 'F' && raw(tx + 1, ty) === 'S');
+    const x = tx * TILE - OX, y = ty * TILE - OY;
+    const sprite = ch === 'h' ? hedgePiece(tx, ty, l, r) : ch === 'F' ? fencePiece(l, r) : ch === 'n' ? benchPiece() : bedPiece(tx, ty, l, r);
+    shadow(t, x + 9, y + 16, ch === 'n' ? 8 : 8.5, 2.4, 0.32);                                  // the shadow on the ground, in front of the foot
+    out.push({ key: `s${tx},${ty}`, sprite, x: tx * TILE + TILE / 2, y: ty * TILE + 15, light: 0, after: null });
+  }
+  const fx = FOUNTAIN_AT.x, fy = FOUNTAIN_AT.y;                                                 // the fountain: water stays on the ground, the front rim stands up
+  for (let tx = 22; tx < 26; tx++) for (let ty = 20; ty < 23; ty++) G.plaza(t, tx * TILE - OX, ty * TILE - OY, tx, ty, surface(tx, ty));
+  drawFountain(t, fx - OX, fy - OY);
+  t.save(); t.beginPath(); t.rect(fx - OX, fy - OY + 37, 64, 11); t.clip();
+  for (let tx = 22; tx < 26; tx++) G.plaza(t, tx * TILE - OX, 22 * TILE - OY, tx, 22, surface(tx, 22));      // wipe the flat front face
+  t.restore();
+  shadow(t, fx - OX + 33, fy - OY + 42, 29, 3.5, 0.32);
+  out.push({ key: 'fountain-wall', sprite: fountainWall(), x: fx + 32, y: fy + 40, light: 0, after: null });
+  return out;
 }
 
 const glowStops = (g, rgb, a) => { for (const [t, k] of [[0, 1], [0.25, 0.56], [0.5, 0.25], [0.75, 0.06], [1, 0]]) g.addColorStop(t, `rgba(${rgb},${a * k})`); };
