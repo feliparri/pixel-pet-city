@@ -1,10 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { VILLAGERS, SHOPKEEPER, routeFor, poseAt, lineAt, shiftHue, createVariants, createNpcs, npcTile, nearShopkeeper, shopGreeting, SHOP_LINES, SLOT_MS, SAY_MS, NIGHT_LINES, SHOW_LINES } from '../src/npcs.js';
+import { VILLAGERS, SHOPKEEPER, lineAt, shiftHue, createVariants, createNpcs, npcTile, nearShopkeeper, shopGreeting, SHOP_LINES, SLOT_MS, SAY_MS, NIGHT_LINES, SHOW_LINES } from '../src/npcs.js';
 import { SPECIES, STAGES, SLOTS, validateLook, validateMessage } from '../src/protocol.js';
-import { STEP_MS } from '../src/walker.js';
-import { isWalkable, inZone, GAME_IDS } from '../src/map.js';
 
 const SEED = 'FOCA-LUNA-42';
 const fakeSprites = { pets: { id: 'sheet' }, parts: {}, catalogue: { tophat: {}, scarf: {}, bow: {}, bell_collar: {}, beanie: {}, sunglasses: {}, cape: {} } };
@@ -14,42 +12,6 @@ test('two instances of a room put every villager in the same spot with the same 
   const a = createNpcs({ seed: SEED, sprites: fakeSprites, variants: createVariants(() => ({})) });
   const b = createNpcs({ seed: SEED, sprites: fakeSprites, variants: createVariants(() => ({})) });
   for (let t = 1.7e12; t < 1.7e12 + 400000; t += 777) assert.deepEqual(a.update(t).map(pos), b.update(t).map(pos));
-});
-
-test('the route depends on the room: another code gives another loop', () => {
-  assert.notDeepEqual(routeFor(SEED, 0).legs.map((l) => l.from), routeFor('GATO-RANA-07', 0).legs.map((l) => l.from));
-});
-
-test('a villager is always on a walkable tile outside the game places, and steps are one tile', () => {
-  for (const seed of [SEED, 'GATO-RANA-07', 'RANA-NUBE-11']) {
-    VILLAGERS.forEach((_, i) => {
-      const r = routeFor(seed, i);
-      assert.ok(r.legs.length >= 3 && r.cycleMs > 0);
-      for (let t = 0; t < r.cycleMs; t += 97) {
-        const p = poseAt(r, t);
-        for (const [x, y] of [[p.x0, p.y0], [p.x, p.y]]) {
-          assert.ok(isWalkable(x, y), `${seed} ${i} t=${t} (${x}, ${y}) is not walkable`);
-          assert.ok(npcTile(x, y) && !GAME_IDS.some((g) => inZone(g, x, y)), `(${x}, ${y}) is in a game zone, a door or a bush`);
-        }
-        assert.ok(Math.abs(p.x - p.x0) + Math.abs(p.y - p.y0) <= 1);
-        assert.ok(p.k >= 0 && p.k < 1);
-      }
-    });
-  }
-});
-
-test('the loop repeats and a pose at t + one cycle is the same', () => {
-  const r = routeFor(SEED, 1);
-  for (const t of [0, 1234, 55555]) assert.deepEqual(poseAt(r, t), poseAt(r, t + r.cycleMs));
-});
-
-test('they walk at pet speed and rest between legs', () => {
-  const r = routeFor(SEED, 2);
-  let moved = 0, rested = 0;
-  for (let t = 0; t < r.cycleMs; t += STEP_MS / 2) (poseAt(r, t).moving ? moved++ : rested++);
-  assert.ok(moved > 0 && rested > 0);
-  const l = r.legs[0];
-  assert.equal(l.walkMs, l.path.length * STEP_MS);
 });
 
 test('a line is stable within a slot, only inside the speaking window, and the same for the same inputs', () => {

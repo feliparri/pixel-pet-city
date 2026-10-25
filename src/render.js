@@ -47,6 +47,7 @@ export function cameraFor(px, py, mapW, mapH, viewW = VIEW_W, viewH = VIEW_H) {
 export const headFrame = (e, now, id) => {
   const emote = e.emote && now < e.emote.until && HAPPY_EMOTES.has(e.emote.e);
   if (emote) return 'happy';
+  if (e.asleep) return 'blink';
   const blink = ((now + id.charCodeAt(0) * 397) % 3400) < 130;
   if (e.walker.moving && (e.walker.d === 'left' || e.walker.d === 'right')) return 'look';
   return blink ? 'blink' : 'idle';

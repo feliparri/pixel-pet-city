@@ -16,7 +16,7 @@ import { activityOf, radarPets } from './radar.js';
 import { createLife, createFarmLife, stepLife, lifeFrame, farmLifeFrame } from './life.js';
 import { inArea } from './presence.js';
 import { SLOTS } from './protocol.js';
-import { createNpcs, nearShopkeeper, shopGreeting, SHOPKEEPER, SHOP_SAY_MS } from './npcs.js';
+import { createNpcs, showSpans, nearShopkeeper, shopGreeting, SHOPKEEPER, SHOP_SAY_MS } from './npcs.js';
 import config from '../config.js';
 import { isConfigured } from './config-check.js';
 import { createEventsApi } from './events-client.js';
@@ -172,9 +172,10 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       state.life = farmLifeFrame(farmLife, t, state.amb);
     } else state.life = null;
     const gv = games.view();
-    if (self.area === 'town' && !vision && !(gv.game && gv.game.play)) {         // the villagers walk the north of the town; while a game is played they are not drawn at all
+    if (getArea(self.area).outdoor && !vision && !(gv.game && gv.game.play)) {         // the villagers live in the town and on the farm (the ones of this area are drawn); while a game is played they are not drawn at all
       const sn = devNpcT === null ? events.serverNow() : devNpcT;
-      state.others = [...state.others, ...npcs.update(sn, { night: state.amb.night > 0.6, show: !!state.show && state.show.cut == null })];
+      const all = npcs.update(sn, { night: state.amb.night > 0.6, show: !!state.show && state.show.cut == null, shows: showSpans(events.events), pet: { name: self.name, area: self.area, x: w.tileX, y: w.tileY } });
+      state.others = [...state.others, ...all.filter((n) => n.area === self.area)];
     }
     state.talk = null;
     if (self.area === 'shop') {                                    // the shopkeeper greets a pet that steps up to the counter

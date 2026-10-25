@@ -1,21 +1,19 @@
 // The town's villagers: six NPCs built from the pet sprites (a colour variant and a couple of accessories each; Don Tito, Lula and Pipo are
-// a frog, a cat and a seal, Bruno, Chispa and Doña Perla a bear, a raccoon and an elephant, animals that are not playable yet) that stroll the
-// north of the town and say short lines in speech bubbles, plus the shopkeeper (a raccoon too) and her greetings. Nothing here goes over the network: where a villager is and
-// what it says are pure functions of (room code, server time), so every player in the room sees the same one in the same spot. Their routes
-// are fixed loops of waypoints on open tiles, walked at pet speed with pauses; the lines are drawn from a pool per (villager, time slot).
-import { isWalkable, tileAt, doorAt, TILES, inZone, GAME_IDS } from './map.js';
-import { findPath } from './path.js';
+// a frog, a cat and a seal, Bruno, Chispa and Doña Perla a bear, a raccoon and an elephant, animals that are not playable yet) that live in the
+// town and on the farm, plus the shopkeeper (a raccoon too) and her greetings. What they do (npc-world.js: drives, objects, sleep) and what they
+// say are pure functions of (room code, server time), so every player in the room sees the same one in the same spot; nothing here goes over the
+// network. They say short lines in speech bubbles: from their own pool, or about what they attend to (the object they use or walk to, the drive
+// that moves them, the local player's pet when it is near). The lines are drawn per (villager, time slot).
 import { Walker, STEP_MS } from './walker.js';
 import { hashSeed, mulberry32 } from './life.js';
+import { createWorld } from './npc-world.js';
 
+export { npcTile, showSpans } from './npc-world.js';
 export const SLOT_MS = 13000;             // a villager may speak once per slot...
 export const SAY_MS = 4200;               // ...for this long, from the start of the slot (each villager's slots are shifted by its own offset)
 export const SAY_CHANCE = 0.7;
-const WAYPOINTS = 5, MIN_APART = 7;       // a route: this many stops, at least this many tiles from each other
-const HOME = [24, 22];                    // a tile of the plaza: the routes use the open tiles connected to it
-
-/** Where every villager may stand: open ground that is not a hiding bush, a door, or inside the Parque where the games are played. */
-export const npcTile = (x, y) => isWalkable(x, y, 'town') && !TILES[tileAt(x, y, 'town')].hide && !doorAt(x, y, 'town') && !GAME_IDS.some((g) => inZone(g, x, y));
+export const NEAR_PET = 3.5;              // a villager greets the local pet from this many tiles
+export const SLEEP_LINE = 'Zzz...';
 
 // Each villager: a name, a look (slots head, face, neck, back), the body's hue shift (none: the species' own colours; an elder's pale body has no
 // hue left to shift) and the pool of lines it draws from.
@@ -54,68 +52,66 @@ export const VILLAGERS = [
 export const NIGHT_LINES = ['¡Qué linda la noche!', 'Miren cuántas luces.', 'Ya casi es hora de dormir...', 'La luna está preciosa.'];
 export const SHOW_LINES = ['¡Miren el cielo!', '¡Qué colores tan bonitos!', '¡Guau, qué espectáculo!', '¡Está lindísimo!'];
 
-// ---- routes -----------------------------------------------------------------------------------------------------------------------------
-
-let reach = null;                         // the open tiles connected to HOME (the map never changes, so once)
-function reachable() {
-  if (reach) return reach;
-  const seen = new Set([HOME.join(',')]), queue = [HOME], out = [];
-  for (let i = 0; i < queue.length; i++) {
-    const [x, y] = queue[i];
-    out.push([x, y]);
-    for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
-      const nx = x + dx, ny = y + dy, k = `${nx},${ny}`;
-      if (!seen.has(k) && npcTile(nx, ny)) { seen.add(k); queue.push([nx, ny]); }
-    }
-  }
-  return (reach = out.filter(([x, y]) => tileAt(x, y, 'town') !== 'm'));       // (a doormat is a doorstep: keep clear of it)
-}
-
-/** A villager's loop for a room: { legs: [{ path, walkMs, pauseMs }], cycleMs, offset, start } built from the seed alone. */
-export function routeFor(seed, index) {
-  const rand = mulberry32(hashSeed(`${seed}:npc:${VILLAGERS[index].id}`));
-  const open = reachable(), stops = [];
-  for (let tries = 0; stops.length < WAYPOINTS && tries < 400; tries++) {
-    const c = open[Math.floor(rand() * open.length)];
-    if (stops.every((s) => Math.abs(s[0] - c[0]) + Math.abs(s[1] - c[1]) >= MIN_APART)) stops.push(c);
-  }
-  const legs = [];
-  for (let i = 0; i < stops.length; i++) {
-    const a = stops[i], b = stops[(i + 1) % stops.length];
-    const path = findPath(a[0], a[1], b[0], b[1], npcTile);
-    if (path.length) legs.push({ from: a, path, walkMs: path.length * STEP_MS, pauseMs: Math.round(2500 + rand() * 5500) });
-  }
-  const cycleMs = legs.reduce((s, l) => s + l.walkMs + l.pauseMs, 0);
-  return { legs, cycleMs, start: stops[0], offset: Math.floor(rand() * cycleMs), sayOffset: Math.floor(rand() * SLOT_MS) };
-}
-
-/** Where a route is at server time `t` (ms): { x0, y0, x, y, k (0-1 through the step), moving, d } with the tile it left and the one it heads to. */
-export function poseAt(route, t) {
-  let p = (Math.floor(t) + route.offset) % route.cycleMs, d = 'down';
-  for (const leg of route.legs) {
-    if (p < leg.walkMs) {
-      const i = Math.floor(p / STEP_MS), from = i === 0 ? leg.from : leg.path[i - 1], to = leg.path[i];
-      return { x0: from[0], y0: from[1], x: to[0], y: to[1], k: (p % STEP_MS) / STEP_MS, moving: true, d: to[0] > from[0] ? 'right' : to[0] < from[0] ? 'left' : to[1] < from[1] ? 'up' : 'down' };
-    }
-    p -= leg.walkMs;
-    const end = leg.path[leg.path.length - 1];
-    if (leg.path.length > 1) { const a = leg.path[leg.path.length - 2]; d = end[0] > a[0] ? 'right' : end[0] < a[0] ? 'left' : end[1] < a[1] ? 'up' : 'down'; }
-    if (p < leg.pauseMs) return { x0: end[0], y0: end[1], x: end[0], y: end[1], k: 0, moving: false, d };
-    p -= leg.pauseMs;
-  }
-  return { x0: route.start[0], y0: route.start[1], x: route.start[0], y: route.start[1], k: 0, moving: false, d };
-}
-
 // ---- lines ------------------------------------------------------------------------------------------------------------------------------
 
-/** What villager `index` of room `seed` says at server time `t`, or null while it is quiet. `ctx`: { night, show } (the same ones for everybody who has the same). */
-export function lineAt(seed, index, t, ctx = {}, sayOffset = 0) {
-  const v = VILLAGERS[index], at = Math.floor(t) + sayOffset, slot = Math.floor(at / SLOT_MS);
-  const rand = mulberry32(hashSeed(`${seed}:say:${v.id}:${slot}`));
-  const speaks = rand() < SAY_CHANCE, pick = rand(), mood = rand();
-  if (!speaks || at % SLOT_MS >= SAY_MS) return null;
-  const pool = ctx.show && mood < 0.6 ? SHOW_LINES : ctx.night && mood < 0.4 ? NIGHT_LINES : v.lines;
-  return pool[Math.floor(pick * pool.length)];
+/** What a villager says about the object it uses or walks to (`act.pool`, see AFFORDANCES) and about the drive that moves it. */
+export const OBJECT_LINES = {
+  orchard: ['¡Qué ricas manzanas!', 'Estas frutas están en su punto.', 'Mmm, huele a fruta fresca.', 'Una manzana al día, alegría.'],
+  fields: ['¡Qué buenas zanahorias!', 'La tierra está bien húmeda hoy.', 'Las lechugas crecen rapidísimo.', 'Esta zapallera va a dar mucho.'],
+  wheat: ['El trigo huele a pan recién hecho.', '¡Qué dorado está el trigo!', 'Escucho cómo susurra el trigal.', 'Pronto habrá harina de sobra.'],
+  well: ['El agua del pozo está fresquita.', 'Un traguito de agua y sigo.', '¡Qué profundo es este pozo!', 'Aquí el agua nunca se acaba.'],
+  barn: ['Qué calentito se está en el establo.', 'El heno huele riquísimo.', 'Un ratito a la sombra y listo.', 'Este establo es muy tranquilo.'],
+  bench: ['Necesito un descanso…', 'Qué cómodo está este banco.', 'Me siento un ratito, ¿sí?', 'Descansar un poquito hace bien.'],
+  fountain: ['Me encanta el sonido de la fuente.', '¡Qué buen lugar para charlar!', 'El agua de la fuente brilla hoy.', 'Aquí se junta todo el pueblo.'],
+  plaza: ['La plaza está preciosa hoy.', '¿Con quién conversaré en la plaza?', '¡Qué lindo es ver a todos pasear!', 'En la plaza siempre pasa algo.'],
+  shop: ['¿Qué habrá hoy en la tienda?', 'Me gustaría ver esa vitrina.', 'Algún día compraré algo lindo.', '¡Qué cosas tan bonitas venden!'],
+  park: ['¡Voy al parque a jugar!', 'Qué ganas de correr un rato.', 'En el parque nunca me aburro.', '¿Habrá juegos en el parque?'],
+  pond: ['¡Miren las ondas del estanque!', 'El estanque está muy tranquilo.', 'Quizás pesque algo… o no.', 'Me encanta mirar el agua quieta.'],
+  scarecrow: ['Buen día, señor espantapájaros.', 'Este espantapájaros escucha muy bien.', 'Hola, amigo de paja, ¿cómo estás?', 'Nunca se queja de nada, qué buen vecino.'],
+  home: ['Ya es hora de dormir…', 'Qué sueño, me voy a casa.', 'Mañana será otro lindo día.', 'Buenas noches a todos.'],
+};
+export const DRIVE_LINES = {
+  hunger: ['Tengo hambre… ¿qué habrá de comer?', 'Mi pancita está rugiendo.', 'Ya casi es hora de comer algo rico.'],
+  tired: ['Necesito un descanso…', 'Uf, qué cansancio.', 'Mis patitas piden sentarse un rato.'],
+  bored: ['Qué aburrido… ¿qué hago?', 'Quiero hacer algo divertido.', 'Hoy me falta algo que hacer.'],
+  social: ['¿Con quién charlo hoy?', 'Qué ganas de conversar con alguien.', 'Me siento solito, ¿hay alguien por aquí?'],
+};
+const petLines = (name) => [`¡Hola, ${name}!`, `¡${name}, qué gusto verte!`, `${name}, ¡qué linda mascota!`, `¿Cómo estás, ${name}?`];
+
+/** The line a slot would say before the "not the same twice" rule: { pool, idx } or null when quiet. `ctx`: { night, show, pet (the name of a pet that is near) }. */
+function rawLine(seed, index, slot, ctx, sayOffset, actAt) {
+  const v = VILLAGERS[index], rand = mulberry32(hashSeed(`${seed}:say:${v.id}:${slot}`));
+  const speaks = rand() < SAY_CHANCE, pick = rand(), mood = rand(), pick2 = rand();
+  if (!speaks) return null;
+  const act = actAt ? actAt(slot * SLOT_MS - sayOffset) : null;       // what it is doing as the slot begins: the line stays the same for all of it
+  if (act && act.state === 'sleep') return null;
+  let pool = v.lines;
+  if (ctx.show && mood < 0.6) pool = SHOW_LINES;
+  else if (ctx.pet && mood < 0.5) pool = petLines(ctx.pet);
+  else if (act && act.pool === 'home' && mood < 0.7) pool = OBJECT_LINES.home;
+  else if (ctx.night && mood < 0.4) pool = NIGHT_LINES;
+  else if (act && act.pool && mood < 0.75) pool = act.state === 'walk' && act.drive && pick2 < 0.5 ? DRIVE_LINES[act.drive] : OBJECT_LINES[act.pool];
+  return { pool, idx: Math.floor(pick * pool.length) };
+}
+
+function slotLine(seed, index, slot, ctx, sayOffset, actAt) {
+  const raw = rawLine(seed, index, slot, ctx, sayOffset, actAt);
+  if (!raw) return null;
+  let idx = raw.idx;
+  const prev = rawLine(seed, index, slot - 1, ctx, sayOffset, actAt);
+  // never the same line twice in a row: the previous slot said its own pick or, when that repeated its own predecessor, the next one in its pool
+  if (prev && [prev.pool[prev.idx], prev.pool[(prev.idx + 1) % prev.pool.length]].includes(raw.pool[idx]) && slotLine(seed, index, slot - 1, ctx, sayOffset, actAt) === raw.pool[idx]) idx = (idx + 1) % raw.pool.length;
+  return raw.pool[idx];
+}
+
+/**
+ * What villager `index` of room `seed` says at server time `t`, or null while it is quiet. `ctx`: { night, show, pet }; `actAt(t)`: what the villager
+ * does at server time t ({ state, pool, drive }, npc-world.js), so it can talk about it.
+ */
+export function lineAt(seed, index, t, ctx = {}, sayOffset = 0, actAt = null) {
+  const at = Math.floor(t) + sayOffset;
+  if (at % SLOT_MS >= SAY_MS) return null;
+  return slotLine(seed, index, Math.floor(at / SLOT_MS), ctx, sayOffset, actAt);
 }
 
 // ---- looks ------------------------------------------------------------------------------------------------------------------------------
@@ -164,20 +160,31 @@ export function createVariants(render = recolourSheet) {
 
 /**
  * The villagers of a room. `update(t, ctx)` places them for server time `t` and returns entities as render.js draws them
- * ({ id, name, look, walker, emote, say, npc, sprites }); the same objects every call.
+ * ({ id, name, look, walker, emote, say, npc, area, asleep, sprites }); the same objects every call. Every villager is returned, wherever it is:
+ * the caller draws the ones whose `area` is the player's. `ctx`: { night, show (this screen's), shows (npc-world's showSpans, the same for all), pet
+ * ({ name, area, x, y }, the local pet: a villager greets it when it is near, so that line is per screen) }.
  */
 export function createNpcs({ seed, sprites, variants = createVariants() }) {
+  const world = createWorld(seed, VILLAGERS.map((v) => v.id));
   const ents = VILLAGERS.map((v, i) => {
-    const route = routeFor(seed, i), ok = v.look.items.every((it) => !it || (sprites.catalogue && sprites.catalogue[it]));
+    const ok = v.look.items.every((it) => !it || (sprites.catalogue && sprites.catalogue[it]));
     const look = ok ? v.look : { ...v.look, items: ['', '', '', ''] };
-    return { route, entity: { id: `npc:${v.id}`, name: v.name, look, walker: new Walker(route.start[0], route.start[1]), emote: null, jumpAt: null, say: null, npc: true, sprites: v.variant ? variants.get(sprites, v.variant) : sprites } };
+    const sayOffset = Math.floor(mulberry32(hashSeed(`${seed}:npc:${v.id}`))() * SLOT_MS);
+    return { sayOffset, entity: { id: `npc:${v.id}`, name: v.name, look, walker: new Walker(0, 0), emote: null, jumpAt: null, say: null, npc: true, area: 'town', asleep: false, sprites: v.variant ? variants.get(sprites, v.variant) : sprites } };
   });
   return {
+    world,
     update(t, ctx = {}) {
-      return ents.map(({ route, entity }, i) => {
-        const p = poseAt(route, t), w = entity.walker;
+      const spans = ctx.shows || [], poses = world.poses(t, spans), pet = ctx.pet;
+      return ents.map(({ entity, sayOffset }, i) => {
+        const p = poses[i], w = entity.walker;
         w.fx = p.x0; w.fy = p.y0; w.tx = p.x; w.ty = p.y; w.moving = p.moving; w.t = p.k * STEP_MS; w.d = p.d;
-        entity.say = lineAt(seed, i, t, ctx, route.sayOffset);
+        entity.area = p.area; entity.asleep = p.asleep;
+        if (p.asleep) entity.say = SLEEP_LINE;
+        else {
+          const near = pet && pet.area === p.area && Math.hypot(pet.x - p.x, pet.y - p.y) <= NEAR_PET;
+          entity.say = lineAt(seed, i, t, { night: ctx.night, show: ctx.show, pet: near ? pet.name : null }, sayOffset, (tt) => world.pose(i, tt, spans).act);
+        }
         return entity;
       });
     },
