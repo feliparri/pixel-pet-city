@@ -8,10 +8,10 @@ import { toBase64 } from '../supabase/functions/trip/travel-package.js';
 export const fixture = (name) => new Uint8Array(readFileSync(new URL(`./fixtures/${name}`, import.meta.url)));
 
 export function memoryDb() {
-  const devices = new Map(), trips = new Map();
+  const devices = new Map(), trips = new Map(), townEvents = new Map();
   const matches = (row, where) => Object.entries(where).every(([k, vs]) => vs.some((v) => row[k] === v));
   const db = {
-    devices, trips,
+    devices, trips, townEvents,
     async getDevice(id) { return devices.get(id) ?? null; },
     async insertDevice(row) { if (devices.has(row.id)) return false; devices.set(row.id, { ...row }); return true; },
     async getTripByDevice(d, t) { return [...trips.values()].find((x) => x.device_id === d && x.trip_id === t) ?? null; },
@@ -33,16 +33,21 @@ export function memoryDb() {
       for (const t of trips.values()) if (t.device_id === d && ['waiting', 'active', 'recalled', 'returned'].includes(t.status)) Object.assign(t, { status: 'cancelled', session_hash: null });
     },
     async cleanup() {},
+    async listEvents(from, to) { return [...townEvents.values()].filter((e) => !e.cancelled_at && e.start_at >= from && e.start_at <= to).sort((a, b) => a.start_at.localeCompare(b.start_at)); },
+    async countUpcoming(now) { return [...townEvents.values()].filter((e) => !e.cancelled_at && e.start_at > now).length; },
+    async getEvent(id) { return townEvents.get(id) ?? null; },
+    async insertEvent(row) { townEvents.set(row.id, { ...row }); },
+    async cancelEvent(id, at) { const e = townEvents.get(id); if (!e || e.cancelled_at) return null; e.cancelled_at = at; return { ...e }; },
   };
   return db;
 }
 
 /** A world: a database, a clock, and `board()` / `web()` callers. */
-export function world({ now = 1_800_000_000, randomBytes } = {}) {
+export function world({ now = 1_800_000_000, randomBytes, adminKey = undefined } = {}) {
   const w = { db: memoryDb(), now };
   const deps = {
     db: w.db, nowS: () => w.now, randomBytes: randomBytes ?? ((n) => new Uint8Array(nodeRandom(n))), uuid: randomUUID,
-    townUrl: 'https://feliparri.github.io/pixel-pet-city/',
+    townUrl: 'https://feliparri.github.io/pixel-pet-city/', adminKey, attempts: [],
   };
   const send = async (fn, headers, obj) => handle(fn, { method: 'POST', headers, body: new TextEncoder().encode(JSON.stringify(obj)) }, deps);
   w.raw = (fn, body, headers = {}, method = 'POST') => handle(fn, { method, headers, body }, deps);
@@ -60,6 +65,7 @@ export function world({ now = 1_800_000_000, randomBytes } = {}) {
     };
     return b;
   };
+  w.admin = (fn, obj, key) => send(fn, key === undefined ? {} : { 'x-admin-key': key }, obj);
   w.web = (token) => ({
     call: (fn, obj) => send(fn, token ? { 'x-trip-token': token } : {}, obj),
   });

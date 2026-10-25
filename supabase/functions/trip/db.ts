@@ -49,6 +49,26 @@ export function createDb(url: string, serviceKey: string) {
       const r = await call(`/trips?device_id=eq.${q(deviceId)}&status=in.(waiting,active,recalled,returned)`, { method: 'PATCH', body: JSON.stringify({ status: 'cancelled', session_hash: null }), prefer: 'return=minimal' });
       if (!r.ok) throw new Error(`db ${r.status}`);
     },
+    async listEvents(fromIso: string, toIso: string): Promise<Row[]> {
+      const r = await call(`/town_events?cancelled_at=is.null&start_at=gte.${q(fromIso)}&start_at=lte.${q(toIso)}&select=*&order=start_at.asc&limit=50`);
+      if (!r.ok) throw new Error(`db ${r.status}`);
+      return Array.isArray(r.json) ? r.json : [];
+    },
+    async countUpcoming(nowIso: string): Promise<number> {
+      const r = await call(`/town_events?cancelled_at=is.null&start_at=gt.${q(nowIso)}&select=id&limit=100`);
+      if (!r.ok) throw new Error(`db ${r.status}`);
+      return Array.isArray(r.json) ? r.json.length : 0;
+    },
+    getEvent: (id: string) => one(`/town_events?id=eq.${q(id)}&select=*&limit=1`),
+    async insertEvent(row: Row): Promise<void> {
+      const r = await call('/town_events', { method: 'POST', body: JSON.stringify(row), prefer: 'return=minimal' });
+      if (!r.ok) throw new Error(`db ${r.status}`);
+    },
+    async cancelEvent(id: string, atIso: string): Promise<Row | null> {
+      const r = await call(`/town_events?id=eq.${q(id)}&cancelled_at=is.null`, { method: 'PATCH', body: JSON.stringify({ cancelled_at: atIso }), prefer: 'return=representation' });
+      if (!r.ok) throw new Error(`db ${r.status}`);
+      return Array.isArray(r.json) && r.json.length ? r.json[0] : null;
+    },
     async cleanup(): Promise<void> {
       await call('/rpc/cleanup_trips', { method: 'POST', body: '{}' });
     },

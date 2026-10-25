@@ -4,6 +4,7 @@ import { parsePackage, buildReturn, petView, fromBase64, toBase64 } from './trav
 import { sha256Hex, fromHex, verifyRequest, randomHex, safeEqual } from './crypto.js';
 import { newCode, normalizeCode, isEntrance, DEFAULT_ENTRANCE } from './trip-code.js';
 import { cleanRadar } from './radar.js';
+import { events, eventSave, eventCancel } from './events.js';
 
 export const BODY_MAX = 12288;                 // a 6144-byte package is 8192 base64 characters, plus the JSON around it
 export const STATE_MAX = 2048;                 // the saved JSON state, serialized
@@ -245,7 +246,9 @@ async function tripAck(req, deps, device) {
 }
 
 const ROUTES = { 'device-register': deviceRegister, 'trip-claim': tripClaim, 'trip-save': tripSave, 'trip-status': tripStatus,
-  'trip-start': tripStart, 'trip-recall': tripRecall, 'trip-return': tripReturn, 'trip-ack': tripAck };
+  'trip-start': tripStart, 'trip-recall': tripRecall, 'trip-return': tripReturn, 'trip-ack': tripAck,
+  'events': events, 'event-save': eventSave, 'event-cancel': eventCancel };
+const GET_OK = new Set(['events']);                // the public list can also be read with GET
 
 /**
  * One call. req: { method, headers (lower-case names), body: Uint8Array }; deps: { db, nowS(), randomBytes(n), uuid(), townUrl }.
@@ -254,7 +257,7 @@ const ROUTES = { 'device-register': deviceRegister, 'trip-claim': tripClaim, 'tr
 export async function handle(fn, req, deps) {
   const route = ROUTES[fn];
   if (!route) return err(404, 'unknown_function');
-  if (req.method !== 'POST') return err(405, 'method_not_allowed');
+  if (req.method !== 'POST' && !(req.method === 'GET' && GET_OK.has(fn))) return err(405, 'method_not_allowed');
   if (req.body.length > BODY_MAX) return err(413, 'too_large');
   try {
     if (DEVICE_FNS.has(fn)) {

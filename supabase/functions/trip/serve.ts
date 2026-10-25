@@ -6,20 +6,21 @@ import { createDb } from './db.ts';
 const ORIGIN = 'https://feliparri.github.io';
 const TOWN_URL = Deno.env.get('TOWN_URL') ?? 'https://feliparri.github.io/pixel-pet-city/';
 
-const ACTIONS: Record<string, true> = { 'device-register': true, 'trip-start': true, 'trip-claim': true, 'trip-save': true, 'trip-recall': true, 'trip-status': true, 'trip-return': true, 'trip-ack': true };
+const ACTIONS: Record<string, true> = { 'device-register': true, 'trip-start': true, 'trip-claim': true, 'trip-save': true, 'trip-recall': true, 'trip-status': true, 'trip-return': true, 'trip-ack': true, 'events': true, 'event-save': true, 'event-cancel': true };
 // The browser's: the town's own calls, and the board's, which the town page relays over the USB cable (docs/usb-link.md). The board's calls are signed, so the origin
 // rule only keeps other pages from relaying for it; the board itself (no Origin header) is unaffected.
 const WEB_FUNCTIONS = new Set(Object.keys(ACTIONS));
 
 const cors = (fn: string) => WEB_FUNCTIONS.has(fn) ? {
   'access-control-allow-origin': ORIGIN, 'vary': 'origin',
-  'access-control-allow-methods': 'POST, OPTIONS',
-  'access-control-allow-headers': 'content-type, x-trip-token, x-device-id, x-timestamp, x-signature',
+  'access-control-allow-methods': 'GET, POST, OPTIONS',
+  'access-control-allow-headers': 'content-type, x-trip-token, x-device-id, x-timestamp, x-signature, x-admin-key',
   'access-control-max-age': '86400',
 } : {};
 
 
 let db: ReturnType<typeof createDb> | null = null;
+const adminAttempts: number[] = [];          // the times of wrong admin keys in this instance (see events.js)
 
 export async function serveTrip(req: Request): Promise<Response> {
   {
@@ -42,6 +43,9 @@ export async function serveTrip(req: Request): Promise<Response> {
     const out = await handle(fn, { method: req.method, headers: h, body }, {
       db,
       nowS: () => Math.floor(Date.now() / 1000),
+      nowMs: () => Date.now(),
+      adminKey: Deno.env.get('ADMIN_KEY') || undefined,         // set by the owner in the dashboard (Edge Functions > Secrets); never in the repository
+      attempts: adminAttempts,
       randomBytes: (n: number) => crypto.getRandomValues(new Uint8Array(n)),
       uuid: () => crypto.randomUUID(),
       townUrl: TOWN_URL,

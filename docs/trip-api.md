@@ -128,6 +128,21 @@ An "entrada" is a cosmetic pair by id: how the pet arrives in the town and how i
 `blue_bolt` (demo: arrives and leaves as a bolt of blue lightning; the town selects it only with `?dev=1&entrance=blue_bolt`). Unknown ids
 are refused with `400 bad_entrance`; a stored id the town does not know falls back to `parachute`.
 
+## Town events (scheduled sky shows)
+
+The owner schedules a show (kind `fireworks`, `meteors` or `drones`, a seed and a start time) and every player in the town sees it at that moment
+(table `town_events`, migration `20261025120000_town_events.sql`, RLS on and no policy: only these actions touch it).
+
+* `events` (GET or POST, no key): `{ now, events: [{ id, kind, seed, start_at, start_ms, duration_ms }] }`, `now` being the server's clock in ms
+  (the town keeps the offset). It lists what is running and what starts within 7 days, up to 20, earliest first. Cancelled ones are not listed.
+* `event-save` (POST, header `x-admin-key`): body `{ kind, seed?, start_at }`; `start_at` is ISO 8601 with a time zone (`Z` or `-03:00`), in the future
+  and at most 60 days ahead; `seed` is an integer 0..2^31-1 (random when left out); `201 { event }`. At most 50 upcoming shows (`429 too_many_events`).
+* `event-cancel` (POST, header `x-admin-key`): body `{ id }`; `200 { id, cancelled, replayed }`, `404 unknown_event`.
+* The admin key is the function secret `ADMIN_KEY`, set by the owner in the dashboard (Edge Functions > Secrets). Without it the two admin actions answer
+  `503 admin_disabled`; a wrong or missing key is `401 bad_admin_key` (compared in constant time), and 10 wrong keys in 10 minutes in one function instance
+  answer `429 too_many_attempts`. The key is never stored, logged or echoed.
+* Errors: `bad_kind`, `bad_seed`, `bad_start`, `start_in_the_past`, `start_too_far`, `bad_id`, `bad_json`.
+
 ## Sizes and limits
 
 Request body 12288 B; package 6144 B (8192 base64 chars); saved state 2048 characters; code 6 symbols; claim window 24 h; session idle 600 s;
@@ -138,7 +153,8 @@ on `trip-claim` yet (add one at the gateway if abused).
 
 1. `supabase db push` / apply `supabase/migrations/20261023120000_trips.sql` (tables `devices`, `trips`, enum `trip_status`, RLS on with no policy,
    `cleanup_trips()`, and an hourly pg_cron job when the extension is enabled).
+1b. Apply `supabase/migrations/20261025120000_town_events.sql` (table `town_events`, RLS on with no policy, `cleanup_town_events()`).
 2. Deploy the single function `trip` with `--no-verify-jwt` (or via `supabase/config.toml`). Entrypoint `index.ts`; files (relative to
-   `supabase/functions/trip/`): `index.ts serve.ts db.ts handlers.js crypto.js travel-package.js trip-code.js`. Optional secret `TOWN_URL` (default `https://feliparri.github.io/pixel-pet-city/`);
+   `supabase/functions/trip/`): `index.ts serve.ts db.ts handlers.js events.js crypto.js radar.js travel-package.js trip-code.js`. Secret `ADMIN_KEY` (the owner's, for the admin actions). Optional secret `TOWN_URL` (default `https://feliparri.github.io/pixel-pet-city/`);
    `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are provided by Supabase to every function.
 3. End-to-end test: `node tools/fake-board.mjs run` (see the README's "Web trip" section).
