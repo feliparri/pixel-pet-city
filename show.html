@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-6ZVSqTioPmjSeUi1ImP/g2OEgq0zI3ALQkz8Y/1/Jfw='; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+  <meta name="theme-color" content="#0e101a">
+  <title>Show en el cielo</title>
+  <!-- stamp:start -->
+  <script type="importmap">
+{
+  "imports": {
+    "./src/art/bake.js": "./src/art/bake.js?v=1fd7859ba3",
+    "./src/art/buildings.js": "./src/art/buildings.js?v=1fd7859ba3",
+    "./src/art/chicken.js": "./src/art/chicken.js?v=1fd7859ba3",
+    "./src/art/ground.js": "./src/art/ground.js?v=1fd7859ba3",
+    "./src/art/icons.js": "./src/art/icons.js?v=1fd7859ba3",
+    "./src/art/interior.js": "./src/art/interior.js?v=1fd7859ba3",
+    "./src/art/life.js": "./src/art/life.js?v=1fd7859ba3",
+    "./src/art/palette.js": "./src/art/palette.js?v=1fd7859ba3",
+    "./src/art/places.js": "./src/art/places.js?v=1fd7859ba3",
+    "./src/art/props.js": "./src/art/props.js?v=1fd7859ba3",
+    "./src/code.js": "./src/code.js?v=1fd7859ba3",
+    "./src/config-check.js": "./src/config-check.js?v=1fd7859ba3",
+    "./src/daynight.js": "./src/daynight.js?v=1fd7859ba3",
+    "./src/entrance.js": "./src/entrance.js?v=1fd7859ba3",
+    "./src/font.js": "./src/font.js?v=1fd7859ba3",
+    "./src/games/chicken.js": "./src/games/chicken.js?v=1fd7859ba3",
+    "./src/games/hide.js": "./src/games/hide.js?v=1fd7859ba3",
+    "./src/games/lobby.js": "./src/games/lobby.js?v=1fd7859ba3",
+    "./src/games/manager.js": "./src/games/manager.js?v=1fd7859ba3",
+    "./src/games/race.js": "./src/games/race.js?v=1fd7859ba3",
+    "./src/games/rules.js": "./src/games/rules.js?v=1fd7859ba3",
+    "./src/games/soccer.js": "./src/games/soccer.js?v=1fd7859ba3",
+    "./src/hd2d/camera.js": "./src/hd2d/camera.js?v=1fd7859ba3",
+    "./src/hd2d/fx.js": "./src/hd2d/fx.js?v=1fd7859ba3",
+    "./src/hd2d/light.js": "./src/hd2d/light.js?v=1fd7859ba3",
+    "./src/hd2d/main.js": "./src/hd2d/main.js?v=1fd7859ba3",
+    "./src/hd2d/pets.js": "./src/hd2d/pets.js?v=1fd7859ba3",
+    "./src/hd2d/pieces.js": "./src/hd2d/pieces.js?v=1fd7859ba3",
+    "./src/hd2d/quality.js": "./src/hd2d/quality.js?v=1fd7859ba3",
+    "./src/hd2d/renderer.js": "./src/hd2d/renderer.js?v=1fd7859ba3",
+    "./src/hd2d/scene.js": "./src/hd2d/scene.js?v=1fd7859ba3",
+    "./src/hd2d/things.js": "./src/hd2d/things.js?v=1fd7859ba3",
+    "./src/hd2d/wander.js": "./src/hd2d/wander.js?v=1fd7859ba3",
+    "./src/hud.js": "./src/hud.js?v=1fd7859ba3",
+    "./src/jump.js": "./src/jump.js?v=1fd7859ba3",
+    "./src/keepsake.js": "./src/keepsake.js?v=1fd7859ba3",
+    "./src/keys.js": "./src/keys.js?v=1fd7859ba3",
+    "./src/life.js": "./src/life.js?v=1fd7859ba3",
+    "./src/main.js": "./src/main.js?v=1fd7859ba3",
+    "./src/map.js": "./src/map.js?v=1fd7859ba3",
+    "./src/net.js": "./src/net.js?v=1fd7859ba3",
+    "./src/path.js": "./src/path.js?v=1fd7859ba3",
+    "./src/protocol.js": "./src/protocol.js?v=1fd7859ba3",
+    "./src/radar.js": "./src/radar.js?v=1fd7859ba3",
+    "./src/render.js": "./src/render.js?v=1fd7859ba3",
+    "./src/shot.js": "./src/shot.js?v=1fd7859ba3",
+    "./src/show/draw.js": "./src/show/draw.js?v=1fd7859ba3",
+    "./src/show/drones.js": "./src/show/drones.js?v=1fd7859ba3",
+    "./src/show/fireworks.js": "./src/show/fireworks.js?v=1fd7859ba3",
+    "./src/show/fx.js": "./src/show/fx.js?v=1fd7859ba3",
+    "./src/show/main.js": "./src/show/main.js?v=1fd7859ba3",
+    "./src/show/meteors.js": "./src/show/meteors.js?v=1fd7859ba3",
+    "./src/show/rand.js": "./src/show/rand.js?v=1fd7859ba3",
+    "./src/show/sky.js": "./src/show/sky.js?v=1fd7859ba3",
+    "./src/show/timeline.js": "./src/show/timeline.js?v=1fd7859ba3",
+    "./src/sprites.js": "./src/sprites.js?v=1fd7859ba3",
+    "./src/stars.js": "./src/stars.js?v=1fd7859ba3",
+    "./src/touchpad.js": "./src/touchpad.js?v=1fd7859ba3",
+    "./src/town.js": "./src/town.js?v=1fd7859ba3",
+    "./src/transport-local.js": "./src/transport-local.js?v=1fd7859ba3",
+    "./src/transport-supabase.js": "./src/transport-supabase.js?v=1fd7859ba3",
+    "./src/trip-code.js": "./src/trip-code.js?v=1fd7859ba3",
+    "./src/trip.js": "./src/trip.js?v=1fd7859ba3",
+    "./src/usb-bridge.js": "./src/usb-bridge.js?v=1fd7859ba3",
+    "./src/usblink.js": "./src/usblink.js?v=1fd7859ba3",
+    "./src/walker.js": "./src/walker.js?v=1fd7859ba3",
+    "./config.js": "./config.js?v=1fd7859ba3"
+  }
+}
+</script>
+  <!-- stamp:end -->
+  <style>
+    html, body { margin: 0; height: 100%; background: #0e101a; overflow: hidden; font: 600 14px system-ui, sans-serif; }
+    canvas { position: fixed; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; touch-action: none; }
+    .bar { position: fixed; top: max(10px, env(safe-area-inset-top)); left: 10px; display: flex; gap: 6px; }
+    .bar button { font: inherit; color: #e8ecf8; background: rgba(20, 24, 44, 0.72); border: 1px solid rgba(255, 255, 255, 0.22); border-radius: 8px; padding: 8px 14px; min-height: 40px; cursor: pointer; }
+    .bar button[aria-pressed="true"] { background: #f8d040; color: #181c2c; border-color: #f8d040; }
+    .bar button:disabled { opacity: 0.45; cursor: default; }
+    .bar { flex-wrap: wrap; right: 10px; }
+    .bar button { padding: 8px 11px; }
+    #stat { position: fixed; left: 10px; bottom: max(8px, env(safe-area-inset-bottom)); color: rgba(255, 255, 255, 0.7); font: 11px ui-monospace, monospace; text-shadow: 0 1px 2px #000; }
+  </style>
+</head>
+<body>
+  <!-- A prototype page, not linked from the town: ?show=fireworks|meteors|drones  &t=3.2  &seed=7  &still=1  &bench=1  &res=0.75 -->
+  <canvas id="c"></canvas>
+  <div class="bar"><button id="fireworks" aria-pressed="false">Fuegos artificiales</button><button id="meteors" aria-pressed="false">Estrellas fugaces</button><button id="drones" aria-pressed="false">Drones</button><button id="back" disabled>Volver</button></div>
+  <div id="stat"></div>
+  <script type="module" src="src/show/main.js?v=1fd7859ba3"></script>
+</body>
+</html>

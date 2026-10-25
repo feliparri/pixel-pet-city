@@ -11,8 +11,8 @@ import { join, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const PAGES = ['index.html', 'shot.html', 'hd2d.html'];
-const ENTRIES = /((?:src|href)="(?:style\.css|src\/main\.js|src\/shot\.js|src\/hd2d\/main\.js))(\?v=[0-9a-f]+)?"/g;
+const PAGES = ['index.html', 'shot.html', 'hd2d.html', 'show.html'];
+const ENTRIES = /((?:src|href)="(?:style\.css|src\/main\.js|src\/shot\.js|src\/hd2d\/main\.js|src\/show\/main\.js))(\?v=[0-9a-f]+)?"/g;
 
 function modules(dir = join(root, 'src')) {
   return readdirSync(dir).flatMap((name) => {
