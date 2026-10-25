@@ -1,7 +1,7 @@
 // Draws the world: a view that fits the box it is given (see viewFor), scaled up by a whole number with nearest-neighbour, centred.
 // The scene is drawn at 1 px = 1 game pixel on a small canvas and enlarged; only the emote bubbles are drawn at the final size (emoji).
 // Layers: ground (baked), animated water, props and pets sorted by their feet, the day/night tint, the night lights, labels.
-import { TILE, SIGNS, PLACES, getArea } from './map.js';
+import { TILE, SIGNS, PLACES, getArea, tileAt } from './map.js';
 import { drawPet, CELL } from './sprites.js';
 import { jumpLift } from './jump.js';
 import { drawText, textWidth, textCanvas } from './font.js';
@@ -15,7 +15,7 @@ import { badge, bobY, BADGE } from './art/icons.js';
 import { drawChicken, CHICKEN_SIZE } from './art/chicken.js';
 import { ball as drawBall } from './art/places.js';
 import { drawBird, drawButterfly, drawFirefly, drawDuck, drawRing, drawSpray } from './art/life.js';
-import { drawAnimal } from './art/farm.js';
+import { drawAnimal, plotTile } from './art/farm.js';
 
 export const VIEW_W = 224;              // the portrait reference view; a box taller than wide is fitted to it (and the dev previews use it)
 export const VIEW_H = 288;
@@ -58,12 +58,18 @@ export const headFrame = (e, now, id) => {
  * opts: { area (name), cam {x, y}, entities [{ id, name, look, walker, emote?, jumpAt?, fx?, gone? }], me, now, amb {tint, night}, sprites, font, marker?, fade? }.
  * Returns the bubbles to draw at the final size: [{ x, y, e }] (an emote) or [{ x, y, text }] (a line) in view pixels. `talk`: [{ x, y, text }] lines in map px.
  */
-export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now, amb = NO_LIGHT, sprites, font, marker = null, fade = 0, chicken = null, dark = null, life = null, ball = null, talk = null }) {
+export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now, amb = NO_LIGHT, sprites, font, marker = null, fade = 0, chicken = null, dark = null, life = null, ball = null, talk = null, farm = null }) {
   const area = getArea(areaName), baked = bakeArea(area);
   sctx.imageSmoothingEnabled = false;
   sctx.fillStyle = '#0e101a';
   sctx.fillRect(0, 0, vw, vh);
   sctx.drawImage(baked.ground, -cam.x, -cam.y);
+  if (farm && areaName === 'farm') {                                           // the crops as this pet sees them: stages, harvested plots, watered soil (over the baked ripe ones)
+    for (const o of farm.over) {
+      const x = o.x * TILE - cam.x, y = o.y * TILE - cam.y;
+      if (x > -TILE && x < vw && y > -TILE && y < vh) sctx.drawImage(plotTile(o.ch, o.x, o.y, o.look, o.wet, (dx, dy) => tileAt(o.x + dx, o.y + dy, 'farm')), x, y);
+    }
+  }
 
   const frame = Math.floor(now / 320) % 3;                                    // the water's three frames
   sctx.fillStyle = P.a3;
@@ -267,7 +273,7 @@ export function createRenderer({ canvas, sprites, font, minH = MIN_VIEW_H }) {
     const a = getArea(areaName);
     const mp = state.me.walker.pos();
     cam = cameraFor(mp.x * TILE + TILE / 2, mp.y * TILE + TILE / 2, a.w * TILE, a.h * TILE, viewW, viewH);
-    const bubbles = drawScene(sctx, { area: areaName, cam, vw: viewW, vh: viewH, entities: state.others, me: state.me, now, amb: state.amb, sprites, font, marker: state.marker, fade: state.fade || 0, chicken: state.chicken || null, dark: state.dark || null, life: state.life || null, ball: state.ball || null, talk: state.talk || null });
+    const bubbles = drawScene(sctx, { area: areaName, cam, vw: viewW, vh: viewH, entities: state.others, me: state.me, now, amb: state.amb, sprites, font, marker: state.marker, fade: state.fade || 0, chicken: state.chicken || null, dark: state.dark || null, life: state.life || null, ball: state.ball || null, talk: state.talk || null, farm: state.farm || null });
     ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = '#0e101a';
     ctx.fillRect(0, 0, canvas.width, canvas.height);

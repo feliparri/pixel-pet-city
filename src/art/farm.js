@@ -66,15 +66,44 @@ const crop = (ch) => (ctx, x, y, tx, ty, at) => { furrow(ctx, x, y, tx, ty, at);
 export const carrots = crop('C'), lettuce = crop('U'), pumpkins = crop('P'), wheat = crop('Y');
 export const CROP_CHARS = Object.keys(CROP_ROWS);
 
-/** The plants of a crop tile standing up for the tilted view: 16 x 20 with the feet on the bottom row (the plants' base is 2 rows above it). */
-export function cropPiece(ch, tx, ty) {
-  const c = canvas(16, 20);
-  CROP_ROWS[ch](c.getContext('2d'), 0, 5, tx, ty);
+// The stages before ripe: a mound with a seed, then a sprout, laid out like the crop's plants (row() keeps the same places).
+const seedRow = (n) => row((ctx, px, py) => { rect(ctx, P.w3, px - 1, py, 3, 1); dot(ctx, P.w2, px, py - 1); dot(ctx, P.w4, px - 1, py); }, n);
+const sproutRow = (n) => row((ctx, px, py) => { dot(ctx, P.g1, px, py); dot(ctx, P.g2, px, py - 1); dot(ctx, P.g3, px - 1, py - 2); dot(ctx, P.g4, px + 1, py - 2); dot(ctx, P.g3, px, py - 2); }, n);
+const COUNT = { C: 3, U: 3, P: 2, Y: 4 };
+/** How a plot looks at a stage: 'ripe' (the full plants), 'growing', 'seeded', or 'bare' (harvested: just the furrow). */
+const plantsOf = (ch, look) => (look === 'ripe' ? CROP_ROWS[ch] : look === 'growing' ? sproutRow(COUNT[ch]) : look === 'seeded' ? seedRow(COUNT[ch]) : null);
+
+/** Wet soil: the same furrow, darker (a pet watered it). */
+function soak(ctx, x, y) { ctx.fillStyle = 'rgba(14,8,26,0.5)'; ctx.fillRect(x, y, 16, 16); }
+
+/** One crop tile for the flat view in a given state (16 x 16, cached): the furrow, darker when `wet`, with the plants of `look`. */
+const tiles = new Map();
+export function plotTile(ch, tx, ty, look, wet, at) {
+  const key = `${ch}${tx},${ty}${look}${wet ? 'w' : ''}`;
+  let c = tiles.get(key);
+  if (!c) {
+    c = canvas(16, 16);
+    const ctx = c.getContext('2d');
+    furrow(ctx, 0, 0, tx, ty, at);
+    if (wet) soak(ctx, 0, 0);
+    const plants = plantsOf(ch, look);
+    if (plants) plants(ctx, 0, 0, tx, ty);
+    tiles.set(key, c);
+  }
   return c;
 }
 
-/** The ground under the plants: the bare furrow. */
-export const soil = (ctx, x, y, tx, ty) => furrow(ctx, x, y, tx, ty, () => 'd');
+/** The plants of a crop tile standing up for the tilted view: 16 x 20 with the feet on the bottom row (the plants' base is 2 rows above it). `look` as plotTile; null when bare. */
+export function cropPiece(ch, tx, ty, look = 'ripe') {
+  const plants = plantsOf(ch, look);
+  if (!plants) return null;
+  const c = canvas(16, 20);
+  plants(c.getContext('2d'), 0, 5, tx, ty);
+  return c;
+}
+
+/** The ground under the plants: the bare furrow (`wet`: darker). */
+export const soil = (ctx, x, y, tx, ty, wet = false) => { furrow(ctx, x, y, tx, ty, () => 'd'); if (wet) soak(ctx, x, y); };
 
 /** The red barn, 96 x 64: a gambrel front with cream trim, a hayloft door, big double doors and a stone footing. The foot is the bottom row. */
 export function barn() {

@@ -7,7 +7,7 @@ import { drawText, textWidth, textCanvas } from '../font.js';
 import { badge, bobY, BADGE } from '../art/icons.js';
 import { cameraFor, followFocus, snapFocus, sortBackToFront, screenToTile, standAt, project } from './camera.js';
 import { groundMult, approach } from './light.js';
-import { buildWorld, bakeGround, drawGround, standingItems, drawGlows, fountainItem } from './scene.js';
+import { buildWorld, bakeGround, drawGround, standingItems, drawGlows, fountainItem, paintFarm } from './scene.js';
 import { createFx } from './fx.js';
 import { createGovernor } from './quality.js';
 import { createPetPainter } from './pets.js';
@@ -101,6 +101,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
     const sky = sh ? skyAt(sh.kind, sh.seed, sh.ts) : skyAt('', 0, 0);
     const flashes = sky.fw.flashes.filter((f) => f.k > 0.02);
 
+    if (state.area === 'farm' && paintFarm(world, state.farm)) groundKey = '';        // a plot's soil changed (watered, or a new day): bake the ground again
     const step = k > 0.001 && k < 0.999 ? 8 : 16, nq = Math.round(n * step) * (16 / step), key = `${nq}|${mult.map((c) => c >> 2)}`, wf = Math.floor(now / 320) % 3;
     if (key !== groundKey) { bakeGround(world, nq / 16, mult, wf, ground); groundKey = key; waterFrame = wf; }
     else if (wf !== waterFrame) { bakeGround(world, nq / 16, mult, wf, ground, world.waterRects); waterFrame = wf; }

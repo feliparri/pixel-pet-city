@@ -1,12 +1,14 @@
 // The "Tienda" and "Mochila" panels over the town (index.html #panel). Plain DOM on top of src/shop.js; the purchase itself is
 // source.buy(key) (the trip client, or the dev mock). Opening and closing tell the town (onOpenChange) so the pet stops and the touch pad hides.
 import { drawItemIcon } from './sprites.js';
+import { drawProduce } from './art/produce.js';
+import { KINDS, NAMES } from './canasta.js';
 import { shopRows, bagList, confirmText, buyErrorText, thanks, CLOSED_TEXT, GOLD_TEXT, SHOP } from './shop.js';
 
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 
 /** source: () => { shop, buy(key) } | null (nothing to show: no pet's trip). sprites: for the item icons. */
-export function createShopUi($, { source, sprites, onBought = () => {}, onOpenChange = () => {} }) {
+export function createShopUi($, { source, sprites, canasta = () => null, onBought = () => {}, onOpenChange = () => {} }) {
   const panel = $('panel'), body = $('panel-body'), note = $('panel-note');
   let view = null, confirming = null, busy = false, sold = 0;
 
@@ -72,6 +74,16 @@ export function createShopUi($, { source, sprites, onBought = () => {}, onOpenCh
     };
     section('Lo que lleva tu mascota', carried, 'No trajo nada en la mochila.');
     section('Comprado (llega a casa con tu mascota)', bought, 'Todavía no compras nada.');
+    const basket = canasta();
+    if (basket) {                                                  // the farm's Canasta: stays in the town, nothing of it goes home
+      frag.append(el('h3', '', 'Canasta (de la granja, se queda en el pueblo)'));
+      const ul = el('ul', 'shop-list bag canasta');
+      const row = (kind, name) => { const c = el('canvas', 'icon'); c.width = c.height = 40; c.setAttribute('aria-hidden', 'true'); drawProduce(c.getContext('2d'), kind, 40); const li = el('li', 'shop-row'); li.append(c, el('strong', '', name)); return li; };
+      for (const k of KINDS) if (basket.count(k)) ul.append(row(k, `${basket.count(k)} ${NAMES[k][basket.count(k) === 1 ? 0 : 1]}`));
+      ul.append(row(basket.bucketFull ? 'bucket-full' : 'bucket-empty', basket.bucketFull ? 'Cubo con agua' : 'Cubo vacío'));
+      frag.append(ul);
+      if (!basket.total()) frag.append(el('p', 'empty', 'Todavía no recoges nada en la granja.'));
+    }
     body.replaceChildren(frag);
   }
 

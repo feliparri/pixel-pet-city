@@ -19,6 +19,9 @@ import { createMockShop } from './shop-mock.js';
 import { createBridge } from './usb-bridge.js';
 import { createRadarSaver, radarOf, stateWithRadar } from './radar.js';
 import { createStars, createStarSaver, starsFromState, stateWithStars } from './stars.js';
+import { createCanasta, canastaFrom, stateWithCanasta } from './canasta.js';
+import { createFarmMemory } from './farm-world.js';
+import { produceCanvas } from './art/produce.js';
 
 const $ = (id) => document.getElementById(id);
 const touch = isTouchDevice(window);                          // a phone or tablet: the town shows its on-screen controls
@@ -32,6 +35,7 @@ let sprites, font, net = null, town = null, mode = null, netMode = null;
 let visit = null;                                 // a real pet visiting (trip): { client, entrance, stop, solo, stars, saver, radar }
 let shopUi = null, shopSource = null;   // the Tienda and Mochila panels and what they read: the trip client, or in dev a mock
 let hud = null, stars = null;                    // the games' overlay and this pet's star counter (kept in the trip's server state)
+let canasta = null, devFarm = null;              // the farm basket (kept in the trip's server state too) and, in dev, the farm day of this browser
 let me = null;                                   // { name, look, stats }
 let fixedPet = false;                            // the pet is a real one (a trip): no chooser
 
@@ -161,8 +165,10 @@ async function enter(code, { transport = mode, arrival = null, solo = false } = 
   const showStars = () => { $('stars-n').textContent = String(stars.get()); };
   showStars();
   const counter = { add(n) { stars.add(n); showStars(); } };
-  window.cityDebug = () => ({ town, net });                    // handy in the console when testing with two tabs
-  town = startTown({ canvas: $('view'), stage: $('stage'), pad: touch ? { stick: $('stick'), a: $('pad-a'), b: $('pad-b') } : null, sprites, font, net, me, entrance: arrival, stars: counter, onHud: (info) => hud && hud.update(info), onHdMode: () => paintFx(), onShow: (on) => { $('show-back').hidden = !on; }, onShop: () => shopUi && shopUi.openShop() });
+  canasta = visit ? visit.canasta : (canasta || createCanasta());       // dev only: a basket that lives for this page
+  if (!visit && !devFarm) devFarm = farmMemoryFor('dev');
+  window.cityDebug = () => ({ town, net, canasta });                    // handy in the console when testing with two tabs
+  town = startTown({ canvas: $('view'), stage: $('stage'), pad: touch ? { stick: $('stick'), a: $('pad-a'), b: $('pad-b') } : null, sprites, font, net, me, entrance: arrival, stars: counter, canasta, farmMemory: visit ? visit.farm : devFarm, onFarm: paintFarmPrompt, onFarmDone: farmPop, onHud: (info) => hud && hud.update(info), onHdMode: () => paintFx(), onShow: (on) => { $('show-back').hidden = !on; }, onShop: () => shopUi && shopUi.openShop() });
   if (!town.hd.locked) town.hd.set(hdPref);
   paintFx();
   setStatus('connected');
@@ -177,6 +183,31 @@ function paintFx() {                                            // shows the rea
   if (!town) return;
   btn.disabled = town.hd.locked;
   btn.setAttribute('aria-pressed', String(town.hd.on));
+}
+
+// ---- the farm: what this pet did today (kept in this browser, per pet) and the small prompt and pop over the stage ----------------------------
+function farmMemoryFor(who) {
+  const key = `city.farm.${who}`;
+  return createFarmMemory({ load: () => { try { return JSON.parse(store.get(key) || 'null'); } catch { return null; } }, save: (m) => store.set(key, JSON.stringify(m)) });
+}
+
+/** The prompt that shows an action is available ("A: Cosechar zanahoria"): small and translucent; a tap on it does the action. A hint has no key. */
+function paintFarmPrompt({ action }) {
+  const el = $('farm-prompt');
+  el.hidden = !action;
+  if (action) el.textContent = action.id === 'hint' ? action.label : `${touch ? 'A' : 'E'}: ${action.label}`;
+  el.classList.toggle('hint', !!action && action.id === 'hint');
+}
+
+/** The pop after an action: the item's icon and a word ("+1", "Regado") rising over the pet, or the reason it did not work. */
+function farmPop(res) {
+  if (!res.text) return;
+  const box = $('farm-pop'), it = document.createElement('span');
+  it.className = `pop-item${res.ok ? '' : ' no'}`;
+  if (res.icon) { const c = produceCanvas(res.icon, 24); c.setAttribute('aria-hidden', 'true'); it.append(c); }
+  it.append(res.text);
+  box.replaceChildren(it);
+  setTimeout(() => { if (box.contains(it)) it.remove(); }, 1300);
 }
 
 function setStatus(status) {
@@ -199,7 +230,7 @@ function leave() {
   show('lobby');
 }
 window.cityLeave = leave;                          // the Android back button calls this before it closes the page
-window.addEventListener('pagehide', () => { if (net) net.leave(); if (visit) visit.saver.flush(); });
+window.addEventListener('pagehide', () => { if (net) net.leave(); if (visit) { visit.saver.flush(); visit.canSaver.flush(); } });
 
 async function copyCode() {
   const code = $('room-code').textContent;
@@ -267,6 +298,7 @@ async function recalled(kind) {
   if (!visit) return;
   visit.radar.stop();
   visit.saver.flush();                                          // the stars of the last seconds (the server may refuse after a recall)
+  visit.canSaver.flush();
   if (kind === 'recalled' && town) await town.playExit(visit.entrance);
   closeRoom();
   visit.client.forget();
@@ -288,6 +320,7 @@ async function bootTrip(code) {
   const dev = devEntrance(location.search);
   if (dev && dev !== r.entrance && !r.resumed) { await client.save({ entrance: dev }); }
   const saver = createStarSaver((n) => client.save({ state: (d) => stateWithStars(d, n), keepalive: true }));
+  const canSaver = createStarSaver((snap) => client.save({ state: (d) => stateWithCanasta(d, snap), keepalive: true }));       // the Canasta travels in the same state blob
   // the radar: the pets of the shared room this pet is in (nothing in its private corner), saved every 10 s and when the room changes
   const radar = createRadarSaver({
     build: () => {
@@ -299,7 +332,7 @@ async function bootTrip(code) {
   radar.start();
   shopSource = client;                                          // the trip client: its shop state and trip-buy
   $('bag-open').hidden = false;
-  visit = { client, entrance: client.session.entrance, stop: null, solo: true, saver, radar, stars: createStars({ initial: starsFromState(r.state), persist: (n) => saver.save(n) }) };
+  visit = { client, entrance: client.session.entrance, stop: null, solo: true, saver, canSaver, radar, stars: createStars({ initial: starsFromState(r.state), persist: (n) => saver.save(n) }), canasta: createCanasta({ initial: canastaFrom(r.state), persist: (snap) => canSaver.save(snap) }), farm: farmMemoryFor(code) };
   const box = $('keepsakes');
   box.replaceChildren();
   for (const k of r.pet.keepsakes) {
@@ -344,9 +377,13 @@ async function boot() {
   shopUi = createShopUi($, {
     sprites, source: () => shopSource,
     onOpenChange: (open) => { $('play').classList.toggle('modal', open); if (town) town.setModal(open); },
+    canasta: () => canasta,
     onBought: (key, line) => { if (town) { town.wear(key); town.thank(line); } },
   });
   $('bag-open').addEventListener('click', () => shopUi.openBag());
+  const prompt = $('farm-prompt');
+  prompt.addEventListener('mousedown', (e) => e.preventDefault());               // the prompt never takes the keyboard focus: Enter and Space stay the pet's
+  prompt.addEventListener('pointerdown', (e) => { e.preventDefault(); if (town) town.farm.act(); });
   hud = createHud($, { onShop: () => shopUi.openShop(), onPlay: () => town && town.games.play(), onJoin: () => town && town.games.join(), onSeek: () => town && town.games.seek(), onZone: (z) => town && town.games.zone(z), onTeam: (t) => town && town.games.team(t), onLeave: () => town && town.games.leave(), onDismiss: () => town && town.games.dismiss() });
   if (entry === 'trip') {
     $('copy').addEventListener('click', copyCode);

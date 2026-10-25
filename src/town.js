@@ -21,6 +21,9 @@ import config from '../config.js';
 import { isConfigured } from './config-check.js';
 import { createEventsApi } from './events-client.js';
 import { createTownEvents, parseDevEvent } from './town-events.js';
+import { createCanasta } from './canasta.js';
+import { createFarmMemory, farmView } from './farm-world.js';
+import { actionAt, perform, objectAt } from './farm-actions.js';
 
 const FADE_MS = 240;                                  // the fade-in after a door
 const KEY_DIRS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', w: 'up', s: 'down', a: 'left', d: 'right', W: 'up', S: 'down', A: 'left', D: 'right' };
@@ -34,8 +37,10 @@ function spawnFor(id) {
 /** pad: { stick, a, b } (the phone's on-screen controls) or null;
  * me: { name, look }; net: a createNet() session already joined; entrance: an entrance id to play on arrival (a visiting pet), or null;
  * stars: the pet's star counter ({ add(n) }); onHud(info): called a few times a second with what the game buttons and panels need.
- * Returns { onNetEvent, emote, playExit, games: { play, join, seek, leave, dismiss }, destroy }. */
-export function startTown({ canvas, stage, pad = null, sprites, font, net, me, entrance = null, stars = { add() {} }, onHud = () => {}, onHdMode = () => {}, onShow = () => {}, onShop = () => {} }) {
+ * canasta / farmMemory: the pet's basket (src/canasta.js) and what it did on the farm today (src/farm-world.js); onFarm({ action, prompt }) says which
+ * action is available (or null) when it changes, onFarmDone(result) reports an action's outcome (the pop) and onFarmAction(event) every action done (missions).
+ * Returns { onNetEvent, emote, playExit, games: { play, join, seek, leave, dismiss }, farm: { act }, destroy }. */
+export function startTown({ canvas, stage, pad = null, sprites, font, net, me, entrance = null, stars = { add() {} }, canasta = createCanasta(), farmMemory = createFarmMemory(), onHud = () => {}, onHdMode = () => {}, onShow = () => {}, onShop = () => {}, onFarm = () => {}, onFarmDone = () => {}, onFarmAction = () => {} }) {
   const [sx, sy] = spawnFor(net.id);
   const self = { id: net.id, name: me.name, look: me.look, stats: me.stats || null, act: 'idle', walker: new Walker(sx, sy), emote: null, jumpAt: null, area: 'town' };
   if (entrance) self.fx = { id: entrance, phase: 'arrive', t0: performance.now(), resolve: null };
@@ -47,6 +52,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   const npcs = createNpcs({ seed: net.code || net.id, sprites });           // the villagers: their place and lines come from (room, server time) alone, nothing of them goes over the net
   const search = new URLSearchParams(location.search), devNpcT = search.get('dev') === '1' && Number.isFinite(Number(search.get('npct'))) && search.has('npct') ? Number(search.get('npct')) : null;      // development only: ?dev=1&npct=<ms> pins the villagers' clock
   let shopVisits = 0, shopNear = false, shopSayUntil = 0, modal = false, thankLine = null;      // modal: a panel is open (shop, backpack): the pet stands still
+  let farmAction = null, farmKey = '', farmAt = -Infinity, farmStamp = 0, farmSig = '', farmState = null;       // the farm: the action available now, and the crops as this pet sees them
   let fadeT0 = -Infinity, ambAt = -Infinity;
   const held = [];                                   // direction keys held, the latest last
   let shift = false, padRun = false, stickRun = false;               // Shift (or B, or the stick pushed far) is down: a held direction runs (outside the games)
@@ -177,6 +183,19 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       const all = npcs.update(sn, { night: state.amb.night > 0.6, show: !!state.show && state.show.cut == null, shows: showSpans(events.events), pet: { name: self.name, area: self.area, x: w.tileX, y: w.tileY } });
       state.others = [...state.others, ...all.filter((n) => n.area === self.area)];
     }
+    if (self.area === 'farm') {                                    // the crops (the same clock for everyone, what was picked is this pet's) and the action the pet can do here
+      const sn = devNpcT === null ? events.serverNow() : devNpcT;
+      if (t - farmAt > 500 || !farmState) {
+        farmAt = t;
+        const v = farmView(net.code || net.id, sn, farmMemory), sig = `${v.day}|${v.minute}|${farmMemory.rev}`;
+        if (sig !== farmSig) { farmSig = sig; farmStamp++; }
+        farmState = { ...v, stamp: farmStamp };
+      }
+      state.farm = farmState;
+      farmAction = !w.busy && !self.fx && !modal && !mv.closed ? actionAt('farm', w.tileX, w.tileY, w.d, { basket: canasta, mem: farmMemory, room: net.code || net.id, nowMs: devNpcT === null ? events.serverNow() : devNpcT }) : null;
+    } else { state.farm = null; farmAction = null; }
+    const fk = farmAction ? `${farmAction.id}|${farmAction.label}` : '';
+    if (fk !== farmKey) { farmKey = fk; onFarm({ action: farmAction }); }
     state.talk = null;
     if (self.area === 'shop') {                                    // the shopkeeper greets a pet that steps up to the counter
       const near = nearShopkeeper(w.tileX, w.tileY);
@@ -209,10 +228,43 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   }
   raf = requestAnimationFrame(frame);
 
+  /** Does the farm action of this pet's reach (the object that was tapped, or the pet's own tile)? Does it and returns true. */
+  function farmDo() {
+    if (!farmAction || farmAction.id === 'hint') return false;
+    const res = perform(farmAction, { basket: canasta, mem: farmMemory });
+    farmAt = -Infinity;                                            // the plots and the prompt are looked at again at once
+    if (res.ok) { const t = performance.now(); self.jumpAt = t; net.sendJump(); onFarmAction({ type: res.type, kind: res.kind || null, target: farmAction.target }); }
+    onFarmDone(res);
+    return true;
+  }
+  /** A tap on the farm's object (a tree, the well, the paddock's fence): do its action when the pet is already there, else walk to the nearest open tile beside it. */
+  function farmTap(tile, walks) {
+    if (self.area !== 'farm' || self.walker.busy) return false;
+    const obj = objectAt(tile[0], tile[1]);
+    if (!obj) return false;
+    const w = self.walker;
+    if (Math.abs(w.tileX - tile[0]) + Math.abs(w.tileY - tile[1]) === 1) {       // beside it: face it and act
+      w.face(w.tileX < tile[0] ? 'right' : w.tileX > tile[0] ? 'left' : w.tileY < tile[1] ? 'down' : 'up');
+      farmAction = actionAt('farm', w.tileX, w.tileY, w.d, { basket: canasta, mem: farmMemory, room: net.code || net.id, nowMs: devNpcT === null ? events.serverNow() : devNpcT }, tile);      // only what that object offers
+      if (farmDo()) return true;
+    }
+    if (!walks) return false;
+    let best = null;
+    for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
+      const nx = tile[0] + dx, ny = tile[1] + dy;
+      if (!isWalkable(nx, ny, 'farm')) continue;
+      const path = nx === w.tileX && ny === w.tileY ? [] : findPath(w.tileX, w.tileY, nx, ny, 'farm');
+      if ((path.length || (nx === w.tileX && ny === w.tileY)) && (!best || path.length < best.length)) best = path;
+    }
+    if (best && best.length) { w.setPath(best); state.marker = { x: tile[0], y: tile[1], until: performance.now() + 500 }; return true; }
+    return false;
+  }
   function onPointer(ev) {
-    if (ev.button > 0 || self.fx || self.gone || modal || !tapWalks(ev.pointerType, !!pad)) return;      // with the stick on screen a finger on the map does not walk the pet
+    if (ev.button > 0 || self.fx || self.gone || modal) return;
     const tile = renderer.pointToTile(ev.clientX, ev.clientY);
     if (!tile) return;
+    if (farmTap(tile, tapWalks(ev.pointerType, !!pad))) { ev.preventDefault(); return; }
+    if (!tapWalks(ev.pointerType, !!pad)) return;      // with the stick on screen a finger on the map does not walk the pet
     ev.preventDefault();
     const mv = games.movement();
     if (mv.frozen) return;
@@ -227,6 +279,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     if (isTyping(ev) || modal) return;
     shift = ev.shiftKey;
     if (self.area === 'shop' && shopNear && (ev.key === 'Enter' || ev.key === 'e' || ev.key === 'E')) { ev.preventDefault(); if (!ev.repeat) onShop(); return; }      // Enter or E at the counter opens the shop
+    if ((ev.key === 'Enter' || ev.key === 'e' || ev.key === 'E') && farmAction && farmAction.id !== 'hint') { ev.preventDefault(); if (!ev.repeat) farmDo(); return; }      // Enter or E next to a farm object does its action
     if (isJumpKey(ev)) {                                                // Space: a hop, also in a game (it changes no rule); never scrolls the page
       ev.preventDefault();
       if (!ev.repeat) jump();
@@ -250,6 +303,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   }
   function jump() {
     if (self.area === 'shop' && shopNear && !modal) { onShop(); return; }          // A (or Space) at the counter opens the shop instead of hopping
+    if (!modal && farmDo()) return;                                                 // A (or Space) next to a farm object does its action instead of hopping
     const t = performance.now();
     if (!self.fx && !self.gone && (self.jumpAt == null || t - self.jumpAt >= JUMP_MS)) { self.jumpAt = t; net.sendJump(); }
   }
@@ -300,6 +354,8 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       leave: () => games.leave(),
       dismiss: () => games.dismiss(),
     },
+    /** The farm's action available now (for the prompt's own button: a tap on it does it). */
+    farm: { act: () => farmDo(), get action() { return farmAction; }, memory: farmMemory, basket: canasta },
     /** A panel opened or closed over the town: the pet stops while it is open. */
     setModal(on) { modal = on; if (on) { held.length = 0; self.walker.queue = []; if (touchpad) touchpad.reset(); } },
     /** The pet shows an item it just bought (this screen only: the look the others see does not change), and the shopkeeper says thanks. */

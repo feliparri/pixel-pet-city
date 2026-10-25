@@ -63,6 +63,29 @@ export function buildWorld(areaName = 'town') {
 }
 
 /**
+ * The farm's crops as this pet sees them (state.farm from src/farm-world.js farmView): repaints the soil of the plots that changed in the ground
+ * texture (darker when watered) and swaps the standing plants for the stage's (or none when harvested). Returns true when the ground must be baked again.
+ */
+export function paintFarm(world, farm) {
+  if (!farm || world.farmDay === farm.stamp) return false;
+  world.farmDay = farm.stamp;
+  const t = world.tex.getContext('2d');
+  let dirty = false;
+  for (const p of world.props) {
+    const c = p.crop, v = c && farm.plots.get(c.id);
+    if (!v) continue;
+    const shown = v.look + (v.wet ? 'w' : '');
+    if (p.crop.shown === shown) continue;
+    if (p.crop.shown.endsWith('w') !== v.wet) { soil(t, c.tx * TILE - OX, c.ty * TILE - OY, c.tx, c.ty, v.wet); dirty = true; }
+    p.crop.shown = shown;
+    p.sprite = cropPiece(c.ch, c.tx, c.ty, v.look);
+    p.hidden = !p.sprite;
+    p.key = `s${c.tx},${c.ty}:${v.look}`;
+  }
+  return dirty;
+}
+
+/**
  * Takes hedges, fences, benches and flower beds off the ground texture (the ground under them is painted again, as the town does), makes
  * each an upright piece standing on its tile's front edge, and does the same for the fountain's front rim. Returns the pieces as props.
  */
@@ -78,7 +101,7 @@ function standUp(tex, area) {
   for (const [tx, ty, ch] of cells) {
     const l = raw(tx - 1, ty) === ch || (ch === 'F' && raw(tx - 1, ty) === 'S'), r = raw(tx + 1, ty) === ch || (ch === 'F' && raw(tx + 1, ty) === 'S');
     const x = tx * TILE - OX, y = ty * TILE - OY;
-    if (CROP_CHARS.includes(ch)) { out.push({ key: `s${tx},${ty}`, sprite: cropPiece(ch, tx, ty), x: tx * TILE + TILE / 2, y: ty * TILE + 14, light: 0, after: null }); continue; }
+    if (CROP_CHARS.includes(ch)) { out.push({ key: `s${tx},${ty}`, sprite: cropPiece(ch, tx, ty), x: tx * TILE + TILE / 2, y: ty * TILE + 14, light: 0, after: null, crop: { id: `${tx},${ty}`, ch, tx, ty, shown: 'ripe' } }); continue; }
     const sprite = ch === 'h' ? hedgePiece(tx, ty, l, r) : ch === 'F' ? fencePiece(l, r) : ch === 'n' ? benchPiece() : bedPiece(tx, ty, l, r);
     shadow(t, x + 9, y + 16, ch === 'n' ? 8 : 8.5, 2.4, 0.32);                                  // the shadow on the ground, in front of the foot
     out.push({ key: `s${tx},${ty}`, sprite, x: tx * TILE + TILE / 2, y: ty * TILE + 15, light: 0, after: null });
@@ -195,7 +218,7 @@ export function standingItems(world, cam, n, view) {
       ctx.drawImage(n > 0.02 ? nightSprite(world, key, sprite, n, lightOf, obj.after) : sprite, 0, 0, sprite.width, sprite.height, x, y, w, h);
     } });
   };
-  for (const pr of world.props) put(pr, pr.sprite, pr.key, 0, 0, 0, pr.light);
+  for (const pr of world.props) if (!pr.hidden) put(pr, pr.sprite, pr.key, 0, 0, 0, pr.light);
   for (const h of world.houses) {
     const after = (ctx, nn) => { ctx.globalAlpha = nn; for (const w of h.wins) ctx.drawImage(w.lit, w.x - h.ox, w.y - h.oy); ctx.globalAlpha = 1; };
     put({ x: h.x, y: h.y, after }, h.sprite, h.key, 0, 0, 0, 0);
