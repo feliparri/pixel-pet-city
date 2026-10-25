@@ -14,6 +14,8 @@ import { normalizeTripCode } from './trip-code.js';
 import { devEntrance } from './entrance.js';
 import { drawKeepsake } from './keepsake.js';
 import { createHud } from './hud.js';
+import { createShopUi } from './shop-ui.js';
+import { createMockShop } from './shop-mock.js';
 import { createBridge } from './usb-bridge.js';
 import { createRadarSaver, radarOf, stateWithRadar } from './radar.js';
 import { createStars, createStarSaver, starsFromState, stateWithStars } from './stars.js';
@@ -28,6 +30,7 @@ const store = {
 
 let sprites, font, net = null, town = null, mode = null, netMode = null;
 let visit = null;                                 // a real pet visiting (trip): { client, entrance, stop, solo, stars, saver, radar }
+let shopUi = null, shopSource = null;   // the Tienda and Mochila panels and what they read: the trip client, or in dev a mock
 let hud = null, stars = null;                    // the games' overlay and this pet's star counter (kept in the trip's server state)
 let me = null;                                   // { name, look, stats }
 let fixedPet = false;                            // the pet is a real one (a trip): no chooser
@@ -159,7 +162,7 @@ async function enter(code, { transport = mode, arrival = null, solo = false } = 
   showStars();
   const counter = { add(n) { stars.add(n); showStars(); } };
   window.cityDebug = () => ({ town, net });                    // handy in the console when testing with two tabs
-  town = startTown({ canvas: $('view'), stage: $('stage'), pad: touch ? { dpad: $('dpad'), a: $('pad-a'), b: $('pad-b') } : null, sprites, font, net, me, entrance: arrival, stars: counter, onHud: (info) => hud && hud.update(info), onHdMode: () => paintFx(), onShow: (on) => { $('show-back').hidden = !on; } });
+  town = startTown({ canvas: $('view'), stage: $('stage'), pad: touch ? { dpad: $('dpad'), a: $('pad-a'), b: $('pad-b') } : null, sprites, font, net, me, entrance: arrival, stars: counter, onHud: (info) => hud && hud.update(info), onHdMode: () => paintFx(), onShow: (on) => { $('show-back').hidden = !on; }, onShop: () => shopUi && shopUi.openShop() });
   if (!town.hd.locked) town.hd.set(hdPref);
   paintFx();
   setStatus('connected');
@@ -183,6 +186,7 @@ function setStatus(status) {
 
 function closeRoom() {
   $('show-back').hidden = true;
+  if (shopUi) shopUi.close();
   if (hud) hud.update({ lobby: null, game: null, results: null, notices: [], spot: null });
   if (town) { town.destroy(); town = null; }
   if (net) { net.leave(); net = null; }
@@ -266,6 +270,7 @@ async function recalled(kind) {
   if (kind === 'recalled' && town) await town.playExit(visit.entrance);
   closeRoom();
   visit.client.forget();
+  shopSource = null; $('bag-open').hidden = true;
   const text = kind === 'recalled' ? 'Volvió a su casa' : 'El viaje terminó';
   visit = null;
   showGone(text);
@@ -292,6 +297,8 @@ async function bootTrip(code) {
     send: (rd) => client.save({ state: (d) => stateWithRadar(d, rd), keepalive: true }),
   });
   radar.start();
+  shopSource = client;                                          // the trip client: its shop state and trip-buy
+  $('bag-open').hidden = false;
   visit = { client, entrance: client.session.entrance, stop: null, solo: true, saver, radar, stars: createStars({ initial: starsFromState(r.state), persist: (n) => saver.save(n) }) };
   const box = $('keepsakes');
   box.replaceChildren();
@@ -334,7 +341,13 @@ async function boot() {
   buildEmotes();
   $('show-back').addEventListener('click', () => { if (town) town.events.cut(); });
   $('fx-toggle').addEventListener('click', () => { if (!town || town.hd.locked) return; hdPref = !town.hd.on; store.set('city.hd2d', hdPref ? '1' : '0'); town.hd.set(hdPref, true); paintFx(); });
-  hud = createHud($, { onPlay: () => town && town.games.play(), onJoin: () => town && town.games.join(), onSeek: () => town && town.games.seek(), onZone: (z) => town && town.games.zone(z), onTeam: (t) => town && town.games.team(t), onLeave: () => town && town.games.leave(), onDismiss: () => town && town.games.dismiss() });
+  shopUi = createShopUi($, {
+    sprites, source: () => shopSource,
+    onOpenChange: (open) => { $('play').classList.toggle('modal', open); if (town) town.setModal(open); },
+    onBought: (key, line) => { if (town) { town.wear(key); town.thank(line); } },
+  });
+  $('bag-open').addEventListener('click', () => shopUi.openBag());
+  hud = createHud($, { onShop: () => shopUi.openShop(), onPlay: () => town && town.games.play(), onJoin: () => town && town.games.join(), onSeek: () => town && town.games.seek(), onZone: (z) => town && town.games.zone(z), onTeam: (t) => town && town.games.team(t), onLeave: () => town && town.games.leave(), onDismiss: () => town && town.games.dismiss() });
   if (entry === 'trip') {
     $('copy').addEventListener('click', copyCode);
     $('leave').addEventListener('click', leave);
@@ -345,6 +358,8 @@ async function boot() {
     return bootTrip(tripCodeFromSearch(location.search));
   }
   // development only (?local=1&dev=1): the pet chooser and rooms between tabs of this browser
+  shopSource = createMockShop(location.search);                  // no server: a mock with the same rules
+  $('bag-open').hidden = false;
   show('lobby');
   applySaved();
   $('chooser').addEventListener('input', refreshPet);

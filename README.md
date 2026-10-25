@@ -9,7 +9,7 @@ small top-down town, walk around and greet each other with presets. Plain HTML, 
   controls (see "Rooms and real pets" below for what is not enforced yet). Rooms cannot be listed and end when everyone leaves. No accounts.
 - No free-text chat: only the presets (👋 ❤️ 😄 🎉 "¡Hola!", "¡Juguemos!", "¡Chau!"). Only the pet's name and look are shared.
 - A town of 48 x 74 tiles with a plaza and fountain, four houses, the Parque (pond, trees, bushes, open grass) and the Tienda, which can
-  be entered (it sells nothing yet: "Próximamente"). The town follows your local clock: dusk, night, lit windows and lamps.
+  be entered (its raccoon shopkeeper sells accessories for the pet's gold, "Tienda" panel). The town follows your local clock: dusk, night, lit windows and lamps.
 - Ambient life (`src/life.js`, `src/art/life.js`): sparrows that peck and fly off when a pet comes within 3 tiles and return later, butterflies over
   the garden and the Parque by day, fireflies at night (they follow the town's clock), a duck and rings on the pond and the fountain's spray.
   It is drawn on each screen only, seeded by the room code (so every player sees a similar scene), sends nothing over the net and never

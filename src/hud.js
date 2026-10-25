@@ -51,7 +51,8 @@ export function resultLines(res) {
   });
 }
 
-export function createHud($, { onPlay, onJoin, onSeek, onLeave, onDismiss, onZone = () => {}, onTeam = () => {} }) {
+export function createHud($, { onPlay, onJoin, onSeek, onLeave, onDismiss, onZone = () => {}, onTeam = () => {}, onShop = () => {} }) {
+  $('shop-open').addEventListener('click', onShop);
   $('game-play').addEventListener('click', onPlay);
   $('invite-join').addEventListener('click', onJoin);
   $('game-seek').addEventListener('click', onSeek);
@@ -74,6 +75,7 @@ export function createHud($, { onPlay, onJoin, onSeek, onLeave, onDismiss, onZon
         playBtn.textContent = rules ? rules.play : `${GAME_PLACES[info.spot].name}: pronto`;
         playBtn.disabled = !rules;
       }
+      $('shop-open').hidden = !info.shopNear;                                             // at the shopkeeper's counter
       $('invite').hidden = !(lobby && !lobby.iJoined);
       if (lobby) $('invite-text').textContent = `${lobby.invite} ${secs(lobby.left)}`;
       const seekBtn = $('game-seek');

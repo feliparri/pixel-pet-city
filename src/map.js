@@ -78,12 +78,12 @@ export const DOORS = {
 /** Text boards drawn over the scene. x may be fractional (tile units); the board floats above the tile. */
 export const SIGNS = [
   { area: 'town', x: 21, y: 31, text: 'Parque', sub: 'Para jugar' },
-  { area: 'town', x: 33, y: 10, text: 'Tienda', sub: 'Próximamente', below: true },
+  { area: 'town', x: 33, y: 10, text: 'Tienda', sub: 'Abierto', below: true },
   { area: 'town', x: 16, y: 34, text: 'Escondida', sub: 'Jugar' },
   { area: 'town', x: 33, y: 42, text: 'Gallina', sub: 'Jugar' },
   { area: 'town', x: 13, y: 57, text: 'Cancha', sub: 'Jugar' },
   { area: 'town', x: 43, y: 69, text: 'Pista', sub: 'Jugar' },
-  { area: 'shop', x: 6.5, y: 2, text: 'Tienda', sub: 'Próximamente' },
+  { area: 'shop', x: 6.5, y: 2, text: 'Tienda', sub: 'Abierto' },
 ];
 
 /**

@@ -4,6 +4,7 @@ import { normalizeTripCode } from './trip-code.js';
 import { parseKeepsake } from './keepsake.js';
 import { validateLook, validateStats, sanitizeName } from './protocol.js';
 import { entranceId } from './entrance.js';
+import { shopFrom, shopAfterBuy, parseBag } from './shop.js';
 
 export const POLL_MS = 5000;
 const KEY = 'city.trip';
@@ -42,11 +43,11 @@ export function petFromClaim(pet, catalogue) {
   const look = validateLook(pet, catalogue);
   if (!look) return null;
   const keepsakes = (Array.isArray(pet.keepsakes) ? pet.keepsakes : []).slice(0, 4).map(parseKeepsake).filter(Boolean);
-  return { name: sanitizeName(pet.name), look, stats: validateStats(pet.stats), keepsakes };
+  return { name: sanitizeName(pet.name), look, stats: validateStats(pet.stats), keepsakes, owned: shopFrom(null, pet).owned, bag: parseBag(pet.bag) };
 }
 
 export function createTripClient({ base, fetch: fetcher = globalThis.fetch, storage = null, setInterval: setI = globalThis.setInterval, clearInterval: clearI = globalThis.clearInterval }) {
-  let session = null;                                   // { code, trip, token, version, entrance, data (the saved state blob) }
+  let session = null;                                   // { code, trip, token, version, entrance, data (the saved state blob), shop (src/shop.js shopFrom) }
 
   const read = () => { try { return JSON.parse(storage?.getItem(KEY) || 'null'); } catch { return null; } };
   const write = (v) => { try { v ? storage?.setItem(KEY, JSON.stringify(v)) : storage?.removeItem(KEY); } catch { /* private mode */ } };
@@ -75,6 +76,19 @@ export function createTripClient({ base, fetch: fetcher = globalThis.fetch, stor
   return {
     get session() { return session; },
 
+    /** The shop's state for the panel (src/shop.js shopFrom), or null before a claim. */
+    get shop() { return session ? session.shop : null; },
+
+    /** Buys one item with the pet's gold (trip-buy). A 409 `conflict` (another buy got in first) is asked again once. { ok, gold_left, bought } or { ok: false, error, price?, gold_left? }. */
+    async buy(key) {
+      if (!session) return { ok: false, error: 'bad_session' };
+      let r = await post('trip-buy', { trip: session.trip, item: key }, session.token);
+      if (!r.ok && r.error === 'conflict') r = await post('trip-buy', { trip: session.trip, item: key }, session.token);
+      const out = r.ok ? { ok: true, ...r.body } : { ok: false, error: r.error, ...(r.body && Number.isInteger(r.body.price) ? { price: r.body.price } : {}), ...(r.body && Number.isInteger(r.body.gold_left) ? { gold_left: r.body.gold_left } : {}) };
+      session.shop = shopAfterBuy(session.shop, key, out);
+      return out;
+    },
+
     /** Claims (or resumes) a code. { ok, resumed, entrance, pet } or { ok: false, error }. */
     async claim(code, catalogue) {
       const saved = read();
@@ -83,7 +97,7 @@ export function createTripClient({ base, fetch: fetcher = globalThis.fetch, stor
       if (!r.ok) { if (r.error === 'trip_over') write(null); return { ok: false, error: r.error }; }
       const pet = petFromClaim(r.body.pet, catalogue);
       if (!pet) return { ok: false, error: 'bad_pet' };
-      session = { code, trip: r.body.trip, token: r.body.token, version: r.body.state?.version ?? 0, data: r.body.state?.data && typeof r.body.state.data === 'object' ? r.body.state.data : {}, entrance: entranceId(r.body.entrance) };
+      session = { code, trip: r.body.trip, token: r.body.token, version: r.body.state?.version ?? 0, data: r.body.state?.data && typeof r.body.state.data === 'object' ? r.body.state.data : {}, entrance: entranceId(r.body.entrance), shop: shopFrom(r.body, pet) };
       write({ code, token: session.token });
       return { ok: true, resumed: token !== undefined && token === r.body.token, entrance: session.entrance, pet, state: session.data };
     },
@@ -110,6 +124,7 @@ export function createTripClient({ base, fetch: fetcher = globalThis.fetch, stor
         if (stopped) return;
         if (r.ok && r.body.recalled) { finish('recalled'); return; }
         if (r.ok && r.body.status !== 'active') finish('over');
+        else if (r.ok && session) session.shop = shopFrom(r.body, null, session.shop);
         else if (!r.ok && (r.status === 401 || r.status === 410)) finish('over');
       };
       const finish = (kind) => { stopped = true; clearI(timer); write(null); onChange(kind); };

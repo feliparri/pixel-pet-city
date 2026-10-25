@@ -50,3 +50,26 @@ export function drawPet(ctx, sp, look, x, y, { frame = 'idle', flip = false, fla
   layer(0);
   ctx.restore();
 }
+
+/** An accessory on its own (the shop and the backpack): its parts as an adult cat wears them, scaled to fit a `size` x `size` box. False when the catalogue has no art for it. */
+export function drawItemIcon(ctx, sp, key, size = 40) {
+  const def = sp.data.items[key], worn = def && (def.worn['cat-adult'] || Object.values(def.worn)[0]);
+  if (!worn) return false;
+  const parts = worn.rest.map(([part, px, py, mirror, behind]) => ({ part, px, py, mirror, behind, w: sp.data.partSizes[part][0], h: sp.data.partSizes[part][1] }));
+  const x0 = Math.min(...parts.map((p) => p.px)), y0 = Math.min(...parts.map((p) => p.py));
+  const bw = Math.max(...parts.map((p) => p.px + p.w)) - x0, bh = Math.max(...parts.map((p) => p.py + p.h)) - y0;
+  const k = Math.max(1, Math.floor(size / Math.max(bw, bh))), ox = Math.floor((size - bw * k) / 2), oy = Math.floor((size - bh * k) / 2);
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  for (const behind of [1, 0]) {
+    for (const p of parts) {
+      if (p.behind !== behind) continue;
+      const sx = (p.part % sp.data.partCols) * sp.data.partCell, sy = Math.floor(p.part / sp.data.partCols) * sp.data.partCell;
+      const dx = ox + (p.px - x0) * k, dy = oy + (p.py - y0) * k;
+      if (p.mirror) { ctx.save(); ctx.translate(dx + p.w * k, dy); ctx.scale(-1, 1); ctx.drawImage(sp.parts, sx, sy, p.w, p.h, 0, 0, p.w * k, p.h * k); ctx.restore(); }
+      else ctx.drawImage(sp.parts, sx, sy, p.w, p.h, dx, dy, p.w * k, p.h * k);
+    }
+  }
+  ctx.restore();
+  return true;
+}

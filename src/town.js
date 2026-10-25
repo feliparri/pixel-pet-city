@@ -14,6 +14,7 @@ import { GAME_RULES } from './games/rules.js';
 import { stumbled, paceAt, RACE } from './games/race.js';
 import { activityOf, radarPets } from './radar.js';
 import { createLife, stepLife, lifeFrame } from './life.js';
+import { SLOTS } from './protocol.js';
 import { createNpcs, nearShopkeeper, shopGreeting, SHOPKEEPER, SHOP_SAY_MS } from './npcs.js';
 import config from '../config.js';
 import { isConfigured } from './config-check.js';
@@ -33,7 +34,7 @@ function spawnFor(id) {
  * me: { name, look }; net: a createNet() session already joined; entrance: an entrance id to play on arrival (a visiting pet), or null;
  * stars: the pet's star counter ({ add(n) }); onHud(info): called a few times a second with what the game buttons and panels need.
  * Returns { onNetEvent, emote, playExit, games: { play, join, seek, leave, dismiss }, destroy }. */
-export function startTown({ canvas, stage, pad = null, sprites, font, net, me, entrance = null, stars = { add() {} }, onHud = () => {}, onHdMode = () => {}, onShow = () => {} }) {
+export function startTown({ canvas, stage, pad = null, sprites, font, net, me, entrance = null, stars = { add() {} }, onHud = () => {}, onHdMode = () => {}, onShow = () => {}, onShop = () => {} }) {
   const [sx, sy] = spawnFor(net.id);
   const self = { id: net.id, name: me.name, look: me.look, stats: me.stats || null, act: 'idle', walker: new Walker(sx, sy), emote: null, jumpAt: null, area: 'town' };
   if (entrance) self.fx = { id: entrance, phase: 'arrive', t0: performance.now(), resolve: null };
@@ -43,7 +44,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   const renderer = createTownRenderer({ canvas, sprites, font, minH: pad ? MIN_VIEW_H : VIEW_H, flat: new URLSearchParams(location.search).get('flat') === '1', onNotice: (text) => games.notify(text), onMode: onHdMode });   // a phone: big pixels; a desktop: as many tiles as before
   const npcs = createNpcs({ seed: net.code || net.id, sprites });           // the villagers: their place and lines come from (room, server time) alone, nothing of them goes over the net
   const search = new URLSearchParams(location.search), devNpcT = search.get('dev') === '1' && Number.isFinite(Number(search.get('npct'))) && search.has('npct') ? Number(search.get('npct')) : null;      // development only: ?dev=1&npct=<ms> pins the villagers' clock
-  let shopVisits = 0, shopNear = false, shopSayUntil = 0;
+  let shopVisits = 0, shopNear = false, shopSayUntil = 0, modal = false, thankLine = null;      // modal: a panel is open (shop, backpack): the pet stands still
   let fadeT0 = -Infinity, ambAt = -Infinity;
   const held = [];                                   // direction keys held, the latest last
   let shift = false, padRun = false;                                 // Shift is down: a held arrow key runs (outside the games)
@@ -166,7 +167,8 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       const near = nearShopkeeper(w.tileX, w.tileY);
       if (near && !shopNear) { shopSayUntil = t + SHOP_SAY_MS; shopVisits++; }
       shopNear = near;
-      if (t < shopSayUntil) state.talk = [{ x: SHOPKEEPER.head.x, y: SHOPKEEPER.head.y, text: shopGreeting(shopVisits - 1) }];
+      if (thankLine && t < thankLine.until) state.talk = [{ x: SHOPKEEPER.head.x, y: SHOPKEEPER.head.y, text: thankLine.text }];
+      else if (t < shopSayUntil) state.talk = [{ x: SHOPKEEPER.head.x, y: SHOPKEEPER.head.y, text: shopGreeting(shopVisits - 1) }];
     } else shopNear = false;
     self.act = activityOf({ area: self.area, game: gv.game, moving: w.busy });
     net.setActivity(self.act);
@@ -185,7 +187,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     state.ball = gv.game && gv.game.ball && self.area === 'town' ? gv.game.ball : null;
     const here = !w.busy && self.area === 'town' ? spotAt(w.tileX, w.tileY) : null;      // standing on a game's pad: the button; walking onto the pad of an open lobby joins it
     if (here && gv.lobby && gv.lobby.g === here && !gv.lobby.iJoined) games.join();
-    if (t - hudAt > 120) { hudAt = t; onHud({ ...gv, spot: here, wall: mv.zone && gv.game ? gv.game.name : null, frozen: mv.frozen }); }
+    if (t - hudAt > 120) { hudAt = t; onHud({ ...gv, shopNear: self.area === 'shop' && shopNear && !modal, spot: here, wall: mv.zone && gv.game ? gv.game.name : null, frozen: mv.frozen }); }
     state.show = events.tick(self.area !== 'town' ? 'inside' : renderer.hd ? 'hd' : 'flat');      // the show that runs now, the same moment on every screen
     renderer.draw(state, t);
     raf = requestAnimationFrame(frame);
@@ -193,7 +195,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   raf = requestAnimationFrame(frame);
 
   function onPointer(ev) {
-    if (ev.button > 0 || self.fx || self.gone) return;
+    if (ev.button > 0 || self.fx || self.gone || modal) return;
     const tile = renderer.pointToTile(ev.clientX, ev.clientY);
     if (!tile) return;
     ev.preventDefault();
@@ -207,8 +209,9 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     }
   }
   function onKeyDown(ev) {
-    if (isTyping(ev)) return;
+    if (isTyping(ev) || modal) return;
     shift = ev.shiftKey;
+    if (self.area === 'shop' && shopNear && (ev.key === 'Enter' || ev.key === 'e' || ev.key === 'E')) { ev.preventDefault(); if (!ev.repeat) onShop(); return; }      // Enter or E at the counter opens the shop
     if (isJumpKey(ev)) {                                                // Space: a hop, also in a game (it changes no rule); never scrolls the page
       ev.preventDefault();
       if (!ev.repeat) jump();
@@ -231,6 +234,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     if (i >= 0) held.splice(i, 1);
   }
   function jump() {
+    if (self.area === 'shop' && shopNear && !modal) { onShop(); return; }          // A (or Space) at the counter opens the shop instead of hopping
     const t = performance.now();
     if (!self.fx && !self.gone && (self.jumpAt == null || t - self.jumpAt >= JUMP_MS)) { self.jumpAt = t; net.sendJump(); }
   }
@@ -280,6 +284,14 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       leave: () => games.leave(),
       dismiss: () => games.dismiss(),
     },
+    /** A panel opened or closed over the town: the pet stops while it is open. */
+    setModal(on) { modal = on; if (on) { held.length = 0; self.walker.queue = []; } },
+    /** The pet shows an item it just bought (this screen only: the look the others see does not change), and the shopkeeper says thanks. */
+    wear(key) {
+      const slot = sprites.catalogue[key] && SLOTS.indexOf(sprites.catalogue[key].slot);
+      if (slot >= 0) self.look = { ...self.look, items: self.look.items.map((it, i) => (i === slot ? key : it)) };
+    },
+    thank(text) { thankLine = { text, until: performance.now() + SHOP_SAY_MS }; },
     emote(e) {
       if (self.fx || self.gone) return;
       if (net.sendEmote(e)) self.emote = { e, until: performance.now() + EMOTE_MS };
