@@ -10,11 +10,12 @@ import { loadSprites } from './sprites.js';
 import { loadFont } from './font.js';
 import { ambientAt } from './daynight.js';
 import { Walker } from './walker.js';
+import { createLife, stepLife, lifeFrame } from './life.js';
 
 const q = new URLSearchParams(location.search);
-const kind = ['town', 'shop', 'view', 'park', 'seek', 'coop', 'sprint'].includes(q.get('shot')) ? q.get('shot') : 'town';
+const kind = ['town', 'shop', 'view', 'park', 'seek', 'coop', 'sprint', 'life'].includes(q.get('shot')) ? q.get('shot') : 'town';
 const hour = q.has('hour') && Number.isFinite(Number(q.get('hour'))) ? Number(q.get('hour')) : 13;
-const scale = Math.max(1, Math.min(6, Number(q.get('scale')) | 0 || (kind === 'shop' ? 4 : kind === 'view' || kind === 'seek' || kind === 'coop' || kind === 'sprint' ? 3 : 2)));
+const scale = Math.max(1, Math.min(6, Number(q.get('scale')) | 0 || (kind === 'shop' ? 4 : kind === 'view' || kind === 'life' || kind === 'seek' || kind === 'coop' || kind === 'sprint' ? 3 : 2)));
 
 const pet = (id, species, stage, items, x, y, d = 'down') => ({ id, name: id, look: { species, stage, items }, walker: new Walker(x, y, d), emote: null });
 const CAST = {
@@ -22,6 +23,7 @@ const CAST = {
   seek: [pet('Mochi', 'cat', 2, ['tophat', '', '', ''], 22, 38, 'right'), pet('Rana', 'frog', 2, ['', '', '', ''], 24, 39, 'left'), pet('Luna', 'seal', 1, ['', '', '', ''], 30, 40), pet('Pipo', 'frog', 1, ['', '', '', ''], 22, 37), pet('Coco', 'seal', 2, ['', '', '', ''], 19, 37)],
   coop: [pet('Mochi', 'cat', 2, ['tophat', '', '', ''], 29, 42, 'up'), pet('Luna', 'seal', 1, ['', '', '', ''], 35, 39, 'left'), pet('Rana', 'frog', 2, ['', '', '', ''], 27, 40, 'right')],
   sprint: [pet('Mochi', 'cat', 2, ['tophat', '', '', ''], 19, 24, 'right'), pet('Luna', 'seal', 1, ['', '', '', ''], 17, 26, 'right')],
+  life: [pet('Mochi', 'cat', 2, ['tophat', '', '', ''], 14, 36, 'right'), pet('Rana', 'frog', 2, ['', '', '', ''], 18, 39, 'left')],
   shop: [pet('Mochi', 'cat', 2, ['', '', '', ''], 6, 8, 'up'), pet('Luna', 'seal', 1, ['', '', '', ''], 9, 7, 'left')],
 };
 
@@ -41,11 +43,16 @@ async function main() {
   }
   if (kind === 'coop') { cam = cameraFor(31 * TILE + 8, 40 * TILE + 8, area.w * TILE, area.h * TILE); vw = VIEW_W; vh = VIEW_H; chicken = { x: 32, y: 42, frame: 1, flip: false }; }
   if (kind === 'sprint') { cam = cameraFor(24 * TILE + 8, 24 * TILE + 8, area.w * TILE, area.h * TILE); vw = VIEW_W; vh = VIEW_H; chicken = { x: 25.5, y: 24, frame: 1, flip: false }; }   // the chicken sprinting across the plaza, a pet chasing it
+  const lifeNow = 7300, amb = ambientAt(hour);
+  const life = createLife('FOCA-LUNA-42');                                       // the same scene as the room FOCA-LUNA-42; a pet walking up scares a bird
+  stepLife(life, [], 0);
+  stepLife(life, entities.filter((e) => e.walker.tileY > 28).map((e) => ({ x: e.walker.tileX, y: e.walker.tileY })), lifeNow - 500);
+  const lifeScene = kind === 'shop' ? null : lifeFrame(life, lifeNow, amb);
+  if (kind === 'life') { vw = 20 * TILE; vh = 14 * TILE; cam = { x: 2 * TILE, y: 30 * TILE }; }
   const scene = document.createElement('canvas');
   scene.width = vw; scene.height = vh;
   const sctx = scene.getContext('2d');
-  const amb = ambientAt(hour);
-  drawScene(sctx, { area: area.name, cam, vw, vh, entities: shown, me, now: 1000, amb, sprites, font, chicken, dark });
+  drawScene(sctx, { area: area.name, cam, vw, vh, entities: shown, me, now: kind === 'life' ? lifeNow : 1000, amb, sprites, font, chicken, dark, life: lifeScene });
   const c = document.getElementById('c');
   c.width = vw * scale; c.height = vh * scale;
   const ctx = c.getContext('2d');

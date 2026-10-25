@@ -7,6 +7,7 @@ import { ambientAt, hourNow } from './daynight.js';
 import { entranceState } from './entrance.js';
 import { createGames } from './games/manager.js';
 import { GAME_RULES } from './games/rules.js';
+import { createLife, stepLife, lifeFrame } from './life.js';
 
 const FADE_MS = 240;                                  // the fade-in after a door
 const KEY_DIRS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', w: 'up', s: 'down', a: 'left', d: 'right', W: 'up', S: 'down', A: 'left', D: 'right' };
@@ -26,6 +27,7 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
   if (entrance) self.fx = { id: entrance, phase: 'arrive', t0: performance.now(), resolve: null };
   const others = new Map();
   const state = { me: self, others: [], marker: null, area: 'town', amb: ambientAt(hourNow(location.search)), fade: 0 };
+  const life = createLife(net.code || net.id);                       // the same scene for a room, from its code; nothing of it goes over the net
   const renderer = createRenderer({ canvas, sprites, font });
   let fadeT0 = -Infinity, ambAt = -Infinity;
   const held = [];                                   // direction keys held, the latest last
@@ -117,6 +119,10 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
     const vision = games.seekerVision();                         // the seeker sees only a circle of light, and not what hides in bushes
     state.dark = vision ? { full: vision.full, r: GAME_RULES.hide.lightRadius * 16 } : null;
     if (vision) state.others = vision.full ? [] : state.others.filter((o) => vision.see({ x: o.walker.tileX, y: o.walker.tileY }, !!TILES[tileAt(o.walker.tileX, o.walker.tileY)].hide));
+    if (self.area === 'town') {                                   // ambient life: the birds look at every pet in the town
+      stepLife(life, [{ x: w.tileX, y: w.tileY }, ...Array.from(others.values()).filter((o) => o.placed && o.area === 'town').map((o) => ({ x: o.walker.tileX, y: o.walker.tileY }))], t);
+      state.life = lifeFrame(life, t, state.amb);
+    } else state.life = null;
     const gv = games.view();
     const ck = gv.game && gv.game.chick;
     if (ck && ck.seq !== chickSeq) {                                                       // a new motion: continue along its route, correct only what differs

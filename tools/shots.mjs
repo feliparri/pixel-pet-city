@@ -23,7 +23,7 @@ const port = server.address().port;
 
 const SHOTS = [
   ['town-day', 'shot=town&hour=13', 1536, 1408], ['town-dusk', 'shot=town&hour=18.5', 1536, 1408], ['town-night', 'shot=town&hour=22', 1536, 1408],
-  ['shop', 'shot=shop&hour=13', 896, 768], ['park', 'shot=park&hour=13', 1536, 512], ['seek', 'shot=seek&hour=13', 672, 864], ['coop', 'shot=coop&hour=13', 672, 864], ['sprint', 'shot=sprint&hour=13', 672, 864], ['view-plaza-night', 'shot=view&hour=21.5', 672, 864], ['view-plaza-day', 'shot=view&hour=12', 672, 864],
+  ['shop', 'shot=shop&hour=13', 896, 768], ['park', 'shot=park&hour=13', 1536, 512], ['seek', 'shot=seek&hour=13', 672, 864], ['coop', 'shot=coop&hour=13', 672, 864], ['sprint', 'shot=sprint&hour=13', 672, 864], ['life-day', 'shot=life&hour=13', 960, 672], ['life-night', 'shot=life&hour=22', 960, 672], ['view-plaza-night', 'shot=view&hour=21.5', 672, 864], ['view-plaza-day', 'shot=view&hour=12', 672, 864],
 ];
 const run = (args) => new Promise((resolve) => {
   const p = spawn(CHROME, args, { stdio: 'ignore' });

@@ -51,6 +51,10 @@ export const DEFAULT_AREA = 'town';
 export const PLAZA = { x: 16, y: 15, w: 16, h: 13 };
 export const inPlaza = (x, y) => x >= PLAZA.x && y >= PLAZA.y && x < PLAZA.x + PLAZA.w && y < PLAZA.y + PLAZA.h;
 
+/** The east garden (flower beds behind a fence) and the Parque (the whole south field): where the butterflies and fireflies of life.js live. */
+export const GARDEN = { x: 35, y: 16, w: 9, h: 10 };
+export const PARQUE = { x: 3, y: 32, w: 42, h: 11 };
+
 /** Houses (roof 2 rows + wall 2 rows). `door` is the tile offset of the door in the bottom row; `enter` marks the shop. */
 export const HOUSES = [
   { x: 4, y: 6, w: 5, door: 2, roof: 'red', wall: 'brick', windows: [0, 4] },

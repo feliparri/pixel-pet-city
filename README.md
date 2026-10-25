@@ -10,6 +10,10 @@ small top-down town, walk around and greet each other with presets. Plain HTML, 
 - No free-text chat: only the presets (👋 ❤️ 😄 🎉 "¡Hola!", "¡Juguemos!", "¡Chau!"). Only the pet's name and look are shared.
 - A town of 48 x 44 tiles with a plaza and fountain, four houses, the Parque (pond, trees, bushes, open grass) and the Tienda, which can
   be entered (it sells nothing yet: "Próximamente"). The town follows your local clock: dusk, night, lit windows and lamps.
+- Ambient life (`src/life.js`, `src/art/life.js`): sparrows that peck and fly off when a pet comes within 3 tiles and return later, butterflies over
+  the garden and the Parque by day, fireflies at night (they follow the town's clock), a duck and rings on the pond and the fountain's spray.
+  It is drawn on each screen only, seeded by the room code (so every player sees a similar scene), sends nothing over the net and never
+  blocks walking.
 - Games, played in the Parque on their own marked places (a signpost, a pad and a big floating icon each). The town is social only:
   pets are not cared for here. Stand on a game's pad and press **Jugar a ...**: a 10 s lobby opens and everybody in the room gets
   "¡Escondida! ¿Juegan?" with **Me sumo** (or just walk onto the pad). Anyone can start; the creator of the room has no special power.
@@ -96,6 +100,7 @@ authorization policy); see `docs/room-access.md`.
 | `src/protocol.js` | validation, sanitizing and rate limits for everything received |
 | `src/net.js`, `src/transport-*.js` | the room session and its `local` and `supabase` transports |
 | `src/art/*.js` | the tileset, drawn in code with the pets' palette: ground tiles, props, houses, the shop interior; `bake.js` bakes an area |
+| `src/life.js` | the ambient life: seeded scene, birds' state, poses of butterflies, fireflies, duck, rings and spray |
 | `src/render.js`, `src/sprites.js`, `src/font.js`, `src/daynight.js` | drawing: integer scale, camera, props sorted with pets, day/night tint and lights |
 | `tools/stamp.mjs` | cache-busting: run `node tools/stamp.mjs` before committing changes to `src/`, `style.css` or `config.js` |
 | `shot.html`, `tools/shots.mjs` | the preview (below) |

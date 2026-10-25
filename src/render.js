@@ -12,6 +12,7 @@ import { fountainFrame } from './art/props.js';
 import { P } from './art/palette.js';
 import { badge, bobY, BADGE } from './art/icons.js';
 import { drawChicken, CHICKEN_SIZE } from './art/chicken.js';
+import { drawBird, drawButterfly, drawFirefly, drawDuck, drawRing, drawSpray } from './art/life.js';
 
 export const VIEW_W = 224;
 export const VIEW_H = 288;
@@ -41,7 +42,7 @@ const headFrame = (e, now, id) => {
  * opts: { area (name), cam {x, y}, entities [{ id, name, look, walker, emote?, fx?, gone? }], me, now, amb {tint, night}, sprites, font, marker?, fade? }.
  * Returns the emote bubbles to draw at the final size: [{ x, y, e }] in view pixels.
  */
-export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now, amb = NO_LIGHT, sprites, font, marker = null, fade = 0, chicken = null, dark = null }) {
+export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now, amb = NO_LIGHT, sprites, font, marker = null, fade = 0, chicken = null, dark = null, life = null }) {
   const area = getArea(areaName), baked = bakeArea(area);
   sctx.imageSmoothingEnabled = false;
   sctx.fillStyle = '#0e101a';
@@ -55,6 +56,11 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
     for (const [dx, dy, w] of rippleSpots(tx, ty, frame)) sctx.fillRect(x + dx - cam.x, y + dy - cam.y, w, 1);
   }
   if (baked.fountain) for (const [c, dx, dy, w, h] of fountainFrame(frame)) { sctx.fillStyle = c; sctx.fillRect(baked.fountain.x + dx - cam.x, baked.fountain.y + dy - cam.y, w, h); }
+
+  if (life && areaName === 'town') {                                           // the spray of the fountain and the rings on the pond
+    if (baked.fountain) drawSpray(sctx, life.spray, baked.fountain.x - cam.x, baked.fountain.y - cam.y);
+    for (const r of life.ripples) drawRing(sctx, r.x - cam.x, r.y - cam.y, r.radius, r.fade * 0.8);
+  }
 
   if (marker && now < marker.until) {                                          // where a tap sent the pet
     const mx = marker.x * TILE - cam.x, my = marker.y * TILE - cam.y;
@@ -104,8 +110,13 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
       drawChicken(sctx, cx - CHICKEN_SIZE / 2, cy - CHICKEN_SIZE - hop, chicken.frame, chicken.flip);
     } });
   }
+  if (life && areaName === 'town') {                                           // birds and the duck stand in the scene, sorted with the pets
+    for (const b of life.birds) items.push({ sortY: b.y, order: 0, draw: () => drawBird(sctx, Math.round(b.x - cam.x), Math.round(b.y - cam.y), b.kind, b.frame, b.flip, b.air) });
+    items.push({ sortY: life.duck.y, order: 0, draw: () => drawDuck(sctx, Math.round(life.duck.x - cam.x), Math.round(life.duck.y - cam.y), life.duck.frame, life.duck.flip) });
+  }
   items.sort((a, b) => a.sortY - b.sortY || a.order - b.order);
   for (const it of items) it.draw();
+  if (life && areaName === 'town') for (const b of life.butterflies) drawButterfly(sctx, Math.round(b.x - cam.x), Math.round(b.y - cam.y), b.frame, b.colour, b.flip);
 
   if (baked.outdoor) {                                                         // the day's light: a multiply tint over everything drawn so far
     sctx.globalCompositeOperation = 'multiply';
@@ -118,6 +129,7 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
     for (const o of baked.overlays) if (o.x - cam.x < vw && o.x + o.sprite.width - cam.x > 0 && o.y - cam.y < vh && o.y + o.sprite.height - cam.y > 0) sctx.drawImage(o.sprite, o.x - cam.x, o.y - cam.y);
     sctx.globalAlpha = 1;
     if (baked.outdoor) drawGlows(sctx, baked.glows, cam, amb.night, now, vw, vh);
+    if (life && areaName === 'town') { sctx.globalCompositeOperation = 'lighter'; for (const f of life.fireflies) drawFirefly(sctx, Math.round(f.x - cam.x), Math.round(f.y - cam.y), f.glow); sctx.globalCompositeOperation = 'source-over'; }
   }
 
   for (const s of SIGNS) {                                                     // the signed boards
@@ -217,7 +229,7 @@ export function createRenderer({ canvas, sprites, font }) {
   }
 
   /**
-   * state: { area, me, others, marker, amb, fade, chicken?, dark? } where an entity is { id, name, look, walker, emote? }.
+   * state: { area, me, others, marker, amb, fade, chicken?, dark?, life? } where an entity is { id, name, look, walker, emote? }.
    * `now` is a millisecond clock.
    */
   function draw(state, now) {
@@ -225,7 +237,7 @@ export function createRenderer({ canvas, sprites, font }) {
     const a = getArea(areaName);
     const mp = state.me.walker.pos();
     cam = cameraFor(mp.x * TILE + TILE / 2, mp.y * TILE + TILE / 2, a.w * TILE, a.h * TILE);
-    const bubbles = drawScene(sctx, { area: areaName, cam, vw: VIEW_W, vh: VIEW_H, entities: state.others, me: state.me, now, amb: state.amb, sprites, font, marker: state.marker, fade: state.fade || 0, chicken: state.chicken || null, dark: state.dark || null });
+    const bubbles = drawScene(sctx, { area: areaName, cam, vw: VIEW_W, vh: VIEW_H, entities: state.others, me: state.me, now, amb: state.amb, sprites, font, marker: state.marker, fade: state.fade || 0, chicken: state.chicken || null, dark: state.dark || null, life: state.life || null });
     ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = '#0e101a';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
