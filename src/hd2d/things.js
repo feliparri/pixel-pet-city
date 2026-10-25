@@ -5,6 +5,7 @@ import { TILE } from '../map.js';
 import { drawChicken, CHICKEN_SIZE } from '../art/chicken.js';
 import { ball as drawBall } from '../art/places.js';
 import { drawBird, drawButterfly, drawFirefly, drawDuck, drawRing } from '../art/life.js';
+import { drawAnimal, COW_SIZE } from '../art/farm.js';
 import { project, standAt, snapScale } from './camera.js';
 import { lightAt } from './light.js';
 import { grade } from './scene.js';
@@ -49,7 +50,8 @@ export function createThings() {
     if (ball) add(stand(ctx3, ball.x * TILE, ball.y * TILE + 4, (c, ax, ay) => drawBall(c, ax, ay - 4)));
     if (life) {
       for (const b of life.birds) add(stand(ctx3, b.x, b.y, (c, ax, ay) => drawBird(c, ax, ay, b.kind, b.frame, b.flip, b.air)));
-      add(stand(ctx3, life.duck.x, life.duck.y + 4, (c, ax, ay) => drawDuck(c, ax, ay - 4, life.duck.frame, life.duck.flip)));
+      if (life.duck) add(stand(ctx3, life.duck.x, life.duck.y + 4, (c, ax, ay) => drawDuck(c, ax, ay - 4, life.duck.frame, life.duck.flip)));
+      for (const a of life.animals || []) add(stand(ctx3, a.x, a.y, (c, ax, ay) => drawAnimal(c, a, ax, ay), a.kind === 'cow' ? COW_SIZE.w / 2 - 1 : 6));
     }
     return out;
   }

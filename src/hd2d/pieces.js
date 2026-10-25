@@ -3,7 +3,7 @@
 // Every sprite is 16 px wide (one tile) and its bottom row is the foot, on the front edge of its tile.
 import { P, canvas, rect, dot, noise } from '../art/palette.js';
 
-export const PIECE_KINDS = { h: 'hedge', F: 'fence', n: 'bench', B: 'bed' };
+export const PIECE_KINDS = { h: 'hedge', F: 'fence', n: 'bench', B: 'bed', C: 'carrots', U: 'lettuce', P: 'pumpkins', Y: 'wheat' };
 
 /** A hedge tile: leafy front face under a lighter top. `l` and `r` say a hedge continues to that side (no outline there). */
 export function hedgePiece(tx, ty, l, r) {

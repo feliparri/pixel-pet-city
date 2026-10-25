@@ -9,7 +9,11 @@ export const STATE_MAX = 2048;                       // the server's limit on th
 
 const GAME_ACTIVITY = { hide: 'hide', chicken: 'chicken', soccer: 'football', race: 'race' };
 
-/** What a pet is doing: playing a game (only a player, not a spectator), inside the shop, walking, or nothing. One of ACTIVITIES. */
+/**
+ * What a pet is doing: playing a game (only a player, not a spectator), inside the shop, walking, or nothing. One of ACTIVITIES. On the
+ * farm it is walking or nothing: the server's list of activities has no 'farm' yet (an unknown one drops the pet from the radar), so a
+ * 'farm' entry waits until the trip function that knows it is deployed.
+ */
 export function activityOf({ area, game, moving }) {
   const g = game && game.play ? GAME_ACTIVITY[game.g] : null;
   if (g) return g;

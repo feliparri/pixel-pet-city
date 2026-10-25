@@ -15,6 +15,7 @@ import { badge, bobY, BADGE } from './art/icons.js';
 import { drawChicken, CHICKEN_SIZE } from './art/chicken.js';
 import { ball as drawBall } from './art/places.js';
 import { drawBird, drawButterfly, drawFirefly, drawDuck, drawRing, drawSpray } from './art/life.js';
+import { drawAnimal } from './art/farm.js';
 
 export const VIEW_W = 224;              // the portrait reference view; a box taller than wide is fitted to it (and the dev previews use it)
 export const VIEW_H = 288;
@@ -71,8 +72,8 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
   }
   if (baked.fountain) for (const [c, dx, dy, w, h] of fountainFrame(frame)) { sctx.fillStyle = c; sctx.fillRect(baked.fountain.x + dx - cam.x, baked.fountain.y + dy - cam.y, w, h); }
 
-  if (life && areaName === 'town') {                                           // the spray of the fountain and the rings on the pond
-    if (baked.fountain) drawSpray(sctx, life.spray, baked.fountain.x - cam.x, baked.fountain.y - cam.y);
+  if (life) {                                                                  // the spray of the fountain and the rings on the pond
+    if (baked.fountain && life.spray) drawSpray(sctx, life.spray, baked.fountain.x - cam.x, baked.fountain.y - cam.y);
     for (const r of life.ripples) drawRing(sctx, r.x - cam.x, r.y - cam.y, r.radius, r.fade * 0.8);
   }
 
@@ -128,13 +129,14 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
     } });
   }
   if (ball && areaName === 'town') items.push({ sortY: ball.y * TILE + 3, order: 1, draw: () => drawBall(sctx, Math.round(ball.x * TILE - cam.x), Math.round(ball.y * TILE - cam.y)) });   // the football
-  if (life && areaName === 'town') {                                           // birds and the duck stand in the scene, sorted with the pets
+  if (life) {                                                                  // birds, the duck and the farm animals stand in the scene, sorted with the pets
     for (const b of life.birds) items.push({ sortY: b.y, order: 0, draw: () => drawBird(sctx, Math.round(b.x - cam.x), Math.round(b.y - cam.y), b.kind, b.frame, b.flip, b.air) });
-    items.push({ sortY: life.duck.y, order: 0, draw: () => drawDuck(sctx, Math.round(life.duck.x - cam.x), Math.round(life.duck.y - cam.y), life.duck.frame, life.duck.flip) });
+    if (life.duck) items.push({ sortY: life.duck.y, order: 0, draw: () => drawDuck(sctx, Math.round(life.duck.x - cam.x), Math.round(life.duck.y - cam.y), life.duck.frame, life.duck.flip) });
+    for (const a of life.animals || []) items.push({ sortY: a.y, order: 0, draw: () => { const x = Math.round(a.x - cam.x), y = Math.round(a.y - cam.y); sctx.fillStyle = 'rgba(24,28,44,0.3)'; sctx.fillRect(x - 7, y - 2, 14, 2); drawAnimal(sctx, a, x, y); } });
   }
   items.sort((a, b) => a.sortY - b.sortY || a.order - b.order);
   for (const it of items) it.draw();
-  if (life && areaName === 'town') for (const b of life.butterflies) drawButterfly(sctx, Math.round(b.x - cam.x), Math.round(b.y - cam.y), b.frame, b.colour, b.flip);
+  if (life) for (const b of life.butterflies) drawButterfly(sctx, Math.round(b.x - cam.x), Math.round(b.y - cam.y), b.frame, b.colour, b.flip);
 
   if (baked.outdoor) {                                                         // the day's light: a multiply tint over everything drawn so far
     sctx.globalCompositeOperation = 'multiply';
@@ -147,7 +149,7 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
     for (const o of baked.overlays) if (o.x - cam.x < vw && o.x + o.sprite.width - cam.x > 0 && o.y - cam.y < vh && o.y + o.sprite.height - cam.y > 0) sctx.drawImage(o.sprite, o.x - cam.x, o.y - cam.y);
     sctx.globalAlpha = 1;
     if (baked.outdoor) drawGlows(sctx, baked.glows, cam, amb.night, now, vw, vh);
-    if (life && areaName === 'town') { sctx.globalCompositeOperation = 'lighter'; for (const f of life.fireflies) drawFirefly(sctx, Math.round(f.x - cam.x), Math.round(f.y - cam.y), f.glow); sctx.globalCompositeOperation = 'source-over'; }
+    if (life) { sctx.globalCompositeOperation = 'lighter'; for (const f of life.fireflies) drawFirefly(sctx, Math.round(f.x - cam.x), Math.round(f.y - cam.y), f.glow); sctx.globalCompositeOperation = 'source-over'; }
   }
 
   for (const s of SIGNS) {                                                     // the signed boards

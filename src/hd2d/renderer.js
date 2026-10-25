@@ -1,5 +1,5 @@
 // The town's HD-2D renderer: the outdoor town seen through the tilted camera (see camera.js), with the same interface as the flat
-// renderer in render.js ({ resize, draw, pointToTile }). createTownRenderer wraps both: the town outdoors is HD-2D, interiors (and
+// renderer in render.js ({ resize, draw, pointToTile }). createTownRenderer wraps both: the outdoors (town, farm) is HD-2D, interiors (and
 // ?flat=1, and the player's "Efectos" switch) use the flat one.
 import { TILE, SIGNS, PLACES, getArea } from '../map.js';
 import { createRenderer, drawBubble, MIN_VIEW_H, VIEW_H } from '../render.js';
@@ -20,8 +20,6 @@ import { burstTint } from '../show/tint.js';
 import { createShowFx } from '../show/fx.js';
 import { smooth } from '../show/rand.js';
 
-const TOWN = getArea('town');
-const MAP_W = TOWN.w * TILE, MAP_H = TOWN.h * TILE;
 const SHOW_FOCUS = { x: 24 * TILE, y: 21.5 * TILE };                     // the show's own frame: its bursts and drones are placed as seen from here
 const BADGE_LIFT = 60;                                                  // a place's badge floats this high over the ground point under it
 
@@ -36,7 +34,8 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
   const painter = createPetPainter(sprites);
   const things = createThings();
   let darkCanvas = null;
-  let world = null, ground = null, fx = null, box = null;
+  let world = null, ground = null, fx = null, box = null, areaName = 'town';
+  const worlds = new Map();                                                         // one baked world per outdoor area, built the first time it is visited
   let view = { w: 0, h: 0 }, cam = null, focus = null, last = null, ui = 2, hits = [];
   let groundKey = '', waterFrame = -1;
   let showFx = null, kShow = 0, stars = null, starsSeed = null;
@@ -54,19 +53,23 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
     groundKey = '';
   }
 
-  function ensureWorld() {
-    if (world) return;
-    const t0 = performance.now();
-    world = buildWorld();
-    ground = Object.assign(document.createElement('canvas'), { width: world.tex.width, height: world.tex.height });
-    stat.build = Math.round(performance.now() - t0);
+  /** The world and the ground canvas of the area on screen (the town or the farm); another area starts with a fresh camera and ground. */
+  function ensureWorld(name) {
+    if (!worlds.has(name)) {
+      const t0 = performance.now(), w = buildWorld(name);
+      worlds.set(name, { world: w, ground: Object.assign(document.createElement('canvas'), { width: w.tex.width, height: w.tex.height }) });
+      stat.build = Math.max(stat.build, Math.round(performance.now() - t0));
+    }
+    if (name !== areaName || !world) { areaName = name; focus = null; groundKey = ''; }
+    ({ world, ground } = worlds.get(name));
   }
 
   /** The canvas takes this renderer's layout again (the town after an interior, or the switch turned on). */
   function activate(b) { focus = null; last = null; resize(b); }
 
   function draw(state, now) {
-    ensureWorld();
+    ensureWorld(state.area || 'town');
+    const MAP_W = world.tex.width, MAP_H = world.tex.height;
     const raw = last == null ? 0 : now - last, dt = last == null ? 16 : Math.min(100, Math.max(0, raw));
     last = now;
     const t0 = performance.now();
@@ -118,7 +121,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
     if (state.marker && now < state.marker.until) drawMarker(state.marker);
 
     const items = standingItems(world, cam, n, view);
-    const jet = fountainItem(cam, n, now, view);
+    const jet = world.fountain ? fountainItem(cam, n, now, view) : null;
     if (jet) items.push(jet);
     const ent = { cam, n, now, world, me: state.me, view, wash: flashes.length ? (wx) => burstTint(flashes, wx) : null };
     items.push(...things.items(state, ent, now));
@@ -183,7 +186,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
     ctx.imageSmoothingEnabled = false;
     const near = (p, m) => p && p.x > -m && p.x < view.w + m && p.y > -m && p.y < view.h + m * 2;
     for (const s of SIGNS) {                                              // the signed boards, standing above their post
-      if (s.area !== 'town') continue;
+      if (s.area !== areaName) continue;
       const w = Math.max(textWidth(font, s.text), textWidth(font, s.sub)) + 6;
       const p = standAt(cam, s.x * TILE + TILE / 2, s.y * TILE + TILE, s.below ? -26 : 17);
       if (!near(p, 120)) continue;
@@ -195,7 +198,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
       ctx.restore();
     }
     for (const pl of PLACES) {                                            // the floating icons over the main places
-      if (pl.area !== 'town') continue;
+      if (pl.area !== areaName) continue;
       const bd = badge(pl.icon);
       const bob = bobY(pl, now) - pl.y * TILE;
       const p = standAt(cam, pl.x * TILE, pl.y * TILE + BADGE_LIFT, BADGE_LIFT - bob);
@@ -222,7 +225,8 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
       if (x >= h.x && x <= h.x + h.w && y >= h.y && y <= h.y + h.h) return [h.e.walker.tileX, h.e.walker.tileY];
     }
     const t = screenToTile(cam, x, y);
-    return t && t[0] >= 0 && t[1] >= 0 && t[0] < TOWN.w && t[1] < TOWN.h ? t : null;
+    const a = getArea(areaName);
+    return t && t[0] >= 0 && t[1] >= 0 && t[0] < a.w && t[1] < a.h ? t : null;
   }
 
   return {
@@ -247,7 +251,7 @@ export function createTownRenderer({ canvas, sprites, font, minH = MIN_VIEW_H, f
     else if (ev.kind === 'flat') { failed = true; autoFlat = true; onNotice('Pasamos a la vista plana para que vaya fluido. Puedes volver a probar con «Efectos»'); onMode(); }
   } });
 
-  const use = (state) => (hdOn && !failed && (state.area || 'town') === 'town' ? 'hd' : 'flat');
+  const use = (state) => (hdOn && !failed && getArea(state.area || 'town').outdoor ? 'hd' : 'flat');
   function switchTo(k) {
     kind = k;
     if (!box) return;

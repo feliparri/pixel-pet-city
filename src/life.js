@@ -2,13 +2,15 @@
 // the Parque, a duck and ripples on the pond, the fountain's spray. All client-side: the scene is seeded by the room code (so everybody sees
 // a similar one) and nothing of it is ever sent. Positions are pure functions of the clock; only the birds keep a tiny state. None of it
 // blocks walking: it is drawn over the town and never read by the game rules.
-import { tileAt, isWalkable, TILES, TILE, GARDEN, PARQUE, AREAS } from './map.js';
+import { tileAt, isWalkable, TILES, TILE, GARDEN, PARQUE, AREAS, FARM } from './map.js';
 
 export const LIFE = {
   birds: 9, birdSpacing: 5, scare: 3, calm: 4.5,             // a pet within `scare` tiles flushes a bird; it returns when every pet is farther than `calm`
   flyMs: 1100, backMs: 1200, awayMin: 6000, awayMax: 14000,
   butterflies: 8, fireflies: 14,
 };
+/** The farm's scene: the same birds, butterflies by day and fireflies at night, plus the animals of the paddock. */
+export const FARM_LIFE = { birds: 8, butterflies: 8, fireflies: 12, cows: 3, sheep: 4, slotMs: 16000, tileMs: 850 };
 
 /** A 32 bit hash of a string (the room code). */
 export function hashSeed(str) {
@@ -31,33 +33,39 @@ export function mulberry32(a) {
 
 const COLOURS = ['#ffcb6b', '#ff9eb5', '#b8a0e0', '#fff7de', '#8ccbff'];            // the butterflies' wings
 
-function grassTiles() {
-  const a = AREAS.town, out = [];
+function grassTiles(area = 'town') {
+  const a = AREAS[area], out = [];
   for (let y = 1; y < a.h - 1; y++) for (let x = 1; x < a.w - 1; x++) {
-    const c = tileAt(x, y);
-    if ((c === '.' || c === ',') && isWalkable(x, y) && !TILES[c].hide) out.push([x, y]);
+    const c = tileAt(x, y, area);
+    if ((c === '.' || c === ',') && isWalkable(x, y, area) && !TILES[c].hide) out.push([x, y]);
   }
   return out;
 }
 
-function pondTiles() {
-  const a = AREAS.town, out = [];
-  for (let y = 0; y < a.h; y++) for (let x = 0; x < a.w; x++) if (tileAt(x, y) === '~') out.push([x, y]);
+function pondTiles(area = 'town') {
+  const a = AREAS[area], out = [];
+  for (let y = 0; y < a.h; y++) for (let x = 0; x < a.w; x++) if (tileAt(x, y, area) === '~') out.push([x, y]);
   return out;
 }
 
 const within = (r, rng, margin = 1) => [r.x + margin + rng() * (r.w - 2 * margin), r.y + margin + rng() * (r.h - 2 * margin)];
 
-/** The scene for a room: `seed` is the room code (or any string). */
-export function createLife(seed) {
-  const rng = mulberry32(hashSeed(seed));
-  const grass = grassTiles(), birds = [];
-  for (let tries = 0; birds.length < LIFE.birds && tries < 600; tries++) {          // spread out: no two closer than birdSpacing tiles
+/** `count` birds on open grass of an area, spread out: no two closer than birdSpacing tiles. */
+function placeBirds(rng, grass, count) {
+  const birds = [];
+  for (let tries = 0; birds.length < count && tries < 600; tries++) {
     const [x, y] = grass[Math.floor(rng() * grass.length)];
     if (birds.every((b) => Math.hypot(b.hx - x, b.hy - y) >= LIFE.birdSpacing)) {
       birds.push({ id: birds.length, hx: x, hy: y, ox: Math.floor(rng() * 7) - 3, ph: Math.floor(rng() * 1600), kind: birds.length % 3, state: 'peck', t0: 0, dx: 1, dy: -0.4, awayMs: 0, n: 0, flip: rng() < 0.5 });
     }
   }
+  return birds;
+}
+
+/** The scene for a room: `seed` is the room code (or any string). */
+export function createLife(seed) {
+  const rng = mulberry32(hashSeed(seed));
+  const birds = placeBirds(rng, grassTiles(), LIFE.birds);
   const butterflies = Array.from({ length: LIFE.butterflies }, (_, i) => {
     const [cx, cy] = within(i % 4 === 0 ? GARDEN : PARQUE, rng, 2);
     return { id: i, cx, cy, rx: 1 + rng() * 1.8, ry: 0.8 + rng() * 1.4, sx: 0.00035 + rng() * 0.0004, sy: 0.00045 + rng() * 0.0004, ph: rng() * 6.28, colour: COLOURS[i % COLOURS.length] };
@@ -71,6 +79,37 @@ export function createLife(seed) {
   const px = pond.map(([x]) => x), py = pond.map(([, y]) => y);
   const duck = { cx: ((Math.min(...px) + Math.max(...px) + 1) / 2) * TILE, cy: ((Math.min(...py) + Math.max(...py) + 1) / 2) * TILE, rx: 26, ry: 13, speed: 0.00022 + rng() * 0.0001, ph: rng() * 6.28 };
   return { seed: String(seed), birds, butterflies, fireflies, ripples, duck, spraySeed: hashSeed(seed) };
+}
+
+/** The tiles of the paddock where an animal may stand (all of them open grass: the fence is outside the rectangle). */
+const paddockTiles = () => {
+  const r = FARM.paddock, out = [];
+  for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) if (isWalkable(x, y, 'farm')) out.push([x, y]);
+  return out;
+};
+
+/**
+ * The scene of the farm for a room: birds, butterflies over the orchard and the fields, fireflies, the pond's rings, and the animals. An
+ * animal keeps no state: where it is, is a pure function of the seed and the clock (see animalPose).
+ */
+export function createFarmLife(seed) {
+  const rng = mulberry32(hashSeed(`farm:${seed}`));
+  const birds = placeBirds(rng, grassTiles('farm'), FARM_LIFE.birds);
+  const spots = [FARM.orchard, FARM.fields, FARM.wheat];
+  const butterflies = Array.from({ length: FARM_LIFE.butterflies }, (_, i) => {
+    const [cx, cy] = within(spots[i % 3], rng, 2);
+    return { id: i, cx, cy, rx: 1 + rng() * 1.8, ry: 0.8 + rng() * 1.4, sx: 0.00035 + rng() * 0.0004, sy: 0.00045 + rng() * 0.0004, ph: rng() * 6.28, colour: COLOURS[i % COLOURS.length] };
+  });
+  const fireflies = Array.from({ length: FARM_LIFE.fireflies }, (_, i) => {
+    const [cx, cy] = within(spots[i % 3], rng, 2);
+    return { id: i, cx, cy, rx: 0.8 + rng() * 1.6, ry: 0.6 + rng() * 1.2, sx: 0.0002 + rng() * 0.0003, sy: 0.0003 + rng() * 0.0003, ph: rng() * 6.28, blink: 0.0012 + rng() * 0.001 };
+  });
+  const pond = pondTiles('farm');
+  const ripples = Array.from({ length: 4 }, () => { const [tx, ty] = pond[Math.floor(rng() * pond.length)]; return { tx, ty, ox: 3 + Math.floor(rng() * 10), oy: 4 + Math.floor(rng() * 8), period: 2600 + Math.floor(rng() * 2400), ph: Math.floor(rng() * 5000) }; });
+  const tiles = paddockTiles();
+  const animals = [];
+  for (let i = 0; i < FARM_LIFE.cows + FARM_LIFE.sheep; i++) animals.push({ id: i, kind: i < FARM_LIFE.cows ? 'cow' : 'sheep', seed: String(seed), tiles, ph: Math.floor(rng() * 60000) });
+  return { seed: String(seed), birds, butterflies, fireflies, ripples, animals };
 }
 
 const dist = (pets, x, y) => pets.reduce((m, p) => Math.min(m, Math.hypot(p.x - x, p.y - y)), Infinity);
@@ -158,5 +197,33 @@ export function lifeFrame(l, now, amb) {
   const butterflies = night < 0.4 ? l.butterflies.map((b) => ({ id: b.id, colour: b.colour, ...butterflyPose(b, now) })) : [];
   const count = night > 0.5 ? Math.ceil(l.fireflies.length * Math.min(1, (night - 0.5) * 2)) : 0;
   const fireflies = l.fireflies.slice(0, count).map((f) => ({ id: f.id, ...fireflyPose(f, now) }));
-  return { birds, butterflies, fireflies, duck: duckPose(l.duck, now), ripples: l.ripples.map((r) => rippleRing(r, now)).filter(Boolean), spray: spray(now) };
+  return { birds, butterflies, fireflies, duck: l.duck ? duckPose(l.duck, now) : null, ripples: l.ripples.map((r) => rippleRing(r, now)).filter(Boolean), spray: spray(now) };
+}
+
+/** Where an animal is in its k-th slot: a tile of the paddock and a spot inside it, in tile units (the feet). */
+function animalSpot(a, k) {
+  const r = mulberry32(hashSeed(`${a.seed}:a${a.id}:${k}`));
+  const [tx, ty] = a.tiles[Math.floor(r() * a.tiles.length)];
+  return { x: tx + 0.2 + r() * 0.6, y: ty + 0.55 + r() * 0.4 };
+}
+
+/**
+ * Where an animal is at `now` (ms), in map pixels (the feet): the clock is cut into slots of FARM_LIFE.slotMs; in each one it walks in a
+ * straight line from the spot it grazed at to a new spot (at tileMs per tile: at most ~10 s across the paddock) and grazes there for the
+ * rest of the slot. A pure function of (seed, clock), no state. Both ends of a walk are inside the paddock's rectangle, so every point
+ * between them is too. `frame` is 0 standing, 1 grazing, 2-3 the two steps of a walk.
+ */
+export function animalPose(a, now) {
+  const t = now + a.ph, k = Math.floor(t / FARM_LIFE.slotMs), into = t - k * FARM_LIFE.slotMs;
+  const from = animalSpot(a, k - 1), to = animalSpot(a, k);
+  const walk = Math.hypot(to.x - from.x, to.y - from.y) * FARM_LIFE.tileMs, walking = into < walk, p = walking ? into / walk : 1;
+  const x = from.x + (to.x - from.x) * p, y = from.y + (to.y - from.y) * p;
+  const frame = walking ? 2 + (Math.floor(now / 190) % 2) : (Math.floor((into + a.id * 900) / 1300) % 4 === 3 ? 0 : 1);
+  return { x: x * TILE, y: y * TILE, frame, flip: to.x < from.x, walking };
+}
+
+/** What to draw on the farm at `now`: like lifeFrame, without a duck or a fountain, with the animals. */
+export function farmLifeFrame(l, now, amb) {
+  const base = lifeFrame({ ...l, duck: null }, now, amb);
+  return { birds: base.birds, butterflies: base.butterflies, fireflies: base.fireflies, ripples: base.ripples, animals: l.animals.map((a) => ({ id: a.id, kind: a.kind, ...animalPose(a, now) })) };
 }

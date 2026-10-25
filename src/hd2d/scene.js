@@ -1,5 +1,5 @@
-// The plaza as the HD-2D view needs it: the ground baked into one texture (with its night lighting), the upright things as sprites with
-// a foot point, the lights. Everything is built from the town's own art (src/art/*): nothing is redrawn or forked here.
+// An outdoor area (the town, the farm) as the HD-2D view needs it: the ground baked into one texture (with its night lighting), the upright
+// things as sprites with a foot point, the lights. Everything is built from the town's own art (src/art/*): nothing is redrawn or forked here.
 import { TILE, HOUSES, getArea, inPlaza } from '../map.js';
 import * as G from '../art/ground.js';
 import { bakeArea } from '../art/bake.js';
@@ -8,25 +8,26 @@ import { rippleSpots } from '../art/ground.js';
 import { P, shadow } from '../art/palette.js';
 import { fountainFrame, drawFountain } from '../art/props.js';
 import { PIECE_KINDS, hedgePiece, fencePiece, benchPiece, bedPiece, fountainWall } from './pieces.js';
+import { cropPiece, CROP_CHARS, soil } from '../art/farm.js';
 import { groundRow, project, standAt } from './camera.js';
 import { LAMP_RADIUS, lightAt, nightMultiply, spriteGrade } from './light.js';
 
-/** The part of the town that is baked, in tiles: all of it. */
+/** The part of the town that is baked, in tiles: all of it (another area bakes its own size). */
 export const REGION = { x: 0, y: 0, w: 48, h: 74 };
 export const FOUNTAIN_AT = { x: 22 * TILE, y: 20 * TILE };           // top left of the fountain, world px
 const HOUSE_PAD = 12;                                                // transparent rows above a house sprite (the chimney)
 const LAMP_TOP = 25;                                                 // the lantern's height above a lamp's foot
 const OX = REGION.x * TILE, OY = REGION.y * TILE;
-const inRegion = (x, y) => x >= OX && y >= OY && x < OX + REGION.w * TILE && y < OY + REGION.h * TILE;
 const canvasOf = (w, h) => Object.assign(document.createElement('canvas'), { width: w, height: h });
 
-/** Builds the world once: { tex (day ground), props, houses, lamps, windows, pools }. All positions are world px. */
-export function buildWorld() {
-  const baked = bakeArea(getArea('town'));
-  const tex = canvasOf(REGION.w * TILE, REGION.h * TILE);
-  tex.getContext('2d').drawImage(baked.ground, -OX, -OY);
+/** Builds the world of an outdoor area once: { tex (day ground), props, houses, lamps, windows, pools, fountain? }. All positions are world px. */
+export function buildWorld(areaName = 'town') {
+  const area = getArea(areaName), town = area.name === 'town', baked = bakeArea(area);
+  const tex = canvasOf(area.w * TILE, area.h * TILE);
+  const inRegion = (x, y) => x >= 0 && y >= 0 && x < tex.width && y < tex.height;
+  tex.getContext('2d').drawImage(baked.ground, 0, 0);
   const props = [], houses = [], lamps = [], windows = [], pools = [];
-  for (const it of standUp(tex, getArea('town'))) props.push(it);
+  for (const it of standUp(tex, area)) props.push(it);
   baked.props.forEach((pr, i) => {
     if (!pr.sprite) return;                                          // (the shop's raccoon is a drawing routine, not in this area)
     const x = pr.x + pr.sprite.width / 2, y = pr.y + pr.sprite.height;
@@ -34,7 +35,7 @@ export function buildWorld() {
     const glass = baked.overlays.find((o) => o.x === pr.x && o.y === pr.y && o.sprite.width === pr.sprite.width && o.sprite.height === pr.sprite.height);   // a lamp's lit lantern
     props.push({ key: `p${i}`, sprite: pr.sprite, x, y, light: 0, after: glass ? (ctx, nn) => { ctx.globalAlpha = nn; ctx.drawImage(glass.sprite, 0, 0); ctx.globalAlpha = 1; } : null });
   });
-  for (const h of HOUSES) {
+  for (const h of town ? HOUSES : []) {
     const x = h.x * TILE, y = h.y * TILE;
     if (!inRegion(x, y) || !inRegion(x + h.w * TILE - 1, y + 63)) continue;
     const day = canvasOf(h.w * TILE, 64 + HOUSE_PAD), ctx = day.getContext('2d');
@@ -57,8 +58,8 @@ export function buildWorld() {
   const water = baked.water.map(([x, y, tx, ty]) => ({ x, y, tx, ty }));
   const pond = water.length ? [Math.min(...water.map((q) => q.x)), Math.min(...water.map((q) => q.y)), 0, 0] : null;
   if (pond) { pond[2] = Math.max(...water.map((q) => q.x)) + TILE - pond[0]; pond[3] = Math.max(...water.map((q) => q.y)) + TILE - pond[1]; }
-  const waterRects = [...(pond ? [pond] : []), [FOUNTAIN_AT.x, FOUNTAIN_AT.y, 64, 48]];       // what moves with the water frame (the pond and the fountain's basin)
-  return { tex, props, houses, lamps, windows, pools, lights, water, waterRects, cache: new Map(), cacheN: -1 };
+  const waterRects = [...(pond ? [pond] : []), ...(town ? [[FOUNTAIN_AT.x, FOUNTAIN_AT.y, 64, 48]] : [])];       // what moves with the water frame (the pond and the fountain's basin)
+  return { name: area.name, tex, props, houses, lamps, windows, pools, lights, water, waterRects, fountain: town, cache: new Map(), cacheN: -1 };
 }
 
 /**
@@ -66,20 +67,23 @@ export function buildWorld() {
  * each an upright piece standing on its tile's front edge, and does the same for the fountain's front rim. Returns the pieces as props.
  */
 function standUp(tex, area) {
-  const t = tex.getContext('2d'), out = [];
+  const t = tex.getContext('2d'), out = [], town = area.name === 'town';
   const raw = (x, y) => (x >= 0 && y >= 0 && x < area.w && y < area.h ? area.grid[y][x] : '.');
-  const surface = (tx, ty) => (dx, dy) => (inPlaza(tx + dx, ty + dy) ? '+' : raw(tx + dx, ty + dy));
-  const floor = (tx, ty) => (inPlaza(tx, ty) ? G.plaza(t, tx * TILE - OX, ty * TILE - OY, tx, ty, surface(tx, ty)) : G.grass(t, tx * TILE - OX, ty * TILE - OY, tx, ty));
+  const paved = (x, y) => town && inPlaza(x, y);
+  const surface = (tx, ty) => (dx, dy) => (paved(tx + dx, ty + dy) ? '+' : raw(tx + dx, ty + dy));
+  const floor = (tx, ty) => (paved(tx, ty) ? G.plaza(t, tx * TILE - OX, ty * TILE - OY, tx, ty, surface(tx, ty)) : CROP_CHARS.includes(raw(tx, ty)) ? soil(t, tx * TILE, ty * TILE, tx, ty) : G.grass(t, tx * TILE - OX, ty * TILE - OY, tx, ty));
   const cells = [];
-  for (let ty = REGION.y; ty < REGION.y + REGION.h; ty++) for (let tx = REGION.x; tx < REGION.x + REGION.w; tx++) if (PIECE_KINDS[raw(tx, ty)]) cells.push([tx, ty, raw(tx, ty)]);
+  for (let ty = 0; ty < area.h; ty++) for (let tx = 0; tx < area.w; tx++) if (PIECE_KINDS[raw(tx, ty)]) cells.push([tx, ty, raw(tx, ty)]);
   for (const [tx, ty] of cells) floor(tx, ty);
   for (const [tx, ty, ch] of cells) {
     const l = raw(tx - 1, ty) === ch || (ch === 'F' && raw(tx - 1, ty) === 'S'), r = raw(tx + 1, ty) === ch || (ch === 'F' && raw(tx + 1, ty) === 'S');
     const x = tx * TILE - OX, y = ty * TILE - OY;
+    if (CROP_CHARS.includes(ch)) { out.push({ key: `s${tx},${ty}`, sprite: cropPiece(ch, tx, ty), x: tx * TILE + TILE / 2, y: ty * TILE + 14, light: 0, after: null }); continue; }
     const sprite = ch === 'h' ? hedgePiece(tx, ty, l, r) : ch === 'F' ? fencePiece(l, r) : ch === 'n' ? benchPiece() : bedPiece(tx, ty, l, r);
     shadow(t, x + 9, y + 16, ch === 'n' ? 8 : 8.5, 2.4, 0.32);                                  // the shadow on the ground, in front of the foot
     out.push({ key: `s${tx},${ty}`, sprite, x: tx * TILE + TILE / 2, y: ty * TILE + 15, light: 0, after: null });
   }
+  if (!town) return out;
   const fx = FOUNTAIN_AT.x, fy = FOUNTAIN_AT.y;                                                 // the fountain: water stays on the ground, the front rim stands up
   for (let tx = 22; tx < 26; tx++) for (let ty = 20; ty < 23; ty++) G.plaza(t, tx * TILE - OX, ty * TILE - OY, tx, ty, surface(tx, ty));
   drawFountain(t, fx - OX, fy - OY);
@@ -130,7 +134,7 @@ export function bakeGround(world, n, mult, frame, out = null, rects = null) {
       ctx.fillStyle = P.a3;
       for (const q of world.water) for (const [dx, dy, ww] of rippleSpots(q.tx, q.ty, frame)) ctx.fillRect(q.x - OX + dx, q.y - OY + dy, ww, 1);
     }
-    if (intersects(r, [FOUNTAIN_AT.x, FOUNTAIN_AT.y, 64, 48])) for (const [c, dx, dy, fw, fh] of fountainFrame(frame)) { ctx.fillStyle = c; ctx.fillRect(FOUNTAIN_AT.x - OX + dx, FOUNTAIN_AT.y - OY + dy, fw, fh); }
+    if (world.fountain && intersects(r, [FOUNTAIN_AT.x, FOUNTAIN_AT.y, 64, 48])) for (const [c, dx, dy, fw, fh] of fountainFrame(frame)) { ctx.fillStyle = c; ctx.fillRect(FOUNTAIN_AT.x - OX + dx, FOUNTAIN_AT.y - OY + dy, fw, fh); }
     ctx.restore();
     if (!tinted && n <= 0) continue;
     if (n <= 0) { ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = `rgb(${mult[0]},${mult[1]},${mult[2]})`; ctx.fillRect(rx, ry, rw, rh); ctx.globalCompositeOperation = 'source-over'; continue; }

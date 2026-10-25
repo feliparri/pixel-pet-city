@@ -1,6 +1,6 @@
 // The running town: the local pet, the other pets, input (taps, arrows/WASD), the net session and the draw loop.
 import { findPath, dirVector } from './path.js';
-import { isWalkable, doorAt, spotAt, tileAt, TILES, GAME_PLACES, SPAWNS } from './map.js';
+import { isWalkable, doorAt, spotAt, tileAt, getArea, TILES, GAME_PLACES, SPAWNS } from './map.js';
 import { Walker, REMOTE_SNAP } from './walker.js';
 import { isTyping, isJumpKey, runs, tapWalks } from './keys.js';
 import { createTouchpad } from './touchpad.js';
@@ -13,7 +13,8 @@ import { createGames } from './games/manager.js';
 import { GAME_RULES } from './games/rules.js';
 import { stumbled, paceAt, RACE } from './games/race.js';
 import { activityOf, radarPets } from './radar.js';
-import { createLife, stepLife, lifeFrame } from './life.js';
+import { createLife, createFarmLife, stepLife, lifeFrame, farmLifeFrame } from './life.js';
+import { inArea } from './presence.js';
 import { SLOTS } from './protocol.js';
 import { createNpcs, nearShopkeeper, shopGreeting, SHOPKEEPER, SHOP_SAY_MS } from './npcs.js';
 import config from '../config.js';
@@ -41,6 +42,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   const others = new Map();
   const state = { me: self, others: [], marker: null, area: 'town', amb: ambientAt(hourNow(location.search)), fade: 0 };
   const life = createLife(net.code || net.id);                       // the same scene for a room, from its code; nothing of it goes over the net
+  const farmLife = createFarmLife(net.code || net.id);               // and the farm's: the animals walk where the room's clock says
   const renderer = createTownRenderer({ canvas, sprites, font, minH: pad ? MIN_VIEW_H : VIEW_H, flat: new URLSearchParams(location.search).get('flat') === '1', onNotice: (text) => games.notify(text), onMode: onHdMode });   // a phone: big pixels; a desktop: as many tiles as before
   const npcs = createNpcs({ seed: net.code || net.id, sprites });           // the villagers: their place and lines come from (room, server time) alone, nothing of them goes over the net
   const search = new URLSearchParams(location.search), devNpcT = search.get('dev') === '1' && Number.isFinite(Number(search.get('npct'))) && search.has('npct') ? Number(search.get('npct')) : null;      // development only: ?dev=1&npct=<ms> pins the villagers' clock
@@ -102,12 +104,12 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
 
   /** Is this tile allowed for this pet now? A pet playing cannot leave its game's zone (the walls are soft: it just stays). */
   function canEnter(x, y, zone, closed = false) {
-    if (closed && self.area === 'town' && doorAt(x, y, 'town')) { games.notify('Ahora no se puede entrar', 'wall'); return false; }      // the doors are shut while playing
+    if (closed && doorAt(x, y, self.area)) { games.notify('Ahora no se puede entrar', 'wall'); return false; }      // the doors are shut while playing
     if (!zone || zone.has(x, y)) return true;
     games.notify(zone.wall, 'wall');
     return false;
   }
-  const walkableFor = (mv) => (x, y) => isWalkable(x, y, 'town') && (!mv.zone || mv.zone.has(x, y)) && !(mv.closed && doorAt(x, y, 'town'));
+  const walkableFor = (mv) => (x, y) => isWalkable(x, y, self.area) && (!mv.zone || mv.zone.has(x, y)) && !(mv.closed && doorAt(x, y, self.area));
 
   function frame(t) {
     if (!alive) return;
@@ -125,6 +127,10 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     if (start && self.area === 'town') { w.snap(start[0], start[1], 'down'); net.sendPos(start[0], start[1], 'down', 'town'); held.length = 0; fadeT0 = t; }
     const mv = games.movement();
     if (mv.frozen) { w.queue = []; held.length = 0; }
+    if (mv.closed && self.area !== 'town' && !w.busy) {           // a game began while this pet was in the shop or on the farm: it comes back to the game's pad
+      const g = games.view().game, [px, py] = GAME_PLACES[g && g.g ? g.g : 'hide'].spot[0];
+      self.area = 'town'; w.snap(px, py, 'down'); net.sendPos(px, py, 'down', 'town'); held.length = 0; fadeT0 = t;
+    }
     if (mv.zone && self.area === 'town' && !w.busy && !mv.zone.has(w.tileX, w.tileY)) {      // outside the game's area when it starts: run to its pad
       const [sx, sy] = mv.zone.pad;
       w.snap(sx, sy, 'down'); net.sendPos(sx, sy, 'down', 'town'); fadeT0 = t;
@@ -154,13 +160,16 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     state.area = self.area;
     state.fade = 1 - (t - fadeT0) / FADE_MS;
     for (const o of others.values()) o.walker.update(dt);
-    state.others = Array.from(others.values()).filter((o) => o.placed && o.area === self.area && games.canSee(o.id));      // in a game: only the players, and their names, are drawn
+    state.others = inArea(others.values(), self.area).filter((o) => games.canSee(o.id));      // in a game: only the players, and their names, are drawn
     const vision = games.seekerVision();                         // the seeker sees only a circle of light, and not what hides in bushes
     state.dark = vision ? { full: vision.full, r: GAME_RULES.hide.lightRadius * 16 } : null;
     if (vision) state.others = vision.full ? [] : state.others.filter((o) => vision.see({ x: o.walker.tileX, y: o.walker.tileY }, !!TILES[tileAt(o.walker.tileX, o.walker.tileY)].hide));
     if (self.area === 'town') {                                   // ambient life: the birds look at every pet in the town
       stepLife(life, [{ x: w.tileX, y: w.tileY }, ...Array.from(others.values()).filter((o) => o.placed && o.area === 'town').map((o) => ({ x: o.walker.tileX, y: o.walker.tileY }))], t);
       state.life = lifeFrame(life, t, state.amb);
+    } else if (self.area === 'farm') {                            // the farm: the same birds, and the animals of the paddock
+      stepLife(farmLife, [{ x: w.tileX, y: w.tileY }, ...inArea(others.values(), 'farm').map((o) => ({ x: o.walker.tileX, y: o.walker.tileY }))], t);
+      state.life = farmLifeFrame(farmLife, t, state.amb);
     } else state.life = null;
     const gv = games.view();
     if (self.area === 'town' && !vision && !(gv.game && gv.game.play)) {         // the villagers walk the north of the town; while a game is played they are not drawn at all
@@ -190,10 +199,10 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       state.chicken = { x: cp.x, y: cp.y, frame: chickWalker.moving && Math.floor(t / 110) % 2 ? 1 : 0, flip: chickWalker.d === 'left' };
     } else state.chicken = null;
     state.ball = gv.game && gv.game.ball && self.area === 'town' ? gv.game.ball : null;
-    const here = !w.busy && self.area === 'town' ? spotAt(w.tileX, w.tileY) : null;      // standing on a game's pad: the button; walking onto the pad of an open lobby joins it
+    const here = !w.busy ? spotAt(w.tileX, w.tileY, self.area) : null;      // standing on a game's pad: the button; walking onto the pad of an open lobby joins it
     if (here && gv.lobby && gv.lobby.g === here && !gv.lobby.iJoined) games.join();
     if (t - hudAt > 120) { hudAt = t; onHud({ ...gv, shopNear: self.area === 'shop' && shopNear && !modal, spot: here, wall: mv.zone && gv.game ? gv.game.name : null, frozen: mv.frozen }); }
-    state.show = events.tick(self.area !== 'town' ? 'inside' : renderer.hd ? 'hd' : 'flat');      // the show that runs now, the same moment on every screen
+    state.show = events.tick(!getArea(self.area).outdoor ? 'inside' : renderer.hd ? 'hd' : 'flat');      // the sky is seen from the town and from the farm      // the show that runs now, the same moment on every screen
     renderer.draw(state, t);
     raf = requestAnimationFrame(frame);
   }
@@ -272,10 +281,12 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     /** For manual testing in the console (two tabs): where this pet is, and walk to a tile like a tap would. */
     debug: {
       pos: () => [self.walker.tileX, self.walker.tileY],
+      area: () => self.area,
+      warp(area, x, y) { self.area = area; self.walker.snap(x, y, 'down'); net.sendPos(x, y, 'down', area); fadeT0 = performance.now(); },
       goTo(x, y) { const mv = games.movement(); const path = findPath(self.walker.tileX, self.walker.tileY, x, y, mv.zone || mv.closed ? walkableFor(mv) : self.area); if (path.length) self.walker.setPath(path); return path.length; },
     },
     games: {
-      play: () => { const g = spotAt(self.walker.tileX, self.walker.tileY); return !!g && games.open(g); },
+      play: () => { const g = spotAt(self.walker.tileX, self.walker.tileY, self.area); return !!g && games.open(g); },
       join() {                                                  // "Me sumo": from anywhere; a pet inside a building comes out on the pad
         const ok = games.join();
         const lv = games.view().lobby;

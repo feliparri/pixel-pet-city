@@ -4,6 +4,7 @@ import { TILE, HOUSES, PITCH, inPlaza } from '../map.js';
 import { canvas, noise, shadow } from './palette.js';
 import * as G from './ground.js';
 import * as PL from './places.js';
+import * as FM from './farm.js';
 import { oak, pine, bush, lamp, lampLit, LAMP_GLOW, drawFountain } from './props.js';
 import { drawHouse, windowsOf, litWindow } from './buildings.js';
 import { drawInterior, counter, nightWindow, raccoon } from './interior.js';
@@ -11,18 +12,20 @@ import { drawPet, CELL } from '../sprites.js';
 import { SHOPKEEPER } from '../npcs.js';
 
 let sprites = null;
-const kit = () => sprites || (sprites = { oak: [oak(1), oak(2)], pine: [pine(1), pine(2)], bush: [bush(0), bush(1)], lamp: lamp(), lampLit: lampLit(), coop: PL.coop(), counter: counter(), nightWindow: nightWindow() });
+const kit = () => sprites || (sprites = { barn: FM.barn(), well: FM.well(), scarecrow: FM.scarecrow(), fruit: [FM.fruitTree(0), FM.fruitTree(1), FM.fruitTree(2)], oak: [oak(1), oak(2)], pine: [pine(1), pine(2)], bush: [bush(0), bush(1)], lamp: lamp(), lampLit: lampLit(), coop: PL.coop(), counter: counter(), nightWindow: nightWindow() });
 
-function bakeTown(area) {
-  const k = kit();
+/** The outdoor areas: the town (plaza, fountain, houses) and the farm (fields, barn, orchard) share every tile that is the same. */
+function bakeOutdoor(area) {
+  const town = area.name === 'town', k = kit();
   const W = area.w * TILE, H = area.h * TILE;
   const ground = canvas(W, H), ctx = ground.getContext('2d');
   const out = { name: area.name, w: W, h: H, outdoor: true, ground, props: [], water: [], fountain: null, overlays: [], glows: [] };
   const raw = (x, y) => (x >= 0 && y >= 0 && x < area.w && y < area.h ? area.grid[y][x] : '.');
   // what a neighbour is for the borders of paths and the plaza: everything inside the plaza's rectangle is paving
-  const surfaceAt = (tx, ty) => (dx, dy) => (inPlaza(tx + dx, ty + dy) ? '+' : raw(tx + dx, ty + dy));
+  const paved = (x, y) => town && inPlaza(x, y);
+  const surfaceAt = (tx, ty) => (dx, dy) => (paved(tx + dx, ty + dy) ? '+' : raw(tx + dx, ty + dy));
   for (let ty = 0; ty < area.h; ty++) for (let tx = 0; tx < area.w; tx++) {
-    const ch = raw(tx, ty), x = tx * TILE, y = ty * TILE, at = surfaceAt(tx, ty), base = () => (inPlaza(tx, ty) ? G.plaza(ctx, x, y, tx, ty, at) : G.grass(ctx, x, y, tx, ty));
+    const ch = raw(tx, ty), x = tx * TILE, y = ty * TILE, at = surfaceAt(tx, ty), base = () => (paved(tx, ty) ? G.plaza(ctx, x, y, tx, ty, at) : G.grass(ctx, x, y, tx, ty));
     switch (ch) {
       case ',': G.grass(ctx, x, y, tx, ty, true); break;
       case '=': G.path(ctx, x, y, tx, ty, at); break;
@@ -45,6 +48,15 @@ function bakeTown(area) {
       case 'f': PL.finish(ctx, x, y, tx, ty, at); break;
       case 'G': G.grass(ctx, x, y, tx, ty); if (raw(tx - 1, ty) !== 'G' && raw(tx, ty - 1) !== 'G') out.props.push({ x, y: y + 32 - 40, sortY: y + 32, sprite: k.coop }); break;
       case 'o': G.plaza(ctx, x, y, tx, ty, at); break;
+      case 'd': FM.furrow(ctx, x, y, tx, ty, at); break;
+      case 'C': FM.carrots(ctx, x, y, tx, ty, at); break;
+      case 'U': FM.lettuce(ctx, x, y, tx, ty, at); break;
+      case 'P': FM.pumpkins(ctx, x, y, tx, ty, at); break;
+      case 'Y': FM.wheat(ctx, x, y, tx, ty, at); break;
+      case 'A': G.grass(ctx, x, y, tx, ty); shadow(ctx, x + 14, y + 13, 13, 4, 0.32); out.props.push({ x: x - 8, y: y + 16 - 40, sortY: y + 16, sprite: k.fruit[(tx * 3 + ty) % 3] }); break;
+      case 'R': G.grass(ctx, x, y, tx, ty); if (raw(tx - 1, ty) !== 'R' && raw(tx, ty - 1) !== 'R') { shadow(ctx, x + 48, y + 49, 52, 4, 0.3); out.props.push({ x, y: y + 48 - 64, sortY: y + 48, sprite: k.barn }); } break;
+      case 'v': G.grass(ctx, x, y, tx, ty); shadow(ctx, x + 12, y + 15, 11, 3, 0.3); out.props.push({ x: x - 4, y: y + 16 - 32, sortY: y + 16, sprite: k.well }); break;
+      case 'Z': G.grass(ctx, x, y, tx, ty); shadow(ctx, x + 9, y + 15, 6, 1.5, 0.3); out.props.push({ x, y: y + 16 - 28, sortY: y + 14, sprite: k.scarecrow }); break;
       case 't': G.grass(ctx, x, y, tx, ty); shadow(ctx, x + 14, y + 13, 13, 4, 0.32); out.props.push({ x: x - 8, y: y + 16 - 40, sortY: y + 16, sprite: k.oak[(tx * 3 + ty) & 1] }); break;
       case 'T': G.grass(ctx, x, y, tx, ty); shadow(ctx, x + 14, y + 13, 11, 3.5, 0.32); out.props.push({ x: x - 4, y: y + 16 - 40, sortY: y + 16, sprite: k.pine[(tx + ty) & 1] }); break;
       case 'b': G.grass(ctx, x, y, tx, ty); shadow(ctx, x + 9, y + 14, 7, 2, 0.28); out.props.push({ x, y: y + 16 - 14, sortY: y + 10, sprite: k.bush[(tx + ty) & 1], hide: { x: tx, y: ty } }); break;
@@ -52,9 +64,8 @@ function bakeTown(area) {
       default: G.grass(ctx, x, y, tx, ty);                  // grass, flowers, and what the houses cover
     }
   }
-  drawFountain(ctx, 22 * TILE, 20 * TILE);
-  out.fountain = { x: 22 * TILE, y: 20 * TILE };
-  for (const h of HOUSES) {
+  if (town) { drawFountain(ctx, 22 * TILE, 20 * TILE); out.fountain = { x: 22 * TILE, y: 20 * TILE }; }
+  for (const h of town ? HOUSES : []) {
     drawHouse(ctx, h);
     for (const w of windowsOf(h)) {
       const lit = w.shop || noise(w.x, w.y, 2) > 0.25;
@@ -87,6 +98,6 @@ function bakeShop(area) {
 const cache = new Map();
 /** The baked area (once per area). */
 export function bakeArea(area) {
-  if (!cache.has(area.name)) cache.set(area.name, area.outdoor ? bakeTown(area) : bakeShop(area));
+  if (!cache.has(area.name)) cache.set(area.name, area.outdoor ? bakeOutdoor(area) : bakeShop(area));
   return cache.get(area.name);
 }

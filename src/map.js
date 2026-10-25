@@ -1,9 +1,9 @@
-// The world: named areas (the town and the shop interior), each a grid of 16 px tiles. Tiles are solid or walkable; a few walkable
+// The world: named areas (the town, the farm outside it and the shop interior), each a grid of 16 px tiles. Tiles are solid or walkable; a few walkable
 // tiles are doors that move a pet to another area. The renderer (art.js) draws every char; the game rules only read this file.
 
 export const TILE = 16;
 
-/** Tile kinds: char -> { name, solid, hide? }. Town chars first, then the interior ones. */
+/** Tile kinds: char -> { name, solid, hide? }. Town chars first, then the farm's, then the interior ones. */
 export const TILES = {
   '.': { name: 'grass', solid: false },
   ',': { name: 'flowers', solid: false },     // grass with a few wild flowers
@@ -34,6 +34,16 @@ export const TILES = {
   'w': { name: 'puddle', solid: false },
   'W': { name: 'hay', solid: false },          // a hay bale on the pista: walkable, it slows the pet
   'f': { name: 'finish', solid: false },       // the checkered finish row of the pista
+  // the farm (La Granja): crops are walkable soil, the barn, the well, the scarecrow and the fruit trees are solid
+  'd': { name: 'furrow', solid: false },
+  'C': { name: 'carrots', solid: false },
+  'U': { name: 'lettuce', solid: false },
+  'P': { name: 'pumpkins', solid: false },
+  'Y': { name: 'wheat', solid: false },
+  'A': { name: 'fruit tree', solid: true },
+  'R': { name: 'barn', solid: true },
+  'v': { name: 'well', solid: true },
+  'Z': { name: 'scarecrow', solid: true },
   // the shop
   '_': { name: 'floor', solid: false },
   'r': { name: 'rug', solid: false },
@@ -68,7 +78,15 @@ export const HOUSES = [
 
 /** Doors: stepping on `at` moves the pet to (to.x, to.y) of area `to.area`, looking `to.d`. */
 export const DOORS = {
-  town: [{ x: 35, y: 9, to: { area: 'shop', x: 6, y: 10, d: 'up' } }],
+  town: [
+    { x: 35, y: 9, to: { area: 'shop', x: 6, y: 10, d: 'up' } },
+    { x: 47, y: 29, to: { area: 'farm', x: 1, y: 17, d: 'right' } },          // the road east out of the town: the two tiles of its end
+    { x: 47, y: 30, to: { area: 'farm', x: 1, y: 18, d: 'right' } },
+  ],
+  farm: [
+    { x: 0, y: 17, to: { area: 'town', x: 46, y: 29, d: 'left' } },
+    { x: 0, y: 18, to: { area: 'town', x: 46, y: 30, d: 'left' } },
+  ],
   shop: [
     { x: 6, y: 11, to: { area: 'town', x: 35, y: 10, d: 'down' } },
     { x: 7, y: 11, to: { area: 'town', x: 35, y: 10, d: 'down' } },
@@ -83,6 +101,8 @@ export const SIGNS = [
   { area: 'town', x: 33, y: 42, text: 'Gallina', sub: 'Jugar' },
   { area: 'town', x: 13, y: 57, text: 'Cancha', sub: 'Jugar' },
   { area: 'town', x: 43, y: 69, text: 'Pista', sub: 'Jugar' },
+  { area: 'town', x: 42, y: 28, text: 'La Granja', sub: 'Al este' },
+  { area: 'farm', x: 2, y: 16, text: 'Pueblo', sub: 'Al oeste' },
   { area: 'shop', x: 6.5, y: 2, text: 'Tienda', sub: 'Abierto' },
 ];
 
@@ -118,8 +138,8 @@ export const inZone = (g, x, y) => {
 };
 /** Is there an obstacle of the pista (hurdle, hay bale or puddle) on this tile of the town? */
 export const isObstacle = (x, y) => OBSTACLES.has(tileAt(x, y, 'town'));
-/** The game whose pad is at this tile of the town, or null. */
-export const spotAt = (x, y) => GAME_IDS.find((g) => GAME_PLACES[g].spot.some(([sx, sy]) => sx === x && sy === y)) || null;
+/** The game whose pad is at this tile of the town, or null. The games are played in the town only: no tile of another area is a pad. */
+export const spotAt = (x, y, area = DEFAULT_AREA) => (area !== DEFAULT_AREA ? null : GAME_IDS.find((g) => GAME_PLACES[g].spot.some(([sx, sy]) => sx === x && sy === y)) || null);
 
 /** Floating icons over the main places: (x, y) in tile units is the badge's centre and its bottom edge. */
 export const PLACES = [
@@ -227,6 +247,61 @@ function buildTown() {
     for (let y = 0; y < h; y++) { set(0, y, y % 2 ? 't' : 'T'); set(w - 1, y, y % 2 ? 'T' : 't'); }
     for (const [x, y] of [[2, 3], [10, 3], [18, 3], [30, 3], [40, 3], [46, 8], [2, 9], [19, 8], [29, 8], [2, 13], [3, 15], [10, 14], [20, 5], [27, 5], [46, 13], [46, 20], [46, 26], [2, 26], [2, 20], [10, 22], [45, 28], [33, 28], [13, 28]]) set(x, y, (x + y) % 3 ? 't' : 'T');
     for (const [x, y] of [[8, 14], [14, 16], [45, 12], [41, 14], [8, 24]]) set(x, y, 'b');
+    fill(45, 29, 3, 2, '=');                                   // the south road runs on through the east border: the way to the farm (see DOORS)
+  });
+}
+
+/** The farm's places, in tiles: where the barn stands, the animals' paddock (inside its fence), the orchard, the crop fields and the pond. */
+export const FARM = {
+  barn: { x: 26, y: 3, w: 6, h: 3 },
+  paddock: { x: 34, y: 3, w: 8, h: 8 },
+  orchard: { x: 2, y: 2, w: 18, h: 14 },
+  fields: { x: 3, y: 20, w: 17, h: 10 },
+  wheat: { x: 25, y: 21, w: 16, h: 7 },
+  pond: { x: 33, y: 30, w: 6, h: 4 },
+  well: [25, 14],
+  scarecrow: [11, 29],
+};
+const CROPS = [['C', 3, 20], ['U', 12, 20], ['P', 3, 25], ['Y', 12, 25]];       // the four crop blocks of the field: char, x, y (8 x 4 tiles, rows of crop and furrow)
+
+function buildFarm() {
+  return make(44, 36, '.', ({ g, fill, set, w, h }) => {
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if ((x * 5 + y * 11 + x * y) % 13 === 0) g[y][x] = ',';
+    // roads: in from the west, the lane north to south, the barn's yard and the paddock's gate
+    fill(0, 17, 42, 2, '=');
+    fill(21, 2, 2, 32, '=');
+    fill(28, 6, 2, 11, '=');
+    fill(37, 12, 1, 5, '=');
+    // the barn (see FARM.barn: its picture is a prop)
+    fill(FARM.barn.x, FARM.barn.y, FARM.barn.w, FARM.barn.h, 'R');
+    // the paddock: a fence round 8 x 8 tiles of grass, the gate on its south side
+    const pd = FARM.paddock;
+    fill(pd.x - 1, pd.y - 1, pd.w + 2, 1, 'F'); fill(pd.x - 1, pd.y + pd.h, pd.w + 2, 1, 'F'); fill(pd.x - 1, pd.y - 1, 1, pd.h + 2, 'F'); fill(pd.x + pd.w, pd.y - 1, 1, pd.h + 2, 'F');
+    set(37, pd.y + pd.h, 'a');
+    // the orchard: rows of fruit trees, every other row shifted
+    for (const y of [4, 7, 10, 13]) for (const x of [4, 7, 10, 13, 16]) set(x + (y % 6 === 1 ? 1 : 0), y, 'A');
+    // the crop field: a fence, a gate towards the road and one towards the lane, a lane through the middle, four blocks of rows
+    fill(2, 19, 19, 1, 'F'); fill(2, 30, 19, 1, 'F'); fill(2, 19, 1, 12, 'F'); fill(20, 19, 1, 12, 'F');
+    set(11, 19, 'a'); set(20, 24, 'a');
+    fill(11, 20, 1, 9, '=');
+    fill(3, 24, 8, 1, '='); fill(12, 24, 8, 1, '=');
+    for (const [ch, x0, y0] of CROPS) for (let j = 0; j < 4; j++) fill(x0, y0 + j, 8, 1, j % 2 ? 'd' : ch);
+    set(FARM.scarecrow[0], FARM.scarecrow[1], 'Z');
+    // the wheat field east of the lane: rows of wheat with a furrow between every two
+    const wh = FARM.wheat;
+    for (let j = 0; j < wh.h; j++) fill(wh.x, wh.y + j, wh.w, 1, j % 3 === 2 ? 'd' : 'Y');
+    // the well and a bench by the road, the pond in the south east
+    set(FARM.well[0], FARM.well[1], 'v'); set(27, 15, 'n');
+    const pond = { 30: [34, 37], 31: [33, 38], 32: [33, 38], 33: [34, 37] };
+    for (const [y, [a, b]] of Object.entries(pond)) fill(a, Number(y), b - a + 1, 1, '~');
+    // lamps along the road and the lane, and the signpost back to the town
+    for (const [x, y] of [[6, 16], [16, 16], [26, 16], [36, 16], [20, 6], [23, 6], [23, 25], [20, 32], [23, 32], [31, 19], [40, 19]]) set(x, y, 'L');
+    for (const s of SIGNS) if (s.area === 'farm') set(s.x, s.y, 'S');
+    // trees: the border (open where the road comes in) and some clumps
+    for (let x = 0; x < w; x++) { set(x, 0, x % 2 ? 'T' : 't'); set(x, h - 1, x % 2 ? 't' : 'T'); }
+    for (let y = 0; y < h; y++) { set(0, y, y % 2 ? 't' : 'T'); set(w - 1, y, y % 2 ? 'T' : 't'); }
+    fill(0, 17, 1, 2, '=');
+    for (const [x, y] of [[24, 2], [19, 2], [40, 14], [41, 15], [3, 32], [8, 33], [17, 33], [27, 33], [41, 33], [41, 29], [42, 22], [42, 26], [30, 31], [40, 31], [31, 14], [33, 14], [24, 20]]) set(x, y, (x + y) % 3 ? 't' : 'T');
   });
 }
 
@@ -244,6 +319,7 @@ function buildShop() {
 
 export const AREAS = {
   town: { name: 'town', grid: buildTown(), outdoor: true },
+  farm: { name: 'farm', grid: buildFarm(), outdoor: true },
   shop: { name: 'shop', grid: buildShop(), outdoor: false },
 };
 for (const a of Object.values(AREAS)) { a.h = a.grid.length; a.w = a.grid[0].length; }
