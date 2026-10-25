@@ -3,6 +3,7 @@
 import { parsePackage, buildReturn, petView, fromBase64, toBase64 } from './travel-package.js';
 import { sha256Hex, fromHex, verifyRequest, randomHex, safeEqual } from './crypto.js';
 import { newCode, normalizeCode, isEntrance, DEFAULT_ENTRANCE } from './trip-code.js';
+import { cleanRadar } from './radar.js';
 
 export const BODY_MAX = 12288;                 // a 6144-byte package is 8192 base64 characters, plus the JSON around it
 export const STATE_MAX = 2048;                 // the saved JSON state, serialized
@@ -203,7 +204,7 @@ async function tripStatus(req, deps) {
   }
   return reply(200, {
     status: trip.status, recalled: ['recalled', 'returned', 'closed'].includes(trip.status), claimed: !!trip.claimed_at,
-    entrance: trip.entrance, version: trip.state_version, ...(device ? { trip_id: trip.trip_id } : {}),
+    entrance: trip.entrance, version: trip.state_version, ...(device ? { trip_id: trip.trip_id, radar: cleanRadar(trip.state?.radar, deps.nowS()) } : {}),
   });
 }
 

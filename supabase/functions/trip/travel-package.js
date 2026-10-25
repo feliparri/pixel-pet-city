@@ -25,14 +25,14 @@ const ITEM_BYTES = 5;
 const KIND = { WEAR: 1, SEASON: 2, TOY: 3, DECOR: 4 };
 const ITEM_COUNT = 14, TOY_COUNT = 3, DECOR_COUNT = 12;
 const SITEM_BYTES_MAX = 4096, SITEM_NAME_MAX = 31, SITEM_SPRITES_MAX = 4, SITEM_PARTS_MAX = 6, SITEM_DIM_MAX = 64, SITEM_PRICE_MAX = 999;
-const SLOTS = 4, DECOR_KIND_COUNT = 6, DECOR_KIND_BED = 4, SITEM_AT_COUNT = 9;
+const STAT_COUNT = 5, SLOTS = 4, DECOR_KIND_COUNT = 6, DECOR_KIND_BED = 4, SITEM_AT_COUNT = 9;
 
 /** The catalogue key of every item id (store.c KEYS): what the town's sprites.json names it. */
 export const ITEM_KEYS = [null, 'tophat', 'bow', 'beanie', 'crown', 'hood', 'jamiro', 'sunglasses', 'heart_cheeks', 'scarf', 'bell_collar', 'wings', 'cape', 'witch_hat'];
 export const SPECIES = [null, 'frog', 'seal', 'cat'];
 
 // offsets inside the pet record (schema 14, save.c save_payload_encode)
-const P = { stage: 8, species: 9, equipped: 111, nameLen: 116, name: 117, nameBytes: 24, seasonN: 592, owned: 593, worn: 689 };
+const P = { stage: 8, species: 9, stats: 52, equipped: 111, nameLen: 116, name: 117, nameBytes: 24, seasonN: 592, owned: 593, worn: 689 };
 
 const u16 = (b, o) => b[o] | (b[o + 1] << 8);
 const u32 = (b, o) => (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0;
@@ -172,6 +172,8 @@ export function readPet(p) {
   for (let i = nameLen; i < P.nameBytes; i++) if (p[P.name + i] !== 0) return null;
   let name = '';
   try { name = new TextDecoder('utf-8', { fatal: true }).decode(p.subarray(P.name, P.name + nameLen)); } catch { return null; }
+  const stats = [];                                          // hunger, fun, energy, clean, health (pet.h pet_stat_t order), 0-100
+  for (let i = 0; i < STAT_COUNT; i++) stats.push(Math.min(100, p[P.stats + i]));
   const equipped = [];
   for (let s = 0; s < SLOTS; s++) { const id = p[P.equipped + s]; if (id >= ITEM_COUNT) return null; equipped.push(id); }
   const seasonN = p[P.seasonN];
@@ -184,7 +186,7 @@ export function readPet(p) {
     if (g && !owned.includes(g)) return null;               // a worn seasonal item must be owned
     worn.push(g);
   }
-  return { stage, species, name, equipped, worn };
+  return { stage, species, name, stats, equipped, worn };
 }
 
 /** The town stage index (0 baby .. 3 elder) of a pet stage byte (0 arriving, 1 baby .. 4 elder). */
@@ -203,7 +205,7 @@ export const fromBase64 = (s) => {
 };
 
 /**
- * What the town needs to draw the pet: { name, species, stage (0..3), items: [head, face, neck, back] (catalogue keys or ''),
+ * What the town needs to draw the pet: { name, species, stage (0..3), stats: [hunger, fun, energy, clean, health] 0..100, items: [head, face, neck, back] (catalogue keys or ''),
  * keepsakes: [{ slot, name, w, h, pal: ['#rrggbb' x 15], px: base64 of the first sprite's 4 bpp pixels }] }.
  * A keepsake whose record is not in the package is left out (the board hides it too).
  */
@@ -220,7 +222,7 @@ export function petView(pkg) {
     }
     return ITEM_KEYS[id] || '';
   });
-  return { name: info.name, species: SPECIES[info.species], stage: townStage(info.stage), items, keepsakes };
+  return { name: info.name, species: SPECIES[info.species], stage: townStage(info.stage), stats: info.stats.slice(), items, keepsakes };
 }
 
 /** The return package of an outbound one: the same bytes with the direction BACK and the sequence +1 (phase 1 changes nothing else). */

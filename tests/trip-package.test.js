@@ -12,7 +12,7 @@ test('the real packages built by the game parse, and the pet view shows what the
   assert.equal(a.ok, true);
   assert.equal(a.pkg.tripId, 0xA1B2C3D4);
   assert.equal(a.pkg.bag.length, 2);
-  assert.deepEqual(petView(a.pkg), { name: 'Mochi', species: 'cat', stage: 2, items: ['bow', 'sunglasses', '', ''], keepsakes: [] });
+  assert.deepEqual(petView(a.pkg), { name: 'Mochi', species: 'cat', stage: 2, stats: [80, 80, 100, 100, 100], items: ['bow', 'sunglasses', '', ''], keepsakes: [] });
   const b = parsePackage(kept);
   assert.equal(b.ok, true);
   const v = petView(b.pkg);
@@ -86,4 +86,15 @@ test('base64 helpers refuse junk', () => {
   assert.equal(fromBase64('abc'), null);
   assert.equal(fromBase64('ab$='), null);
   assert.deepEqual(fromBase64(toBase64(new Uint8Array([1, 2, 3, 4]))), new Uint8Array([1, 2, 3, 4]));
+});
+
+test('the five stats sit at 52..56 of the pet record, in pet.h order, clamped to 100', () => {
+  // save_payload_encode: i64 saved (0), stage 8, species 9, status 10, cause 11, four i64 (12..43), age_s 44, pending_ms 48, then stat[PET_STAT_COUNT]
+  const petAt = plain.length - 4 - 733;
+  const view = (fn) => { const r = parsePackage(edited(plain, fn)); assert.equal(r.ok, true); return petView(r.pkg).stats; };
+  assert.deepEqual(petView(parsePackage(plain).pkg).stats, [80, 80, 100, 100, 100]);       // what the game's fixture builder wrote
+  assert.deepEqual(view((b) => { [11, 22, 33, 44, 55].forEach((v, i) => { b[petAt + 52 + i] = v; }); }), [11, 22, 33, 44, 55]);   // hunger, fun, energy, clean, health
+  assert.deepEqual(view((b) => { b[petAt + 52] = 250; b[petAt + 56] = 0; }), [100, 80, 100, 100, 0]);
+  assert.equal(view((b) => { b[petAt + 57] = 77; })[0], 80);                                 // 57.. is stat_frac, not a stat
+  assert.deepEqual(petView(parsePackage(kept).pkg).stats, [80, 80, 100, 100, 100]);
 });
