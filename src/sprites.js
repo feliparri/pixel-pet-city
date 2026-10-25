@@ -1,5 +1,7 @@
 // The pets as the game exports them (assets/sprites.json, pets.png, parts.png): a body frame plus one layer per worn accessory.
-import { SPECIES, STAGES, SLOTS } from './protocol.js';
+// The sheet also holds animals that are not playable yet (bear, raccoon, elephant: sprites.json "species" lists every row, "playable" the pets
+// a player can be). Only the town's NPCs wear them: protocol.js SPECIES stays the playable three, so nothing from the network can ask for them.
+import { STAGES, SLOTS } from './protocol.js';
 
 const loadImage = (url) => new Promise((resolve, reject) => {
   const img = new Image();
@@ -22,7 +24,7 @@ export const CELL = 32;
 export function drawPet(ctx, sp, look, x, y, { frame = 'idle', flip = false, flap = false } = {}) {
   const { data } = sp;
   const key = `${look.species}-${STAGES[look.stage]}`;
-  const row = SPECIES.indexOf(look.species) * STAGES.length + look.stage;
+  const row = data.species.indexOf(look.species) * STAGES.length + look.stage;
   const col = Math.max(0, data.frames.indexOf(frame));
   ctx.save();
   if (flip) { ctx.translate(x + CELL, y); ctx.scale(-1, 1); } else ctx.translate(x, y);

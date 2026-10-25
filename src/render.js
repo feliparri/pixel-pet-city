@@ -84,9 +84,9 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
 
   const items = [];                                                            // props and pets, back to front
   for (const pr of baked.props) {
-    const sw = pr.sprite ? pr.sprite.width : 16, sh = pr.sprite ? pr.sprite.height : 24;
+    const sw = pr.sprite ? pr.sprite.width : pr.w || 16, sh = pr.sprite ? pr.sprite.height : pr.h || 24;
     if (pr.x - cam.x > vw || pr.x + sw - cam.x < 0 || pr.y - cam.y > vh || pr.y + sh - cam.y < 0) continue;
-    items.push({ sortY: pr.sortY, order: 0, draw: () => (pr.sprite ? sctx.drawImage(pr.sprite, pr.x - cam.x, pr.y - cam.y) : pr.draw(sctx, cam.x, cam.y, now)) });
+    items.push({ sortY: pr.sortY, order: 0, draw: () => (pr.sprite ? sctx.drawImage(pr.sprite, pr.x - cam.x, pr.y - cam.y) : pr.draw(sctx, cam.x, cam.y, now, sprites)) });
   }
   const labels = [], bubbles = [];
   const all = [me, ...entities].filter((e) => e && e.walker.pos().x !== null && !e.gone);

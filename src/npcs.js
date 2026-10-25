@@ -1,5 +1,6 @@
-// The town's villagers: three NPCs built from the pet sprites (a colour variant and a couple of accessories each) that stroll the north of
-// the town and say short lines in speech bubbles, plus the shopkeeper's greetings. Nothing here goes over the network: where a villager is and
+// The town's villagers: six NPCs built from the pet sprites (a colour variant and a couple of accessories each; Don Tito, Lula and Pipo are
+// a frog, a cat and a seal, Bruno, Chispa and Doña Perla a bear, a raccoon and an elephant, animals that are not playable yet) that stroll the
+// north of the town and say short lines in speech bubbles, plus the shopkeeper (a raccoon too) and her greetings. Nothing here goes over the network: where a villager is and
 // what it says are pure functions of (room code, server time), so every player in the room sees the same one in the same spot. Their routes
 // are fixed loops of waypoints on open tiles, walked at pet speed with pauses; the lines are drawn from a pool per (villager, time slot).
 import { isWalkable, tileAt, doorAt, TILES, inZone, GAME_IDS } from './map.js';
@@ -16,7 +17,8 @@ const HOME = [24, 22];                    // a tile of the plaza: the routes use
 /** Where every villager may stand: open ground that is not a hiding bush, a door, or inside the Parque where the games are played. */
 export const npcTile = (x, y) => isWalkable(x, y, 'town') && !TILES[tileAt(x, y, 'town')].hide && !doorAt(x, y, 'town') && !GAME_IDS.some((g) => inZone(g, x, y));
 
-// Each villager: a name, a look (slots head, face, neck, back), the body's hue shift and the pool of lines it draws from.
+// Each villager: a name, a look (slots head, face, neck, back), the body's hue shift (none: the species' own colours; an elder's pale body has no
+// hue left to shift) and the pool of lines it draws from.
 export const VILLAGERS = [
   { id: 'tito', name: 'Don Tito', look: { species: 'frog', stage: 3, items: ['tophat', '', 'scarf', ''] }, variant: { id: 'tito', hue: 150, sat: 2.2 }, lines: [
     '¡Qué buen día para caminar!', 'Cuando yo era renacuajo, esto era puro pasto.', 'Las moscas ya no son lo que eran.', 'Despacito se llega lejos.',
@@ -32,6 +34,21 @@ export const VILLAGERS = [
     '¡Plash! Es mi saludo favorito.', 'Me gustan mis lentes, ¿a ustedes?', '¡Corramos una carrera!', '¿Saben nadar? Yo sí.',
     'Hoy aprendí algo nuevo.', '¡Qué divertido es pasear!', 'Mi gorro es súper abrigado.', 'Quiero conocer a todos.',
     '¿Quién me persigue?', 'Los peces también juegan, ¿saben?', '¡Hola, amigo!', 'Hoy va a ser un gran día.',
+  ] },
+  { id: 'bruno', name: 'Bruno', look: { species: 'bear', stage: 2, items: ['beanie', '', 'scarf', ''] }, variant: { id: 'bruno', hue: -14, sat: 1.1 }, lines: [
+    '¡Mmm, huele a miel por aquí!', 'Cuando hace frío, me quedo en casa.', 'Mi bufanda es la más abrigada del pueblo.', 'Una siesta nunca está de más.',
+    'Un oso no se apura: pasea.', 'Dicen que en el bosque hay panales enormes.', '¿Alguien tiene un poquito de miel?', 'Hoy desperté con ganas de abrazar.',
+    '¡Buen día, vecinos! Qué lindo paseo.', 'Me gusta contar nubes desde el pasto.', 'Mi gorro no se cae, ni con viento.', 'Grrr... es mi manera de saludar.',
+  ] },
+  { id: 'chispa', name: 'Chispa', look: { species: 'raccoon', stage: 1, items: ['', 'sunglasses', '', 'cape'] }, variant: { id: 'chispa', hue: 28, sat: 3 }, lines: [
+    '¡Shh! Busco tesoros brillantes.', 'Encontré una moneda... ¡y un botón!', 'De noche veo todo mejor, ¿saben?', 'Mi antifaz es de nacimiento, ¿vieron?',
+    '¿Quién se llevó mi galleta? Ejem...', 'Me encanta revisar los rincones.', 'Las manitas sirven para todo.', '¡Miren qué lentes tan geniales!',
+    'Hoy me porté bien, casi siempre.', '¿Jugamos a las escondidas?', 'Mi capa me da superpoderes.', 'Lo perdido aparece en mi bolsillo.',
+  ] },
+  { id: 'perla', name: 'Doña Perla', look: { species: 'elephant', stage: 3, items: ['bow', '', 'scarf', ''] }, lines: [
+    'Un elefante nunca olvida a un amigo.', 'Con calma y buen paso se llega a todo.', 'Recuerdo cuando este pueblo era un prado.', '¿Ya regaron las plantas esta mañana?',
+    'Una ducha con la trompa y listo.', 'Mi lazo es el favorito de mi nieta.', 'Mi memoria es larga, mi paseo, lento.', 'Qué alegría verlos a todos juntos.',
+    'Cuiden a los más pequeños, ¿sí?', 'El agua de la fuente me da paz.', 'El sol de hoy trae buenos recuerdos.', '¡Trompetazo de alegría! Priiii...',
   ] },
 ];
 export const NIGHT_LINES = ['¡Qué linda la noche!', 'Miren cuántas luces.', 'Ya casi es hora de dormir...', 'La luna está preciosa.'];
@@ -153,7 +170,7 @@ export function createNpcs({ seed, sprites, variants = createVariants() }) {
   const ents = VILLAGERS.map((v, i) => {
     const route = routeFor(seed, i), ok = v.look.items.every((it) => !it || (sprites.catalogue && sprites.catalogue[it]));
     const look = ok ? v.look : { ...v.look, items: ['', '', '', ''] };
-    return { route, entity: { id: `npc:${v.id}`, name: v.name, look, walker: new Walker(route.start[0], route.start[1]), emote: null, jumpAt: null, say: null, npc: true, sprites: variants.get(sprites, v.variant) } };
+    return { route, entity: { id: `npc:${v.id}`, name: v.name, look, walker: new Walker(route.start[0], route.start[1]), emote: null, jumpAt: null, say: null, npc: true, sprites: v.variant ? variants.get(sprites, v.variant) : sprites } };
   });
   return {
     update(t, ctx = {}) {
@@ -169,7 +186,9 @@ export function createNpcs({ seed, sprites, variants = createVariants() }) {
 
 // ---- the shopkeeper ---------------------------------------------------------------------------------------------------------------------
 
-export const SHOPKEEPER = { head: { x: 112, y: 34 }, stand: { x: 6.5, y: 5.5 }, near: 3 };        // the raccoon's head (map px of the shop) and the spot in front of the counter
+// The shopkeeper is a raccoon of the pets' own art (an adult in a shop bell collar), drawn like any pet behind the counter: `cell` is the top left of its
+// 32 px cell in map px of the shop, `head` the top of its head (where its speech bubble points) and `stand` the spot in front of the counter.
+export const SHOPKEEPER = { head: { x: 112, y: 28 }, stand: { x: 6.5, y: 5.5 }, near: 3, cell: { x: 96, y: 26 }, look: { species: 'raccoon', stage: 2, items: ['', '', 'bell_collar', ''] } };
 export const SHOP_LINES = ['¡Hola! La tienda abre muy pronto.', '¡Bienvenido! Estamos preparando todo.', '¡Qué bueno verte! Vuelve pronto.', 'Estoy acomodando los estantes...'];
 export const SHOP_SAY_MS = 4200;
 

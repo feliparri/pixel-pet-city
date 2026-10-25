@@ -7,6 +7,8 @@ import * as PL from './places.js';
 import { oak, pine, bush, lamp, lampLit, LAMP_GLOW, drawFountain } from './props.js';
 import { drawHouse, windowsOf, litWindow } from './buildings.js';
 import { drawInterior, counter, nightWindow, raccoon } from './interior.js';
+import { drawPet, CELL } from '../sprites.js';
+import { SHOPKEEPER } from '../npcs.js';
 
 let sprites = null;
 const kit = () => sprites || (sprites = { oak: [oak(1), oak(2)], pine: [pine(1), pine(2)], bush: [bush(0), bush(1)], lamp: lamp(), lampLit: lampLit(), coop: PL.coop(), counter: counter(), nightWindow: nightWindow() });
@@ -72,7 +74,13 @@ function bakeShop(area) {
   const wins = drawInterior(ctx, area);
   const out = { name: area.name, w: W, h: H, outdoor: false, ground, props: [], water: [], fountain: null, overlays: wins.map((p) => ({ x: p.x, y: p.y, sprite: k.nightWindow })), glows: [] };
   out.props.push({ x: 5 * TILE, y: 4 * TILE + 16 - 28, sortY: 5 * TILE, sprite: k.counter });
-  out.props.push({ x: 104, y: 34, sortY: 4 * TILE - 4, draw: (c, ox, oy, now) => raccoon(c, 104 - ox, 34 - oy, (now % 3600) < 140 ? 1 : 0, Math.floor(now / 700) % 2) });
+  out.props.push({ x: SHOPKEEPER.cell.x, y: SHOPKEEPER.cell.y, w: CELL, h: CELL, sortY: 4 * TILE - 4, draw: (c, ox, oy, now, sprites) => {
+    const blink = (now % 3600) < 140, bob = Math.floor(now / 700) % 2;
+    if (sprites && sprites.data.species.includes(SHOPKEEPER.look.species)) {         // the pets' art; a sheet without the raccoon keeps the old drawing
+      const look = { ...SHOPKEEPER.look, items: SHOPKEEPER.look.items.map((it) => (it && sprites.catalogue[it] ? it : '')) };
+      drawPet(c, sprites, look, SHOPKEEPER.cell.x - ox, SHOPKEEPER.cell.y - oy + bob, { frame: blink ? 'blink' : 'idle' });
+    } else raccoon(c, 104 - ox, 34 - oy, blink ? 1 : 0, bob);
+  } });
   return out;
 }
 
