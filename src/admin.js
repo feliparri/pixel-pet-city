@@ -4,6 +4,7 @@ import config from '../config.js';
 import { createEventsApi, adminErrorText } from './events-client.js';
 import { zonedToMs, msToZoned, labelZoned, untilText, zoneOffset } from './admin-time.js';
 import { SHOWS } from './show/timeline.js';
+import { LAUNCH_NOW_MS } from './town-events.js';
 
 const $ = (id) => document.getElementById(id);
 const KEY_STORE = 'town.adminKey';
@@ -73,14 +74,23 @@ async function add(ev) {
   ev.preventDefault();
   const ms = zonedToMs($('date').value, $('time').value);
   if (!Number.isFinite(ms)) { say('Elige una fecha y una hora.', 'bad'); return; }
+  await schedule(ms);
+}
+
+/** "Lanzar ya": the show starts in LAUNCH_NOW_MS, the soonest every open town is sure to have heard of it. */
+async function launchNow() {
+  await schedule(serverNow() + LAUNCH_NOW_MS);
+}
+
+async function schedule(ms) {
   const seed = Number($('seed').value);
   if (!Number.isInteger(seed) || seed < 0 || seed > 2147483647) { say(adminErrorText('bad_seed'), 'bad'); return; }
   if (ms <= serverNow()) { say(adminErrorText('start_in_the_past'), 'bad'); return; }
-  $('add').disabled = true;
+  $('add').disabled = $('now').disabled = true;
   const r = await api.save({ kind: $('kind').value, seed, start_at: new Date(ms).toISOString() }, key);
-  $('add').disabled = false;
+  $('add').disabled = $('now').disabled = false;
   if (!r.ok) { say(adminErrorText(r.error), 'bad'); if (r.error === 'bad_admin_key') logout(); return; }
-  say(`Programado para el ${labelZoned(ms)} (Chile).`, 'ok');
+  say(ms - serverNow() < 60_000 ? `¡Lanzado! Empieza en ${Math.round((ms - serverNow()) / 1000)} segundos.` : `Programado para el ${labelZoned(ms)} (Chile).`, 'ok');
   $('seed').value = String(randomSeed()); paintLink();
   await refresh();
 }
@@ -114,6 +124,7 @@ async function main() {
   for (const id of ['kind', 'seed']) $(id).addEventListener('input', paintLink);
   $('reseed').addEventListener('click', () => { $('seed').value = String(randomSeed()); paintLink(); });
   $('new').addEventListener('submit', add);
+  $('now').addEventListener('click', launchNow);
   $('login').addEventListener('submit', login);
   $('logout').addEventListener('click', () => { logout(); say(''); });
   paintLink();

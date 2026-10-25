@@ -6,7 +6,8 @@ import { SHOWS, showEnd } from './show/timeline.js';
 import { clockOffset } from './events-client.js';
 
 export const WARN_MS = 60_000;          // "in 1 minute" toast
-export const POLL_MS = 5 * 60_000;      // how often the list is asked for
+export const POLL_MS = 20_000;          // how often the list is asked for: a show launched from the admin page reaches everyone before it starts
+export const LAUNCH_NOW_MS = POLL_MS + 5_000;    // the admin's "Lanzar ya": this far ahead, so every town has asked once before it starts
 export const RECHECK_BEFORE_MS = 45_000;    // and once more this long before the next start
 export const RETRY_MS = 60_000;         // after a failed ask
 
@@ -70,7 +71,11 @@ export function createTownEvents({ api, nowMs = () => Date.now(), devEvents = nu
   }
 
   return {
-    start() { poll(); },
+    start() {
+      poll();
+      // a phone that was in the background (timers paused) asks again as soon as it is back
+      globalThis.document?.addEventListener?.('visibilitychange', () => { if (globalThis.document.visibilityState === 'visible') poll(); });
+    },
     stop() { alive = false; clearTimer(timer); },
     serverNow,
     /** Per frame: sends the toasts that are due and returns the show to draw ({ kind, seed, ts, cut }) or null. */

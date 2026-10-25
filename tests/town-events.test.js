@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { showAt, warningsAt, nextPollDelay, parseDevEvent, createTownEvents, WARN_MS, POLL_MS, RECHECK_BEFORE_MS, RETRY_MS } from '../src/town-events.js';
+import { showAt, warningsAt, nextPollDelay, parseDevEvent, createTownEvents, WARN_MS, POLL_MS, RECHECK_BEFORE_MS, RETRY_MS, LAUNCH_NOW_MS } from '../src/town-events.js';
 import { SHOWS, FALL } from '../src/show/timeline.js';
 import { skyAt } from '../src/show/layers.js';
 
@@ -54,9 +54,15 @@ test('warnings: one minute before, once, with the show\'s name', () => {
 test('the next ask of the server: every few minutes, sooner before a start', () => {
   assert.equal(nextPollDelay([], T0), POLL_MS);
   assert.equal(nextPollDelay([ev('a', 'drones', 3600)], T0), POLL_MS);
-  assert.equal(nextPollDelay([ev('a', 'drones', 200)], T0), 200_000 - RECHECK_BEFORE_MS);
-  assert.equal(nextPollDelay([ev('a', 'drones', 200), ev('b', 'drones', 100)], T0), 100_000 - RECHECK_BEFORE_MS);
+  assert.equal(nextPollDelay([ev('a', 'drones', 200)], T0), POLL_MS);
+  assert.equal(nextPollDelay([ev('a', 'drones', 60)], T0), 60_000 - RECHECK_BEFORE_MS);
+  assert.equal(nextPollDelay([ev('a', 'drones', 62), ev('b', 'drones', 55)], T0), 55_000 - RECHECK_BEFORE_MS);
   assert.equal(nextPollDelay([ev('a', 'drones', 20)], T0), POLL_MS, 'already inside the window: the normal pace');
+});
+
+test('a show scheduled two minutes ahead reaches a player already in the town (owner, 2026-10-25)', () => {
+  assert.ok(POLL_MS < 120_000 - 38_000, 'it is known before a two-minute-ahead fireworks show is over');
+  assert.ok(LAUNCH_NOW_MS > POLL_MS, '"Lanzar ya" starts after every town has asked once');
 });
 
 test('the development shortcut needs dev=1 and a known kind', () => {
@@ -87,9 +93,9 @@ test('the controller keeps the server clock offset and every screen sees the sam
 });
 
 test('the controller: asks again later (sooner before a start), retries after a failure, and tells the town', async () => {
-  const r = rig({ events: [ev('a', 'fireworks', 200)] });
+  const r = rig({ events: [ev('a', 'fireworks', 60)] });
   r.ctl.start(); await new Promise((x) => setImmediate(x));
-  assert.ok(r.timers[0] < POLL_MS && r.timers[0] > 100_000);
+  assert.ok(r.timers[0] < POLL_MS && r.timers[0] > 10_000);
   const f = rig({ fail: true });
   f.ctl.start(); await new Promise((x) => setImmediate(x));
   assert.deepEqual(f.timers, [RETRY_MS]);
