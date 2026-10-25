@@ -302,21 +302,27 @@ export function drawTextBubble(ctx, text, x, y, scale, maxW) {
     for (let i = 1; i < words.length; i++) if (Math.abs(words.slice(0, i).join(' ').length - text.length / 2) < Math.abs(words.slice(0, best).join(' ').length - text.length / 2)) best = i;
     rows.splice(0, 1, words.slice(0, best).join(' '), words.slice(best).join(' '));
   }
-  drawBubbleBox(ctx, rows, x, y, scale, maxW, '#181c2c');
+  drawBubbleBox(ctx, rows, x, y, scale, maxW, '#f4f6fa', SOFT);
 }
 
-function drawBubbleBox(ctx, rows, x, y, scale, maxW, colour) {
+// a villager's line: a translucent dark box with light text and no outline, so it does not stand out as much as an emote (owner 2026-10-25)
+const SOFT = { fill: 'rgba(24, 28, 44, 0.55)', edge: null };
+const SOLID = { fill: '#f4f6fa', edge: '#181c2c' };
+
+function drawBubbleBox(ctx, rows, x, y, scale, maxW, colour, look = SOLID) {
   const px = 8 * scale;
   ctx.font = `${px}px system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif`;
   const w = Math.ceil(Math.max(...rows.map((r) => ctx.measureText(r).width))) + 4 * scale, rowH = 10 * scale, h = rows.length > 1 ? rows.length * rowH + scale : 11 * scale;
   const cx = Math.min(Math.max(x, w / 2 + scale), maxW - w / 2 - scale);
   const top = Math.max(scale, y - h - 2 * scale);
-  ctx.fillStyle = '#f4f6fa';
+  ctx.fillStyle = look.fill;
   ctx.fillRect(cx - w / 2, top, w, h);
-  ctx.fillStyle = '#181c2c';
-  ctx.fillRect(cx - w / 2 - scale, top + scale, scale, h - 2 * scale); ctx.fillRect(cx + w / 2, top + scale, scale, h - 2 * scale);
-  ctx.fillRect(cx - w / 2 + scale, top - scale, w - 2 * scale, scale); ctx.fillRect(cx - w / 2 + scale, top + h, w - 2 * scale, scale);
-  ctx.fillRect(cx - scale, top + h + scale, 2 * scale, scale);
+  if (look.edge) {
+    ctx.fillStyle = look.edge;
+    ctx.fillRect(cx - w / 2 - scale, top + scale, scale, h - 2 * scale); ctx.fillRect(cx + w / 2, top + scale, scale, h - 2 * scale);
+    ctx.fillRect(cx - w / 2 + scale, top - scale, w - 2 * scale, scale); ctx.fillRect(cx - w / 2 + scale, top + h, w - 2 * scale, scale);
+    ctx.fillRect(cx - scale, top + h + scale, 2 * scale, scale);
+  } else ctx.fillRect(cx - scale, top + h, 2 * scale, scale);                      // a soft box: just a small tail
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillStyle = colour;
   rows.forEach((r, i) => ctx.fillText(r, cx, rows.length > 1 ? top + scale + rowH * (i + 0.5) + scale / 2 : top + h / 2 + scale / 2));
