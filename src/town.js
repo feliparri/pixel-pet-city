@@ -1,7 +1,8 @@
 // The running town: the local pet, the other pets, input (taps, arrows/WASD), the net session and the draw loop.
 import { findPath, dirVector } from './path.js';
 import { isWalkable, doorAt, spotAt, tileAt, TILES, GAME_PLACES, SPAWNS } from './map.js';
-import { Walker } from './walker.js';
+import { Walker, REMOTE_SNAP } from './walker.js';
+import { isTyping, runs } from './keys.js';
 import { createRenderer, EMOTE_MS } from './render.js';
 import { ambientAt, hourNow } from './daynight.js';
 import { entranceState } from './entrance.js';
@@ -33,6 +34,7 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
   const renderer = createRenderer({ canvas, sprites, font });
   let fadeT0 = -Infinity, ambAt = -Infinity;
   const held = [];                                   // direction keys held, the latest last
+  let shift = false;                                 // Shift is down: a held arrow key runs (outside the games)
   let raf = 0, last = performance.now(), alive = true;
 
   const names = (pid) => (pid === self.id ? self.name : (others.get(pid) || {}).name || 'Mascota');
@@ -59,7 +61,7 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
     else if (ev.type === 'pos') {
       const o = others.get(ev.id);
       if (!o) return;
-      if (!o.placed || o.area !== ev.area || Math.abs(o.walker.tileX - ev.x) + Math.abs(o.walker.tileY - ev.y) > 3) { o.walker.snap(ev.x, ev.y, ev.d); o.placed = true; o.area = ev.area; } else o.walker.goTo(ev.x, ev.y, ev.d, o.area);
+      if (!o.placed || o.area !== ev.area || Math.abs(o.walker.tileX - ev.x) + Math.abs(o.walker.tileY - ev.y) > REMOTE_SNAP) { o.walker.snap(ev.x, ev.y, ev.d); o.placed = true; o.area = ev.area; } else o.walker.goTo(ev.x, ev.y, ev.d, o.area);
     } else if (ev.type === 'game') {
       games.onMessage(ev.m);
     } else if (ev.type === 'emote') {
@@ -105,7 +107,9 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
       const [sx, sy] = mv.zone.pad;
       w.snap(sx, sy, 'down'); net.sendPos(sx, sy, 'down', 'town'); fadeT0 = t;
     }
+    if (!w.busy) w.run = false;
     if (!w.busy && held.length && !self.fx) {                    // a held arrow key keeps walking
+      w.run = runs(shift, mv);
       const d = held[held.length - 1];
       const [dx, dy] = dirVector(d);
       const nx = w.tileX + dx, ny = w.tileY + dy;
@@ -173,13 +177,15 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
     }
   }
   function onKeyDown(ev) {
-    if (ev.target && /^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName)) return;
+    if (isTyping(ev)) return;
+    shift = ev.shiftKey;
     const d = KEY_DIRS[ev.key];
     if (!d || self.fx) return;
     ev.preventDefault();
     if (!held.includes(d)) { held.push(d); self.walker.queue = []; }   // a key cancels a tapped route
   }
   function onKeyUp(ev) {
+    shift = ev.shiftKey;
     const d = KEY_DIRS[ev.key];
     const i = held.indexOf(d);
     if (i >= 0) held.splice(i, 1);
@@ -187,7 +193,7 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
   canvas.addEventListener('pointerdown', onPointer);
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
-  window.addEventListener('blur', () => { held.length = 0; });
+  window.addEventListener('blur', () => { held.length = 0; shift = false; });
   const onVisibility = () => net.resync();                    // timers sleep in a hidden tab: say where we are going in and coming out
   document.addEventListener('visibilitychange', onVisibility);
 

@@ -3,6 +3,8 @@
 import { findPath, stepDir } from './path.js';
 
 export const STEP_MS = 160;
+export const RUN_FACTOR = 1.8;          // a running pet (Shift on the keyboard, free walk only) takes this many times less per step
+export const REMOTE_SNAP = 6;           // a remote pet this many tiles behind its reported tile jumps instead of walking: a running pet is a few tiles ahead
 const MAX_CATCHUP = 24;                 // a remote target further than this many steps away is a teleport
 
 export class Walker {
@@ -15,6 +17,7 @@ export class Walker {
     this.queue = [];                    // tiles still to walk
     this.onStep = null;                 // (x, y, d) when a step starts
     this.stepOverride = null;           // ms per step when something (the chicken sprinting) goes at its own pace
+    this.run = false;                   // the local pet runs: set between steps, so a step never changes pace half way
   }
 
   get tileX() { return this.tx; }
@@ -28,7 +31,7 @@ export class Walker {
     return { x: this.fx + (this.tx - this.fx) * k, y: this.fy + (this.ty - this.fy) * k };
   }
 
-  stepMs() { return this.stepOverride || (this.queue.length > 3 ? STEP_MS / 2 : STEP_MS); }   // a pet that fell behind hurries
+  stepMs() { return this.stepOverride || (this.queue.length > 3 ? STEP_MS / 2 : this.run ? STEP_MS / RUN_FACTOR : STEP_MS); }   // a pet that fell behind hurries
 
   /** Replace what is left to walk (the step in progress finishes first). */
   setPath(tiles) {
