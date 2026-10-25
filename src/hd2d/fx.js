@@ -34,25 +34,28 @@ export function createFx(w, h) {
   }
   return {
     /** Paints the effects over `ctx` (which already holds the scene). amount 0..1 fades them; night 0..1 sets the bloom and vignette. */
-    apply(ctx, amount, night) {
+    apply(ctx, amount, night, { bloom = true, tiltshift = true } = {}) {
       if (amount <= 0) return;
       const src = ctx.canvas;
-      blur(soft, src, [half, quarter]);                                  // tilt-shift: the blurred copy, masked to the bands
-      const sc = soft.getContext('2d');
-      sc.globalCompositeOperation = 'destination-in'; sc.drawImage(mask, 0, 0); sc.globalCompositeOperation = 'source-over';
-      ctx.globalAlpha = amount; ctx.drawImage(soft, 0, 0);
+      if (tiltshift) {
+        blur(soft, src, [half, quarter]);                                  // tilt-shift: the blurred copy, masked to the bands
+        const sc = soft.getContext('2d');
+        sc.globalCompositeOperation = 'destination-in'; sc.drawImage(mask, 0, 0); sc.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = amount; ctx.drawImage(soft, 0, 0);
+      }
       ctx.imageSmoothingEnabled = true;
       ctx.globalAlpha = amount * (1 - night); ctx.drawImage(haze[0], 0, 0, ctx.canvas.width, ctx.canvas.height);       // distance fog toward the top
       ctx.globalAlpha = amount * night; ctx.drawImage(haze[1], 0, 0, ctx.canvas.width, ctx.canvas.height);
       ctx.globalAlpha = 1;
-      const a = q.getContext('2d'), b = q2.getContext('2d'), c = q3.getContext('2d');             // bloom: bright pass = the low-res copy to the fourth power
-      a.imageSmoothingEnabled = true; a.drawImage(src, 0, 0, q.width, q.height);
-      b.globalCompositeOperation = 'copy'; b.drawImage(q, 0, 0); b.globalCompositeOperation = 'multiply'; b.drawImage(q, 0, 0);
-      c.globalCompositeOperation = 'copy'; c.drawImage(q2, 0, 0); c.globalCompositeOperation = 'multiply'; c.drawImage(q2, 0, 0);
-      blur(bloomBuf, q3, [e, e2]);
-      ctx.imageSmoothingEnabled = true;
-      ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = amount * (0.2 + 0.4 * night); ctx.drawImage(bloomBuf, 0, 0, ctx.canvas.width, ctx.canvas.height);
-      ctx.globalCompositeOperation = 'source-over';
+      if (bloom) {                                                       // bloom: bright pass = the low-res copy to the fourth power, blurred, added
+        const a = q.getContext('2d'), b = q2.getContext('2d'), c = q3.getContext('2d');
+        a.imageSmoothingEnabled = true; a.drawImage(src, 0, 0, q.width, q.height);
+        b.globalCompositeOperation = 'copy'; b.drawImage(q, 0, 0); b.globalCompositeOperation = 'multiply'; b.drawImage(q, 0, 0);
+        c.globalCompositeOperation = 'copy'; c.drawImage(q2, 0, 0); c.globalCompositeOperation = 'multiply'; c.drawImage(q2, 0, 0);
+        blur(bloomBuf, q3, [e, e2]);
+        ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = amount * (0.2 + 0.4 * night); ctx.drawImage(bloomBuf, 0, 0, ctx.canvas.width, ctx.canvas.height);
+        ctx.globalCompositeOperation = 'source-over';
+      }
       ctx.globalAlpha = amount * (0.55 + 0.4 * night); ctx.drawImage(vig, 0, 0); ctx.globalAlpha = 1;
       ctx.imageSmoothingEnabled = false;
     },

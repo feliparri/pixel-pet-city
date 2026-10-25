@@ -9,6 +9,7 @@ import { cameraFor, focusBounds, snapFocus, sortBackToFront, screenToTile, stand
 import { groundMult } from './light.js';
 import { buildWorld, bakeGround, drawGround, standingItems, drawGlows, fountainItem } from './scene.js';
 import { createFx } from './fx.js';
+import { createGovernor } from './quality.js';
 import { createPetPainter } from './pets.js';
 import { createThings } from './things.js';
 
@@ -17,7 +18,11 @@ const MAP_W = TOWN.w * TILE, MAP_H = TOWN.h * TILE;
 const BADGE_LIFT = 60;                                                  // a place's badge floats this high over the ground point under it
 
 /** The HD-2D renderer of the outdoor town. `compact` (a phone in landscape) frames the view a little tighter. */
-export function createHdRenderer({ canvas, sprites, font, compact = false }) {
+const LEVEL_KEY = 'city.hd2d.level';
+const savedLevel = () => { try { return Math.max(0, Number(localStorage.getItem(LEVEL_KEY)) | 0); } catch { return 0; } };
+const saveLevel = (v) => { try { localStorage.setItem(LEVEL_KEY, String(v)); } catch { /* private mode */ } };
+
+export function createHdRenderer({ canvas, sprites, font, compact = false, onQuality = () => {} }) {
   const ctx = canvas.getContext('2d');
   const ref = compact ? 170 : 230;
   const painter = createPetPainter(sprites);
@@ -26,21 +31,26 @@ export function createHdRenderer({ canvas, sprites, font, compact = false }) {
   let world = null, ground = null, fx = null, box = null;
   let view = { w: 0, h: 0 }, cam = null, focus = null, last = null, ui = 2, hits = [];
   let groundKey = '', waterFrame = -1;
+  const gov = createGovernor({ start: savedLevel() });
+  const stat = { ms: 0, dt: 33, build: 0 };                                         // moving averages: the cost of drawing a frame, and the time between frames
 
   function resize(b) {
     box = b;
-    const dpr = Math.min(b.dpr, 1.5);
-    const w = Math.max(2, Math.round(Math.min(b.w * dpr, 1280))), h = Math.max(2, Math.round((w * b.h) / b.w));
+    const res = gov.settings.res, dpr = Math.min(b.dpr, 1.5) * res;
+    const w = Math.max(2, Math.round(Math.min(b.w * dpr, 1280 * res))), h = Math.max(2, Math.round((w * b.h) / b.w));
     if (w !== view.w || h !== view.h) { view = { w, h }; fx = createFx(w, h); }
     canvas.width = w; canvas.height = h;
     canvas.style.width = `${b.w}px`; canvas.style.height = `${b.h}px`;
+    canvas.style.imageRendering = res < 1 ? 'auto' : '';                    // below full size a whole-number step is gone: smooth is better than uneven pixels
     groundKey = '';
   }
 
   function ensureWorld() {
     if (world) return;
+    const t0 = performance.now();
     world = buildWorld();
     ground = Object.assign(document.createElement('canvas'), { width: world.tex.width, height: world.tex.height });
+    stat.build = Math.round(performance.now() - t0);
   }
 
   /** The canvas takes this renderer's layout again (the town after an interior, or the switch turned on). */
@@ -48,8 +58,13 @@ export function createHdRenderer({ canvas, sprites, font, compact = false }) {
 
   function draw(state, now) {
     ensureWorld();
-    const dt = last == null ? 16 : Math.min(100, Math.max(0, now - last));
+    const raw = last == null ? 0 : now - last, dt = last == null ? 16 : Math.min(100, Math.max(0, raw));
     last = now;
+    const t0 = performance.now();
+    const verdict = raw > 0 ? gov.push(raw) : null;
+    if (raw > 0 && raw < 1500) stat.dt += (Math.min(raw, 150) - stat.dt) * 0.05;
+    if (verdict === 'down') { saveLevel(gov.level); resize(box); onQuality({ kind: 'down', level: gov.level }); }
+    else if (verdict === 'flat') onQuality({ kind: 'flat' });
     const amb = state.amb || { tint: [255, 255, 255], night: 0 }, n = amb.night, mult = groundMult(amb);
 
     const mp = state.me.walker.pos();                                   // the camera follows the player, inside the map
@@ -84,11 +99,12 @@ export function createHdRenderer({ canvas, sprites, font, compact = false }) {
     for (const it of sortBackToFront(items)) it.draw(ctx, ov);
     things.air(ctx, state, cam, now, view);
     drawGlows(ctx, world, cam, n, now, view);
-    fx.apply(ctx, 1, n);
+    fx.apply(ctx, 1, n, gov.settings);
     drawOverlay(ov, now);
     hits = ov.hits;
     if (state.dark) drawDark(state.dark, mp);
     if (state.fade > 0) { ctx.fillStyle = `rgba(14,16,26,${Math.min(1, state.fade)})`; ctx.fillRect(0, 0, view.w, view.h); }
+    stat.ms += (performance.now() - t0 - stat.ms) * 0.05;
   }
 
   /** The seeker's darkness: the whole view nearly black but a soft circle of light on the ground around the seeker (an ellipse once tilted). r = 0 or full: all dark. */
@@ -163,17 +179,27 @@ export function createHdRenderer({ canvas, sprites, font, compact = false }) {
     return t && t[0] >= 0 && t[1] >= 0 && t[0] < TOWN.w && t[1] < TOWN.h ? t : null;
   }
 
-  return { resize, draw, pointToTile, activate, get view() { return view; }, get cam() { return cam; } };
+  return {
+    resize, draw, pointToTile, activate,
+    /** The player turned it back on after the automatic fallback: keep the cheapest level and do not fall back again. */
+    pin() { gov.allowFlat = false; },
+    /** For the console: { level, res, ms (drawing a frame), fps (frames per second as the screen got them), w, h }. */
+    stats: () => ({ level: gov.level, res: gov.settings.res, ms: +stat.ms.toFixed(1), fps: +(1000 / stat.dt).toFixed(1), w: view.w, h: view.h, build: stat.build }),
+    get view() { return view; }, get cam() { return cam; },
+  };
 }
 
 /**
  * The town's renderer: HD-2D outdoors, the flat renderer in interiors or when HD-2D is off (setHd(false), or `flat`, which also locks it
  * off). Same interface as createRenderer, plus hd (is it on), setHd(on) and flat.
  */
-export function createTownRenderer({ canvas, sprites, font, minH = MIN_VIEW_H, flat = false }) {
+export function createTownRenderer({ canvas, sprites, font, minH = MIN_VIEW_H, flat = false, onNotice = () => {}, onMode = () => {} }) {
   const flatR = createRenderer({ canvas, sprites, font, minH });
-  const hdR = createHdRenderer({ canvas, sprites, font, compact: minH < VIEW_H });
-  let hdOn = !flat, kind = null, box = null, failed = false;
+  let hdOn = !flat, kind = null, box = null, failed = false, autoFlat = false, told = false;
+  const hdR = createHdRenderer({ canvas, sprites, font, compact: minH < VIEW_H, onQuality(ev) {
+    if (ev.kind === 'down' && !told) { told = true; onNotice('Bajamos un poco los efectos para que vaya fluido'); }
+    else if (ev.kind === 'flat') { failed = true; autoFlat = true; onNotice('Pasamos a la vista plana para que vaya fluido. Puedes volver a probar con «Efectos»'); onMode(); }
+  } });
 
   const use = (state) => (hdOn && !failed && (state.area || 'town') === 'town' ? 'hd' : 'flat');
   function switchTo(k) {
@@ -197,8 +223,15 @@ export function createTownRenderer({ canvas, sprites, font, minH = MIN_VIEW_H, f
     },
     pointToTile: (x, y) => (kind === 'hd' ? hdR.pointToTile(x, y) : flatR.pointToTile(x, y)),
     get hd() { return hdOn && !failed; },
+    stats: () => ({ mode: kind, ...hdR.stats() }),
     get flat() { return flat; },
-    setHd(on) { if (flat) return; hdOn = !!on; failed = false; },
+    /** `manual`: the player pressed the switch. After an automatic fallback, turning it on again is respected: the cheapest level, no second fallback. */
+    setHd(on, manual = false) {
+      if (flat) return;
+      hdOn = !!on;
+      if (on && manual && autoFlat) hdR.pin();
+      failed = false;
+    },
     get scale() { return flatR.scale; },
   };
 }

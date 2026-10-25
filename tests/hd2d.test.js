@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { makeCamera, cameraFor, MAX_REACH, focusBounds, snapScale, snapFocus, visibleTiles, project, unproject, groundRow, depthOf, billboardScale, standAt, tileToScreen, screenToTile, sortBackToFront, TILE } from '../src/hd2d/camera.js';
 import { groundMult, NIGHT_TINT, falloff, lightAt, nightMultiply, spriteGrade, approach, LAMP_RADIUS } from '../src/hd2d/light.js';
+import { createGovernor, LEVELS, SLOW_MS } from '../src/hd2d/quality.js';
 import { Wanderer, rng } from '../src/hd2d/wander.js';
 import { isWalkable } from '../src/map.js';
 
@@ -188,4 +189,54 @@ test('the ground colour follows the town clock: untouched by day, the clock\'s w
   const dusk = groundMult({ tint: [255, 214, 168], night: 0.2 });
   assert.ok(dusk[0] > dusk[2] && dusk[0] < 255);
   assert.deepEqual(groundMult({ tint: [255, 255, 255], night: 5 }), NIGHT_TINT);
+});
+
+const feed = (g, ms, frames) => { let out = null; for (let i = 0; i < frames && !out; i++) out = g.push(ms); return out; };
+
+test('the governor holds the level while frames are fast and steps down one level when they are slow', () => {
+  const g = createGovernor({ window: 10, warm: 2 });
+  assert.equal(feed(g, 16.7, 200), null); assert.equal(g.level, 0);
+  assert.equal(feed(g, 50, 60), 'down'); assert.equal(g.level, 1);
+  assert.deepEqual(g.settings, LEVELS[1]);
+  assert.equal(feed(g, 20, 100), null); assert.equal(g.level, 1);                          // it never steps back up
+});
+
+test('the governor judges the average, not one hitch, and ignores a hidden tab and the frames right after a change', () => {
+  const g = createGovernor({ window: 10, warm: 3 });
+  for (let i = 0; i < 100; i++) assert.equal(g.push(i % 10 === 0 ? 120 : 16), null);      // one slow frame in ten: average about 26 ms
+  for (let i = 0; i < 100; i++) assert.equal(g.push(5000), null);                           // a sleeping tab
+  assert.equal(g.push(0), null); assert.equal(g.push(-3), null); assert.equal(g.push(NaN), null);
+  assert.equal(g.level, 0);
+  assert.equal(feed(g, SLOW_MS + 10, 20), 'down');
+});
+
+test('a device that takes very long per frame is still judged slow, while one long hitch alone is not', () => {
+  const slow = createGovernor({ window: 10, warm: 1 });
+  assert.equal(feed(slow, 400, 30), 'down');
+  const crawl = createGovernor({ window: 45, warm: 1, minFrames: 8, maxWait: 3000 });
+  let frames = 0, verdict = null;
+  while (!verdict && frames < 45) { verdict = crawl.push(400); frames++; }
+  assert.equal(verdict, 'down'); assert.ok(frames <= 10, `decided after ${frames} frames`);                // it does not wait 45 frames at 400 ms each
+  const hitch = createGovernor({ window: 45, warm: 1 });
+  hitch.push(16); hitch.push(900);
+  for (let i = 0; i < 100; i++) assert.equal(hitch.push(16), null);
+});
+
+test('at the cheapest level a slow device gets the flat verdict once, unless flat is not allowed', () => {
+  const g = createGovernor({ window: 5, warm: 1 });
+  const seen = [];
+  for (let i = 0; i < 500 && seen[seen.length - 1] !== 'flat'; i++) { const v = g.push(60); if (v) seen.push(v); }
+  assert.deepEqual(seen, ['down', 'down', 'down', 'down', 'flat']);
+  assert.ok(g.last);
+  const pinned = createGovernor({ window: 5, warm: 1, start: LEVELS.length - 1, allowFlat: false });
+  assert.equal(feed(pinned, 60, 100), null);
+  assert.equal(createGovernor({ start: 99 }).level, LEVELS.length - 1);
+});
+
+test('the levels only get cheaper: resolution never rises and effects are only ever dropped', () => {
+  for (let i = 1; i < LEVELS.length; i++) {
+    const a = LEVELS[i - 1], b = LEVELS[i];
+    assert.ok(b.res <= a.res && b.rowStep >= a.rowStep);
+    assert.ok(!(b.bloom && !a.bloom) && !(b.tiltshift && !a.tiltshift));
+  }
 });

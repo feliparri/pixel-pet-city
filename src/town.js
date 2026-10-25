@@ -28,14 +28,14 @@ function spawnFor(id) {
  * me: { name, look }; net: a createNet() session already joined; entrance: an entrance id to play on arrival (a visiting pet), or null;
  * stars: the pet's star counter ({ add(n) }); onHud(info): called a few times a second with what the game buttons and panels need.
  * Returns { onNetEvent, emote, playExit, games: { play, join, seek, leave, dismiss }, destroy }. */
-export function startTown({ canvas, stage, pad = null, sprites, font, net, me, entrance = null, stars = { add() {} }, onHud = () => {} }) {
+export function startTown({ canvas, stage, pad = null, sprites, font, net, me, entrance = null, stars = { add() {} }, onHud = () => {}, onHdMode = () => {} }) {
   const [sx, sy] = spawnFor(net.id);
   const self = { id: net.id, name: me.name, look: me.look, stats: me.stats || null, act: 'idle', walker: new Walker(sx, sy), emote: null, jumpAt: null, area: 'town' };
   if (entrance) self.fx = { id: entrance, phase: 'arrive', t0: performance.now(), resolve: null };
   const others = new Map();
   const state = { me: self, others: [], marker: null, area: 'town', amb: ambientAt(hourNow(location.search)), fade: 0 };
   const life = createLife(net.code || net.id);                       // the same scene for a room, from its code; nothing of it goes over the net
-  const renderer = createTownRenderer({ canvas, sprites, font, minH: pad ? MIN_VIEW_H : VIEW_H, flat: new URLSearchParams(location.search).get('flat') === '1' });   // a phone: big pixels; a desktop: as many tiles as before
+  const renderer = createTownRenderer({ canvas, sprites, font, minH: pad ? MIN_VIEW_H : VIEW_H, flat: new URLSearchParams(location.search).get('flat') === '1', onNotice: (text) => games.notify(text), onMode: onHdMode });   // a phone: big pixels; a desktop: as many tiles as before
   let fadeT0 = -Infinity, ambAt = -Infinity;
   const held = [];                                   // direction keys held, the latest last
   let shift = false, padRun = false;                                 // Shift is down: a held arrow key runs (outside the games)
@@ -228,7 +228,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   return {
     onNetEvent,
     /** The HD-2D view: is it on, switch it (the page remembers the choice), and is it locked off (?flat=1). */
-    hd: { get on() { return renderer.hd; }, set: (on) => renderer.setHd(on), get locked() { return renderer.flat; } },
+    hd: { get on() { return renderer.hd; }, set: (on, manual) => renderer.setHd(on, manual), stats: () => renderer.stats(), get locked() { return renderer.flat; } },
     /** The pets of this room for the radar (this pet first): [{ n, sp, st, s, a }]. */
     radarPets: () => radarPets(self, net.peers()),
     /** Plays the exit of an entrance id and resolves when the pet is gone (the caller then leaves the room). */
