@@ -262,6 +262,8 @@ export const FARM = {
   well: [25, 14],
   scarecrow: [11, 29],
 };
+/** Which of the three fruit trees (0 apples, 1 oranges, 2 pears) stands at an orchard tile: stripes across the rows and columns. */
+export const fruitKind = (x, y) => (Math.floor((x - 4) / 3) + Math.floor((y - 4) / 3) + 6) % 3;
 const CROPS = [['C', 3, 20], ['U', 12, 20], ['P', 3, 25], ['Y', 12, 25]];       // the four crop blocks of the field: char, x, y (8 x 4 tiles, rows of crop and furrow)
 
 function buildFarm() {

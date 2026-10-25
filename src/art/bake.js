@@ -1,6 +1,6 @@
 // Bakes an area (the town or an interior) into what the renderer needs: one ground canvas with every tile, small sprites for the tall
 // things that sort with the pets, the animated spots (pond ripples, the fountain), and what lights up at night (windows, lamps).
-import { TILE, HOUSES, PITCH, inPlaza } from '../map.js';
+import { TILE, HOUSES, PITCH, inPlaza, fruitKind } from '../map.js';
 import { canvas, noise, shadow } from './palette.js';
 import * as G from './ground.js';
 import * as PL from './places.js';
@@ -53,7 +53,7 @@ function bakeOutdoor(area) {
       case 'U': FM.lettuce(ctx, x, y, tx, ty, at); break;
       case 'P': FM.pumpkins(ctx, x, y, tx, ty, at); break;
       case 'Y': FM.wheat(ctx, x, y, tx, ty, at); break;
-      case 'A': G.grass(ctx, x, y, tx, ty); shadow(ctx, x + 14, y + 13, 13, 4, 0.32); out.props.push({ x: x - 8, y: y + 16 - 40, sortY: y + 16, sprite: k.fruit[(tx * 3 + ty) % 3] }); break;
+      case 'A': G.grass(ctx, x, y, tx, ty); shadow(ctx, x + 14, y + 13, 13, 4, 0.32); out.props.push({ x: x - 8, y: y + 16 - 40, sortY: y + 16, sprite: k.fruit[fruitKind(tx, ty)] }); break;
       case 'R': G.grass(ctx, x, y, tx, ty); if (raw(tx - 1, ty) !== 'R' && raw(tx, ty - 1) !== 'R') { shadow(ctx, x + 48, y + 49, 52, 4, 0.3); out.props.push({ x, y: y + 48 - 64, sortY: y + 48, sprite: k.barn }); } break;
       case 'v': G.grass(ctx, x, y, tx, ty); shadow(ctx, x + 12, y + 15, 11, 3, 0.3); out.props.push({ x: x - 4, y: y + 16 - 32, sortY: y + 16, sprite: k.well }); break;
       case 'Z': G.grass(ctx, x, y, tx, ty); shadow(ctx, x + 9, y + 15, 6, 1.5, 0.3); out.props.push({ x, y: y + 16 - 28, sortY: y + 14, sprite: k.scarecrow }); break;
