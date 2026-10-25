@@ -28,7 +28,7 @@ test('game messages: well-formed ones pass, and only the known fields survive', 
 
 test('game messages: unknown games, bad round ids, out-of-range numbers, wrong phases and tiles are refused', () => {
   const bad = [
-    { t: 'gopen', g: 'soccer', r: 'abc123', left: 1000 }, { t: 'gopen', g: 'hide', r: 'ABC', left: 1000 }, { t: 'gopen', g: 'hide', r: 'abc123', left: 99999 },
+    { t: 'gopen', g: 'tennis', r: 'abc123', left: 1000 }, { t: 'gopen', g: 'hide', r: 'ABC', left: 1000 }, { t: 'gopen', g: 'hide', r: 'abc123', left: 99999 },
     { t: 'gopen', g: 'hide', r: 'abc123', left: 1.5 }, { t: 'gjoin' }, { t: 'grole', r: 'abc123', role: 'boss' },
     { t: 'gstart', g: 'hide', r: 'abc123', p: [], s: -1 }, { t: 'gstart', g: 'hide', r: 'abc123', p: [A, A], s: 0 }, { t: 'gstart', g: 'hide', r: 'abc123', p: [A, 'x'], s: 0 },
     { t: 'gstart', g: 'hide', r: 'abc123', p: [A, B], s: 2 }, { t: 'gstart', g: 'hide', r: 'abc123', p: Array.from({ length: MAX_PLAYERS + 1 }, (_, i) => `peer${i}xxxx`), s: 0 },
@@ -762,4 +762,144 @@ test('visibility: in a game its players see only the players; spectators, the lo
   r.run(95000);
   assert.equal(r.mgr(A).view().game, null);
   for (const o of [A, B, C, D]) assert.equal(r.mgr(A).canSee(o), true, 'after the game everybody is back');
+});
+
+// ---- football: messages ----
+test('football messages: team choice, ball samples, goals and the teams on the start message are validated', () => {
+  assert.deepEqual(ok({ t: 'gteam', r: 'abc123', tm: 1, x: 5 }), { t: 'gteam', id: A, r: 'abc123', tm: 1 });
+  assert.deepEqual(ok({ t: 'gball', r: 'abc123', x: 240, y: 590, vx: -90, vy: 12, l: 2, w: 0 }), { t: 'gball', id: A, r: 'abc123', x: 240, y: 590, vx: -90, vy: 12, l: 2, w: 0 });
+  assert.deepEqual(ok({ t: 'ggoal', r: 'abc123', tm: 0, i: -1, s: [1, 0] }), { t: 'ggoal', id: A, r: 'abc123', tm: 0, i: -1, s: [1, 0] });
+  assert.deepEqual(ok({ t: 'gstart', g: 'soccer', r: 'abc123', p: [A, B], s: -1, tm: [0, 1] }).tm, [0, 1]);
+  assert.ok(ok({ t: 'gstate', g: 'soccer', r: 'abc123', ph: 'count', left: 3000, f: [0, 0] }));
+  assert.ok(ok({ t: 'gopen', g: 'soccer', r: 'abc123', left: 10000 }));
+  const bad = [
+    { t: 'gteam', r: 'abc123', tm: 2 }, { t: 'gteam', r: 'abc123', tm: 'a' }, { t: 'gteam', tm: 0 },
+    { t: 'gball', r: 'abc123', x: -1, y: 0, vx: 0, vy: 0, l: 0, w: 0 }, { t: 'gball', r: 'abc123', x: 99999, y: 0, vx: 0, vy: 0, l: 0, w: 0 },
+    { t: 'gball', r: 'abc123', x: 10, y: 10, vx: 500, vy: 0, l: 0, w: 0 }, { t: 'gball', r: 'abc123', x: 10.5, y: 10, vx: 0, vy: 0, l: 0, w: 0 },
+    { t: 'gball', r: 'abc123', x: 10, y: 10, vx: 0, vy: 0, l: 13, w: 0 }, { t: 'gball', r: 'abc123', x: 10, y: 10, vx: 0, vy: 0, l: 0, w: 9000 },
+    { t: 'ggoal', r: 'abc123', tm: 2, i: 0, s: [1, 0] }, { t: 'ggoal', r: 'abc123', tm: 0, i: 0, s: [1] }, { t: 'ggoal', r: 'abc123', tm: 0, i: 0, s: [1, 100] },
+    { t: 'gstart', g: 'soccer', r: 'abc123', p: [A, B], s: -1, tm: [0] }, { t: 'gstart', g: 'soccer', r: 'abc123', p: [A, B], s: -1, tm: [0, 3] },
+    { t: 'gstate', g: 'soccer', r: 'abc123', ph: 'search', left: 1, f: [0, 0] },
+  ];
+  for (const m of bad) assert.equal(ok(m), null, JSON.stringify(m));
+  for (const t of ['gteam', 'gball', 'ggoal']) assert.ok(LIMITS[t] && GAME_TYPES.has(t), t);
+});
+
+// ---- football: the whole thing, between browsers ----
+const ballOf = (r, id) => r.mgr(id).view().game.ball;
+/** The pet `id` runs behind the ball and kicks it at the north goal's middle (Azul's way): of the tiles touching the ball it stands on the one best lined up. */
+function kickNorth(r, id) {
+  const b = ballOf(r, id), ax = 24 - b.x, ay = 48 - b.y, al = Math.hypot(ax, ay);
+  let best = null;
+  for (let j = -2; j <= 2; j++) for (let i = -2; i <= 2; i++) {
+    const tx = Math.floor(b.x) + i, ty = Math.floor(b.y) + j, dx = b.x - (tx + 0.5), dy = b.y - (ty + 0.5), d = Math.hypot(dx, dy);
+    if (d > 0.9 || d < 0.3 || !isWalkable(tx, ty)) continue;
+    const dot = (dx * ax + dy * ay) / (d * al);
+    if (!best || dot > best.dot) best = { tx, ty, dot };
+  }
+  if (best) r.place(id, best.tx, best.ty);
+}
+
+test('football: teams are chosen in the lobby (first choice wins) and balanced; the game starts with a 3 second countdown at the kickoff spots', () => {
+  const r = room([A, B]);
+  assert.equal(r.mgr(A).open('soccer'), true);
+  r.mgr(B).join();
+  const lv = r.mgr(B).view().lobby;
+  assert.deepEqual([lv.g, lv.canPickTeam, lv.myTeam], ['soccer', true, null]);
+  assert.equal(r.mgr(A).pickTeam(1), true);
+  assert.equal(r.mgr(A).pickTeam(0), false, 'the first choice wins');
+  assert.equal(r.mgr(B).pickTeam(1), true);
+  assert.equal(r.mgr(B).view().lobby.canPickTeam, false);
+  assert.equal(r.mgr(B).view().lobby.myTeam, 1);
+  r.run(4000);
+  for (const id of [A, B]) {
+    const g = r.mgr(id).view().game;
+    assert.equal(g.g, 'soccer'); assert.equal(g.phase, 'count');
+    assert.deepEqual(g.teams, [1, 0], 'both asked for Rojo: the second is moved so it is one against one');
+    assert.deepEqual(g.score, [0, 0]);
+    assert.equal(g.team, id === A ? 1 : 0);
+  }
+  assert.deepEqual(r.mgr(A).movement().frozen, true, 'frozen during the countdown');
+  const sA = r.mgr(A).takeStart(), sB = r.mgr(B).takeStart();
+  assert.ok(sA && sB && sA[1] < 59 && sB[1] > 59, 'Rojo starts in the north half, Azul in the south');
+  assert.equal(r.mgr(A).takeStart(), null, 'the start spot is handed out once');
+  assert.equal(r.mgr(A).movement().zone.name, 'Cancha');
+  r.run(3200);
+  assert.equal(r.mgr(A).view().game.phase, 'play');
+  assert.equal(r.mgr(A).movement().frozen, false);
+});
+
+test('football: walking into the ball kicks it, every screen sees it roll, and a goal counts for the team that scored', () => {
+  const r = room([A, B]);
+  r.mgr(A).open('soccer'); r.mgr(B).join();
+  r.mgr(A).pickTeam(1); r.mgr(B).pickTeam(0);
+  r.run(10500 + 3200);
+  const start = ballOf(r, B);
+  assert.deepEqual([start.x, start.y], [24, 59]);
+  r.place(B, 24, 59);                                           // B (Azul) walks into the ball
+  r.run(300);
+  const seen = ballOf(r, A), mine = ballOf(r, B);
+  assert.ok(seen.x !== 24 || seen.y !== 59, 'the ball moved on the referee');
+  assert.ok(Math.abs(mine.x - seen.x) < 1.5 && Math.abs(mine.y - seen.y) < 1.5, 'and on the other screen, about the same place');
+  assert.ok(r.log.some((m) => m.t === 'gball' && m.from === A), 'the referee broadcasts the ball');
+  r.place(A, 17, 66);
+  let ticks = 0;
+  while (r.mgr(B).view().game.score[0] === 0 && ticks++ < 200) { kickNorth(r, B); r.run(100); }
+  for (const id of [A, B]) {
+    assert.deepEqual(r.mgr(id).view().game.score, [1, 0], 'Azul scored in the north goal');
+    assert.ok(r.mgr(id).view().notices.some((n) => n.kind === 'goal' && /Azul/.test(n.text)));
+  }
+  assert.ok(r.log.some((m) => m.t === 'ggoal' && m.tm === 0 && m.s[0] === 1));
+  r.run(200);
+  const after = ballOf(r, A);
+  assert.deepEqual([after.x, after.y], [24, 59], 'back on the centre spot');
+  assert.ok(r.mgr(A).view().game.pause > 0, 'waiting a moment before play goes on');
+});
+
+test('football: first to 3 goals wins, the winners earn stars and the losers none', () => {
+  const r = room([A, B]);
+  r.mgr(A).open('soccer'); r.mgr(B).join();
+  r.mgr(A).pickTeam(1); r.mgr(B).pickTeam(0);
+  r.run(10500 + 3200);
+  r.place(A, 17, 66);
+  for (let i = 0; i < 3000 && r.mgr(B).view().game; i++) {
+    if (!r.mgr(B).view().game.pause) kickNorth(r, B); else r.place(B, 24, 63);
+    r.run(100);
+  }
+  assert.equal(r.mgr(A).view().game, null, 'over');
+  const res = r.mgr(A).view().results;
+  assert.equal(res.g, 'soccer'); assert.equal(res.reason, 'goal'); assert.deepEqual(res.score, [3, 0]);
+  assert.deepEqual([r.stars.get(A), r.stars.get(B)], [0, 4]);
+  assert.deepEqual(res.rows.map((x) => [x.team, x.stars]), [[1, 0], [0, 4]]);
+});
+
+test('football: at two minutes the higher score wins, and a draw gives everybody 1 star', () => {
+  const r = room([A, B]);
+  r.mgr(A).open('soccer'); r.mgr(B).join();
+  r.run(10500 + 3200);
+  r.run(121000);
+  assert.equal(r.mgr(A).view().game, null);
+  const res = r.mgr(B).view().results;
+  assert.deepEqual([res.reason, res.score], ['time', [0, 0]]);
+  assert.deepEqual([r.stars.get(A), r.stars.get(B)], [1, 1]);
+});
+
+test('football: alone it is practice, with nobody to play against there are no stars; only the referee can say where the ball is', () => {
+  const r = room([A, B, C]);
+  r.mgr(B).open('soccer');
+  r.run(10500 + 3200);
+  assert.equal(r.mgr(A).view().game.play, false, 'A never joined: it only watches');
+  r.mgr(B).leave();
+  const solo = room([A]);
+  solo.mgr(A).open('soccer');
+  solo.run(3500 + 3200);
+  assert.equal(solo.mgr(A).view().game.g, 'soccer');
+  solo.run(121000);
+  assert.deepEqual(solo.stars.get(A), 0);
+  const q = room([A, B]);
+  q.mgr(A).open('soccer'); q.mgr(B).join();
+  q.run(10500 + 3200);
+  const before = ballOf(q, B);
+  q.mgr(B).onMessage({ t: 'gball', id: B, r: q.mgr(A).view().game ? 'zzzzzz' : 'zzzzzz', x: 10, y: 10, vx: 0, vy: 0, l: 0, w: 0 });
+  assert.deepEqual(ballOf(q, B), before, 'a message from the wrong round or player changes nothing');
 });

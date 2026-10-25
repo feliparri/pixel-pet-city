@@ -66,6 +66,7 @@ a.btn { display: inline-block; text-decoration: none; }
 .toasts { position: absolute; top: 3.4rem; left: .4rem; right: .4rem; display: flex; flex-direction: column; align-items: center; gap: .3rem; }
 .toast { background: rgba(244,246,250,.95); color: var(--bg); font-weight: 800; font-size: 1.1rem; padding: .35rem .8rem; border: 2px solid var(--bg); }
 .toast.found { background: var(--gold); }
+.toast.goal { background: var(--gold); font-size: 1.4rem; }
 .toast.wall { background: #ffd0cc; }
 .results { position: absolute; top: 12%; left: 6%; right: 6%; background: var(--face); border: 3px solid var(--gold); padding: .8rem 1rem; text-align: center; pointer-events: auto; max-height: 78%; overflow: auto; }
 .results h2 { margin: 0 0 .5rem; color: var(--gold); }

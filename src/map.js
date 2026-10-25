@@ -53,7 +53,7 @@ export const inPlaza = (x, y) => x >= PLAZA.x && y >= PLAZA.y && x < PLAZA.x + P
 
 /** The east garden (flower beds behind a fence) and the Parque (the whole south field): where the butterflies and fireflies of life.js live. */
 export const GARDEN = { x: 35, y: 16, w: 9, h: 10 };
-export const PARQUE = { x: 3, y: 32, w: 42, h: 11 };
+export const PARQUE = { x: 3, y: 32, w: 42, h: 41 };
 
 /** Houses (roof 2 rows + wall 2 rows). `door` is the tile offset of the door in the bottom row; `enter` marks the shop. */
 export const HOUSES = [
@@ -79,7 +79,7 @@ export const SIGNS = [
   { area: 'town', x: 33, y: 10, text: 'Tienda', sub: 'Próximamente', below: true },
   { area: 'town', x: 16, y: 34, text: 'Escondida', sub: 'Jugar' },
   { area: 'town', x: 33, y: 42, text: 'Gallina', sub: 'Jugar' },
-  { area: 'town', x: 40, y: 42, text: 'Cancha', sub: 'Pronto' },
+  { area: 'town', x: 13, y: 57, text: 'Cancha', sub: 'Jugar' },
   { area: 'town', x: 12, y: 39, text: 'Pista', sub: 'Pronto' },
   { area: 'shop', x: 6.5, y: 2, text: 'Tienda', sub: 'Próximamente' },
 ];
@@ -89,12 +89,20 @@ export const SIGNS = [
  * tiles the game is played on (pets playing cannot leave it). `playable: false` places are drawn and signed but have no game yet.
  */
 export const GAME_PLACES = {
-  hide: { name: 'Escondida', area: 'town', spot: [[17, 34]], sign: [16, 34], zone: { x: 1, y: 32, w: 46, h: 11 } },
+  hide: { name: 'Escondida', area: 'town', spot: [[17, 34]], sign: [16, 34], zone: { x: 1, y: 32, w: 46, h: 41 } },
   chicken: { name: 'Pillar la gallina', area: 'town', spot: [[29, 42]], sign: [33, 42], zone: { x: 26, y: 37, w: 11, h: 6 } },
-  soccer: { name: 'Cancha', area: 'town', playable: false, spot: [[41, 42]], sign: [40, 42], zone: { x: 37, y: 37, w: 9, h: 6 } },
+  soccer: { name: 'Cancha', area: 'town', spot: [[13, 59]], sign: [13, 57], zone: { x: 13, y: 44, w: 22, h: 29 } },
   race: { name: 'Pista', area: 'town', playable: false, spot: [[12, 40]], sign: [12, 39], zone: { x: 12, y: 38, w: 10, h: 5 } },
 };
 export const GAME_IDS = Object.keys(GAME_PLACES);
+/**
+ * The football pitch (the cancha), in tiles: the playing field is x in [x, x + w), y in [y, y + h), long and narrow so a phone held upright
+ * shows most of it. A fence runs round it with a two tile entrance on each side at mid height; a goal sits at each short end: a net of
+ * GOAL.depth rows behind the goal line, open to the pitch between GOAL.x0 and GOAL.x1 (the ball enters there). The north goal is Rojo's
+ * to defend and the south one Azul's.
+ */
+export const PITCH = { x: 16, y: 48, w: 16, h: 22 };
+export const GOAL = { x0: 21, x1: 27, depth: 2 };
 export const inZone = (g, x, y) => {
   const z = Object.hasOwn(GAME_PLACES, g) ? GAME_PLACES[g].zone : null;
   return !!z && Number.isInteger(x) && Number.isInteger(y) && x >= z.x && y >= z.y && x < z.x + z.w && y < z.y + z.h;
@@ -121,7 +129,7 @@ function make(w, h, base, paint) {
 }
 
 function buildTown() {
-  return make(48, 44, '.', ({ g, fill, set, w, h }) => {
+  return make(48, 74, '.', ({ g, fill, set, w, h }) => {
     // wild flowers: a fixed scatter on the grass
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if ((x * 7 + y * 13 + x * y) % 11 === 0) g[y][x] = ',';
     // roads: the main one (north-south), the one along the houses, the one south of the plaza, then the plaza itself
@@ -169,9 +177,10 @@ function buildTown() {
     for (const [x, y] of [[3, 32], [10, 41], [16, 33], [38, 41], [43, 32], [33, 33], [3, 42], [26, 41]]) set(x, y, 'T');
     for (const [x, y] of [[8, 40], [14, 38], [17, 39], [19, 37], [21, 40], [27, 38], [29, 40], [31, 38], [34, 40], [36, 38], [39, 39], [41, 37], [43, 41], [11, 40], [22, 38], [35, 41]]) set(x, y, 'b');
     // the game places: a cleared field south of the road, each place with its pad and signpost (see GAME_PLACES)
-    fill(12, 37, 35, 6, '.');
-    fill(23, 37, 2, 6, '=');
+    fill(12, 37, 35, 36, '.');
+    fill(23, 37, 2, 8, '=');
     set(13, 37, 'L'); set(25, 37, 'L');
+    fill(11, 43, 13, 2, '='); fill(11, 43, 2, 18, '=');                // the way to the cancha: along the road's end, then down the west side of the pitch
     for (const gp of Object.values(GAME_PLACES)) {
       for (const [x, y] of gp.spot) set(x, y, 'p');
       set(gp.sign[0], gp.sign[1], 'S');
@@ -183,8 +192,15 @@ function buildTown() {
     // the gallinero: a fenced pen with a coop and the gate open towards the pad
     fill(28, 38, 7, 1, 'F'); fill(28, 41, 7, 1, 'F'); fill(28, 39, 1, 2, 'F'); fill(34, 39, 1, 2, 'F');
     set(29, 41, 'a'); fill(32, 39, 2, 2, 'G');
-    // the cancha: a pitch with a goal at each end
-    fill(38, 37, 7, 5, 'y'); fill(37, 38, 1, 3, 'g'); fill(45, 38, 1, 3, 'g');
+    // the cancha: a long pitch inside a fence, an entrance on each side and a goal at each end (see PITCH)
+    const { x: px, y: py, w: pw, h: ph } = PITCH, ey = py + (ph >> 1) - 1;
+    fill(px, py, pw, ph, 'y');
+    fill(px - 1, py - 1, pw + 2, 1, 'F'); fill(px - 1, py + ph, pw + 2, 1, 'F'); fill(px - 1, py - 1, 1, ph + 2, 'F'); fill(px + pw, py - 1, 1, ph + 2, 'F');
+    fill(px - 1, ey, 1, 2, '.'); fill(px + pw, ey, 1, 2, '.');
+    fill(GOAL.x0, py - GOAL.depth, GOAL.x1 - GOAL.x0, GOAL.depth, 'g'); fill(GOAL.x0, py + ph, GOAL.x1 - GOAL.x0, GOAL.depth, 'g');
+    for (const [x, y] of [[14, 46], [33, 46], [14, 71], [33, 71], [14, 62]]) set(x, y, 'L');
+    for (const [x, y] of [[3, 46], [8, 48], [4, 52], [9, 55], [3, 58], [8, 62], [5, 66], [9, 69], [3, 71], [36, 47], [42, 50], [38, 54], [45, 57], [37, 61], [43, 64], [39, 68], [45, 70], [35, 50], [20, 72], [29, 72]]) set(x, y, (x + y) % 3 ? 't' : 'T');
+    for (const [x, y] of [[10, 45], [10, 51], [9, 58], [10, 64], [6, 70], [36, 45], [36, 52], [35, 57], [36, 65], [41, 71], [19, 44], [28, 44], [24, 72], [4, 49], [44, 53], [6, 60], [41, 60]]) set(x, y, 'b');
     // the rest of the park: trees at the edges and bushes to hide in
     for (const [x, y] of [[12, 42], [22, 40], [36, 42], [46, 42], [46, 37], [27, 40], [42, 42], [26, 42]]) set(x, y, (x + y) % 3 ? 't' : 'T');
     for (const [x, y] of [[14, 37], [18, 38], [21, 37], [15, 42], [20, 42], [22, 38], [22, 42], [26, 38], [26, 41], [36, 38], [36, 41], [37, 42], [44, 42], [46, 39], [46, 41], [19, 34], [22, 33], [28, 34], [32, 32], [38, 34], [45, 34], [11, 33], [26, 32], [39, 32]]) set(x, y, 'b');

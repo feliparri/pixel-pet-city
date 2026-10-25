@@ -6,11 +6,12 @@
 // on the smaller `lobbyKey` on every browser.
 import { DEFAULT_HIDE_ZONE, HIDE_ZONE_KEYS } from '../map.js';
 import { GAME_RULES, MAX_PLAYERS, EARLY_START_MS, SETTLE_MS } from './rules.js';
+import { assignTeams } from './soccer.js';
 
 export const lobbyKey = (l) => `${l.r}:${l.opener}`;
 
 export function openLobby({ g, r, opener, now, leftMs }) {
-  return { g, r, opener, openedAt: now, changedAt: now, deadline: now + leftMs, joined: [opener], seekers: [], zone: DEFAULT_HIDE_ZONE, zoneSet: false };
+  return { g, r, opener, openedAt: now, changedAt: now, deadline: now + leftMs, joined: [opener], seekers: [], zone: DEFAULT_HIDE_ZONE, zoneSet: false, teams: [] };
 }
 
 export function joinLobby(l, id, now = l.changedAt) {
@@ -24,6 +25,7 @@ export function leaveLobby(l, id, now = l.changedAt) {
   if (i < 0) return false;
   l.joined.splice(i, 1);
   l.seekers = l.seekers.filter((s) => s !== id);
+  l.teams = l.teams.filter(([t]) => t !== id);
   l.changedAt = now;
   return true;
 }
@@ -34,6 +36,14 @@ export function chooseZone(l, id, zone, now = l.changedAt) {
   l.zone = zone; l.zoneSet = true; l.zoneBy = id; l.changedAt = now;
   return true;
 }
+
+/** The team of a football player (0 Azul, 1 Rojo): only a player who joined, once; the first choice wins. */
+export function chooseTeam(l, id, team, now = l.changedAt) {
+  if (l.g !== 'soccer' || !l.joined.includes(id) || (team !== 0 && team !== 1) || l.teams.some(([t]) => t === id)) return false;
+  l.teams.push([id, team]); l.changedAt = now;
+  return true;
+}
+export const teamOf = (l, id) => { const p = l.teams.find(([t]) => t === id); return p ? p[1] : null; };
 
 /** "¡Yo busco!": only a player who joined, once. */
 export function volunteerSeeker(l, id, now = l.changedAt) {
@@ -79,5 +89,5 @@ export function buildStart(l, present, seekCount) {
   const roster = l.joined.filter((id) => present.has(id));
   if (!rules || roster.length < rules.min) return null;
   const seeker = l.g === 'hide' ? pickSeeker(roster, l.seekers, seekCount) : null;
-  return { g: l.g, r: l.r, p: roster, s: seeker === null ? -1 : roster.indexOf(seeker), ...(l.g === 'hide' ? { z: l.zone } : {}) };
+  return { g: l.g, r: l.r, p: roster, s: seeker === null ? -1 : roster.indexOf(seeker), ...(l.g === 'hide' ? { z: l.zone } : {}), ...(l.g === 'soccer' ? { tm: assignTeams(roster, l.teams) } : {}) };
 }

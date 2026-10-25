@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { AREAS, AREA_NAMES, TILES, SIGNS, SPAWNS, ENTRY, HOUSES, DOORS, GAME_PLACES, GAME_IDS, PLACES, inZone, spotAt, isWalkable, inMap, tileAt, doorAt, getArea, TILE } from '../src/map.js';
+import { AREAS, AREA_NAMES, TILES, SIGNS, SPAWNS, ENTRY, HOUSES, DOORS, GAME_PLACES, GAME_IDS, PLACES, PITCH, GOAL, MAP_W, MAP_H, inZone, spotAt, isWalkable, inMap, tileAt, doorAt, getArea, TILE } from '../src/map.js';
 import { ICON_NAMES } from '../src/art/icons.js';
 import { findPath, stepDir } from '../src/path.js';
 
@@ -42,7 +42,7 @@ test('houses: roof and wall are solid, the enterable door is the only open tile,
 });
 
 test('outside an area nothing is walkable and nothing throws', () => {
-  for (const [x, y] of [[-1, 0], [0, -1], [48, 3], [3, 44], [1.5, 2], [NaN, 1], ['1', 1], [undefined, 1]]) {
+  for (const [x, y] of [[-1, 0], [0, -1], [MAP_W, 3], [3, MAP_H], [1.5, 2], [NaN, 1], ['1', 1], [undefined, 1]]) {
     assert.equal(inMap(x, y), false);
     assert.equal(isWalkable(x, y), false);
   }
@@ -151,8 +151,33 @@ test('the gallinero is a closed pen with one open gate and a coop; the cancha ha
   for (let x = 28; x <= 34; x++) { if (x !== 29) assert.equal(at(x, 41), 'F'); assert.equal(at(x, 38), 'F'); }
   assert.equal(isWalkable(32, 39), false, 'the coop is solid');
   const count = (ch) => AREAS.town.grid.join('').split(ch).length - 1;
-  assert.equal(count('g'), 6, 'two goals of three tiles');
-  assert.ok(count('V') >= 6 && count('w') >= 3 && count('y') >= 30 && count('j') >= 10);
+  assert.equal(count('g'), 2 * (GOAL.x1 - GOAL.x0) * GOAL.depth, 'two goals, each a net of mouth x depth tiles');
+  assert.ok(count('V') >= 6 && count('w') >= 3 && count('j') >= 10);
+});
+
+test('the cancha is a big pitch (at least ten times the old 7 x 5 one) with a goal at each end and an entrance on each side', () => {
+  assert.ok(PITCH.w * PITCH.h >= 350, `pitch ${PITCH.w} x ${PITCH.h}`);
+  assert.ok(PITCH.h > PITCH.w, 'long and narrow: it fits a phone held upright');
+  for (let y = PITCH.y; y < PITCH.y + PITCH.h; y++) for (let x = PITCH.x; x < PITCH.x + PITCH.w; x++) { assert.equal(tileAt(x, y), 'y', `pitch ${x},${y}`); assert.ok(isWalkable(x, y)); }
+  const z = GAME_PLACES.soccer.zone;
+  assert.ok(inZone('soccer', PITCH.x, PITCH.y) && inZone('soccer', PITCH.x + PITCH.w - 1, PITCH.y + PITCH.h - 1), 'the pitch is inside the zone');
+  assert.ok(z.x + z.w <= MAP_W && z.y + z.h <= MAP_H);
+  const mid = PITCH.x + PITCH.w / 2;
+  assert.ok(GOAL.x0 < mid && GOAL.x1 > mid && GOAL.x1 - GOAL.x0 >= 4 && GOAL.x1 - GOAL.x0 <= 8, 'the mouth is centred and not too wide');
+  for (let x = GOAL.x0; x < GOAL.x1; x++) for (let d = 1; d <= GOAL.depth; d++) {
+    assert.equal(tileAt(x, PITCH.y - d), 'g', `north net ${x},${PITCH.y - d}`);
+    assert.equal(tileAt(x, PITCH.y + PITCH.h - 1 + d), 'g', `south net ${x},${PITCH.y + PITCH.h - 1 + d}`);
+    assert.equal(isWalkable(x, PITCH.y - d), false);
+  }
+  for (const x of [PITCH.x - 1, PITCH.x + PITCH.w]) {                                  // the fence along the sides, with a two tile entrance at mid height
+    const ys = []; for (let y = PITCH.y; y < PITCH.y + PITCH.h; y++) if (isWalkable(x, y)) ys.push(y);
+    assert.equal(ys.length, 2, `entrance at x=${x}`);
+  }
+  const [px, py] = GAME_PLACES.soccer.spot[0];
+  assert.ok(px < PITCH.x - 1, 'the pad is outside the fence, by the west entrance');
+  assert.deepEqual(findPath(px, py, PITCH.x + 3, PITCH.y + 3).length > 0, true, 'a pet walks from the pad onto the pitch');
+  assert.deepEqual(findPath(px, py, PITCH.x + PITCH.w - 2, PITCH.y + PITCH.h - 2).length > 0, true);
+  assert.deepEqual(findPath(23, 30, px, py).length > 0, true, 'and from the plaza to the pad');
 });
 
 test('every place has a floating icon, and the icons sit above their pads', () => {

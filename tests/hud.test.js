@@ -33,3 +33,16 @@ test('the bars name the hide and seek zone', () => {
   assert.match(barText({ lobby: { name: 'Escondida', zoneName: 'Plaza', joined: 2, left: 6400 } }), /^Escondida · Plaza: esperando/);
   assert.equal(barText({ game: { g: 'hide', name: 'Escondida', zoneName: 'Parque', phase: 'search', left: 83000, hidersLeft: 2, play: true } }), 'Escondida (Parque) · 1:23 · Faltan 2');
 });
+
+test('football: the bar shows the score and my team, the banner counts down to the kickoff, the results name the teams', () => {
+  const g = { g: 'soccer', name: 'Cancha', phase: 'play', left: 83000, play: true, team: 0, score: [2, 1] };
+  assert.equal(barText({ game: g }), 'Cancha · 1:23 · Azul 2 - 1 Rojo · Tú: Azul');
+  assert.equal(barText({ game: { ...g, play: false } }), 'Cancha · 1:23 · Azul 2 - 1 Rojo · Mirando');
+  assert.equal(bannerText({ ...g, phase: 'count', left: 2100 }), '¡Saque en 3!');
+  assert.equal(bannerText(g), '');
+  const res = { g: 'soccer', names: ['Ana', 'Beto', 'Cleo'], score: [2, 1], rows: [{ i: 0, team: 1, stars: 0 }, { i: 1, team: 0, stars: 4 }, { i: 2, team: 0, stars: 4 }] };
+  assert.deepEqual(resultLines(res), [
+    { text: 'Azul 2 - 1 Rojo', win: false }, { text: 'Ana (Rojo)', win: false }, { text: 'Beto (Azul)', win: true }, { text: 'Cleo (Azul)', win: true },
+  ]);
+  assert.equal(resultLines({ ...res, score: [1, 1], rows: res.rows.map((r) => ({ ...r, stars: 1 })) })[0].text, 'Empate 1 - 1');
+});

@@ -297,7 +297,7 @@ async function boot() {
   }
   fillItemSelects();
   buildEmotes();
-  hud = createHud($, { onPlay: () => town && town.games.play(), onJoin: () => town && town.games.join(), onSeek: () => town && town.games.seek(), onZone: (z) => town && town.games.zone(z), onLeave: () => town && town.games.leave(), onDismiss: () => town && town.games.dismiss() });
+  hud = createHud($, { onPlay: () => town && town.games.play(), onJoin: () => town && town.games.join(), onSeek: () => town && town.games.seek(), onZone: (z) => town && town.games.zone(z), onTeam: (t) => town && town.games.team(t), onLeave: () => town && town.games.leave(), onDismiss: () => town && town.games.dismiss() });
   if (entry === 'trip') {
     $('copy').addEventListener('click', copyCode);
     $('leave').addEventListener('click', leave);

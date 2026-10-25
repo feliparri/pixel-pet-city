@@ -2,6 +2,7 @@
 // and goals, the pista's lanes, hurdles and puddles. Ground functions paint one 16 px tile at (x, y); `at(dx, dy)` answers the neighbours' chars.
 import { P, noise, rect, dot, shadow, canvas } from './palette.js';
 import * as G from './ground.js';
+import { PITCH, GOAL } from '../map.js';
 
 /** The pad: a round stepping stone with a gold ring, so it reads as "stand here". */
 export function pad(ctx, x, y, tx, ty) {
@@ -26,35 +27,48 @@ export function gate(ctx, x, y, tx, ty) {
   shadow(ctx, x + 8, y + 15, 7, 1.5, 0.22);
 }
 
-const pitchLike = (c) => c === 'y' || c === 'g';
-
-/** Mowed grass in stripes with the white lines: the border, the halfway line and the centre circle. */
-export function pitch(ctx, x, y, tx, ty, at, c) {
-  rect(ctx, tx % 2 ? P.g3 : P.g2, x, y, 16, 16);
-  for (let i = 0; i < 4; i++) dot(ctx, tx % 2 ? P.g4 : P.g1, x + ((noise(tx, ty, 80 + i) * 15) | 0), y + ((noise(tx, ty, 90 + i) * 15) | 0));
-  const line = (px, py, w, h) => rect(ctx, P.cream, x + px, y + py, w, h);
-  if (!pitchLike(at(0, -1))) line(0, 0, 16, 2);
-  if (!pitchLike(at(0, 1))) line(0, 14, 16, 2);
-  if (!pitchLike(at(-1, 0)) && at(-1, 0) !== 'g') line(0, 0, 2, 16);
-  if (!pitchLike(at(1, 0)) && at(1, 0) !== 'g') line(14, 0, 2, 16);
-  if (tx === c.x + (c.w >> 1)) line(7, 0, 2, 16);
-  const cx = (c.x + (c.w >> 1)) * 16 + 8, cy = (c.y + (c.h >> 1)) * 16 + 8;
-  for (let j = 0; j < 16; j++) for (let i = 0; i < 16; i++) {
-    if (Math.abs(Math.hypot(tx * 16 + i - cx + 0.5, ty * 16 + j - cy + 0.5) - 20) < 0.8) dot(ctx, P.cream, x + i, y + j);
-  }
+/** Is the world pixel (wx, wy) on a line of the pitch (2 px wide): the border, the halfway line, the centre circle and the two goal areas? */
+function pitchLine(wx, wy) {
+  const T = 16, x0 = PITCH.x * T, y0 = PITCH.y * T, x1 = (PITCH.x + PITCH.w) * T, y1 = (PITCH.y + PITCH.h) * T;
+  if (wx < x0 || wx >= x1 || wy < y0 || wy >= y1) return false;
+  if (wx < x0 + 2 || wx >= x1 - 2 || wy < y0 + 2 || wy >= y1 - 2) return true;                        // the border
+  const cy = (y0 + y1) / 2, cx = (x0 + x1) / 2;
+  if (wy >= cy - 1 && wy < cy + 1) return true;                                                      // halfway
+  if (Math.abs(Math.hypot(wx + 0.5 - cx, wy + 0.5 - cy) - 36) < 1.1) return true;                    // centre circle
+  const ax0 = (GOAL.x0 - 2) * T, ax1 = (GOAL.x1 + 2) * T, depth = 4 * T;                              // the goal areas: 2 tiles wider than the mouth, 4 deep
+  const inX = wx >= ax0 - 1 && wx < ax1 + 1, side = (wx >= ax0 - 1 && wx < ax0 + 1) || (wx >= ax1 - 1 && wx < ax1 + 1);
+  if (inX && wy < y0 + depth + 1 && (side || wy >= y0 + depth - 1)) return true;
+  if (inX && wy >= y1 - depth - 1 && (side || wy < y1 - depth + 1)) return true;
+  return false;
 }
 
-/** A goal seen from above: two posts and a net, open towards the pitch (`side` -1 on the left end, 1 on the right). */
+/** Mowed grass in horizontal stripes with the white lines (see pitchLine). */
+export function pitch(ctx, x, y, tx, ty) {
+  rect(ctx, ty % 2 ? P.g3 : P.g2, x, y, 16, 16);
+  for (let i = 0; i < 4; i++) dot(ctx, ty % 2 ? P.g4 : P.g1, x + ((noise(tx, ty, 80 + i) * 15) | 0), y + ((noise(tx, ty, 90 + i) * 15) | 0));
+  for (let j = 0; j < 16; j++) for (let i = 0; i < 16; i++) if (pitchLine(tx * 16 + i, ty * 16 + j)) dot(ctx, P.cream, x + i, y + j);
+}
+
+/**
+ * A tile of a goal seen from above: a net with a post along each side and a bar at the far end, open towards the pitch
+ * (`side` -1 for the north goal, whose pitch lies to the south, 1 for the south goal). `at(dx, dy)` answers the neighbours' chars.
+ */
 export function goal(ctx, x, y, tx, ty, at, side) {
   rect(ctx, P.g3, x, y, 16, 16);
-  const top = at(0, -1) !== 'g', bottom = at(0, 1) !== 'g';
-  const x0 = side < 0 ? 3 : 0, x1 = side < 0 ? 16 : 13;
-  rect(ctx, P.ink, x + x0, y + (top ? 3 : 0), x1 - x0, 16 - (top ? 3 : 0) - (bottom ? 2 : 0));
-  rect(ctx, P.s5, x + x0 + 1, y + (top ? 4 : 0), x1 - x0 - 2, 16 - (top ? 4 : 0) - (bottom ? 3 : 0));
-  for (let j = 0; j < 16; j += 3) rect(ctx, P.s3, x + x0 + 1, y + j, x1 - x0 - 2, 1);                     // the net
-  for (let i = x0 + 1; i < x1 - 1; i += 3) rect(ctx, P.s3, x + i, y, 1, 16);
-  const post = side < 0 ? x + 3 : x + 12;
-  rect(ctx, P.ink, post - 1, y + (top ? 2 : 0), 3, 16 - (top ? 2 : 0) - (bottom ? 1 : 0)); rect(ctx, P.cream, post, y + (top ? 3 : 0), 1, 16 - (top ? 3 : 0) - (bottom ? 2 : 0));
+  const left = at(-1, 0) !== 'g', right = at(1, 0) !== 'g', far = side < 0 ? at(0, -1) !== 'g' : at(0, 1) !== 'g';
+  rect(ctx, P.ink, x, y, 16, 16); rect(ctx, P.s5, x + (left ? 2 : 0), y + (far && side < 0 ? 2 : 0), 16 - (left ? 2 : 0) - (right ? 2 : 0), 16 - (far ? 2 : 0));
+  for (let j = 1; j < 16; j += 3) rect(ctx, P.s3, x + (left ? 2 : 0), y + j, 16 - (left ? 2 : 0) - (right ? 2 : 0), 1);               // the net
+  for (let i = 1; i < 16; i += 3) rect(ctx, P.s3, x + i, y + (far && side < 0 ? 2 : 0), 1, 16 - (far ? 2 : 0));
+  if (left) { rect(ctx, P.ink, x, y, 3, 16); rect(ctx, P.cream, x + 1, y, 1, 16); }
+  if (right) { rect(ctx, P.ink, x + 13, y, 3, 16); rect(ctx, P.cream, x + 14, y, 1, 16); }
+  if (far) { const fy = side < 0 ? y : y + 13; rect(ctx, P.ink, x, fy, 16, 3); rect(ctx, P.cream, x + (left ? 1 : 0), fy + 1, 16 - (left ? 1 : 0) - (right ? 1 : 0), 1); }
+}
+
+const BALL = ['..kkk..', '.kwwwk.', 'kwwkwwk', 'kwkkkwk', 'kwwkwwk', '.kwwwk.', '..kkk..'];
+/** The football, 7 x 7 px, centred on (cx, cy) with its shadow on the grass. */
+export function ball(ctx, cx, cy) {
+  shadow(ctx, cx, cy + 4, 4, 1.2, 0.35);
+  BALL.forEach((row, j) => { for (let i = 0; i < 7; i++) if (row[i] !== '.') dot(ctx, row[i] === 'k' ? P.ink : '#ffffff', cx - 3 + i, cy - 3 + j); });
 }
 
 /** One lane of the pista: packed earth with a lighter lane line and a darker rim on the outer sides. */

@@ -17,6 +17,10 @@ export const GAME_RULES = {
     name: 'Pillar la gallina', play: 'Jugar a Pillar la gallina', invite: '¡La gallina! ¿Juegan?', min: 1,
     roundMs: 60000, goal: 3, starsPerCatch: 3, respawnMs: 1500,
   },
+  soccer: {
+    name: 'Cancha', play: 'Jugar a la Cancha', invite: '¡Fútbol! ¿Juegan?', min: 1,
+    countMs: 3000, roundMs: 120000, goal: 3,
+  },
 };
 export const PLAYABLE = Object.keys(GAME_RULES);
 export const isPlayable = (g) => typeof g === 'string' && Object.hasOwn(GAME_RULES, g);

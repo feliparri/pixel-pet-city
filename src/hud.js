@@ -2,6 +2,7 @@
 // It only reads what the town reports (`update(info)`, see town.js) and calls back what the buttons do; no game rules here.
 import { GAME_RULES } from './games/rules.js';
 import { GAME_PLACES, HIDE_ZONES } from './map.js';
+import { TEAMS } from './games/soccer.js';
 
 const secs = (ms) => Math.max(0, Math.ceil(ms / 1000));
 const clock = (ms) => { const s = secs(ms); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -9,6 +10,7 @@ const clock = (ms) => { const s = secs(ms); return `${Math.floor(s / 60)}:${Stri
 /** The banner text for a game, or ''. */
 export function bannerText(game) {
   if (!game || !game.play) return '';
+  if (game.g === 'soccer' && game.phase === 'count') return `¡Saque en ${secs(game.left)}!`;
   if (game.g === 'hide' && game.phase === 'count') return game.role === 'seeker' ? `Contando... ${secs(game.left)}` : `¡Escóndete! ${secs(game.left)}`;
   if (game.g === 'hide' && game.role === 'found') return '¡Te encontraron! Mira el juego';
   return '';
@@ -21,12 +23,18 @@ export function barText(info) {
   if (!game) return '';
   const watching = game.play ? '' : ' · Mirando';
   if (game.g === 'hide') return `${game.name}${game.zoneName ? ` (${game.zoneName})` : ''} · ${game.phase === 'count' ? `Cuenta ${secs(game.left)}` : clock(game.left)} · Faltan ${game.hidersLeft}${watching}`;
+  if (game.g === 'soccer') return `${game.name} · ${clock(game.left)} · Azul ${game.score[0]} - ${game.score[1]} Rojo${game.play && game.team !== null ? ` · Tú: ${TEAMS[game.team]}` : watching}`;
   const score = game.scores.map((s) => `${s.name} ${s.n}`).join(' · ');
   return `${game.name} · ${clock(game.left)} · ${score}${watching}`;
 }
 
 /** Result rows as text: [{ text, win }]. */
 export function resultLines(res) {
+  if (res.g === 'soccer') {
+    const [a, b] = res.score;
+    return [{ text: a === b ? `Empate ${a} - ${b}` : `Azul ${a} - ${b} Rojo`, win: false },
+      ...res.rows.map((r) => ({ text: `${res.names[r.i]} (${TEAMS[r.team]})`, win: a !== b && r.team === (a > b ? 0 : 1) }))];
+  }
   return res.rows.map((r) => {
     const who = res.names[r.i];
     if (res.g === 'chicken') return { text: `${who}: ${r.found} ${r.found === 1 ? 'gallina' : 'gallinas'}`, win: r.found === Math.max(...res.rows.map((x) => x.found)) && r.found > 0 };
@@ -37,7 +45,7 @@ export function resultLines(res) {
   });
 }
 
-export function createHud($, { onPlay, onJoin, onSeek, onLeave, onDismiss, onZone = () => {} }) {
+export function createHud($, { onPlay, onJoin, onSeek, onLeave, onDismiss, onZone = () => {}, onTeam = () => {} }) {
   $('game-play').addEventListener('click', onPlay);
   $('invite-join').addEventListener('click', onJoin);
   $('game-seek').addEventListener('click', onSeek);
@@ -45,6 +53,8 @@ export function createHud($, { onPlay, onJoin, onSeek, onLeave, onDismiss, onZon
   $('results-close').addEventListener('click', onDismiss);
   const zoneButtons = Array.from($('zone-pick').querySelectorAll('button'));
   for (const b of zoneButtons) { b.textContent = HIDE_ZONES[b.dataset.zone].name; b.addEventListener('click', () => onZone(b.dataset.zone)); }
+  const teamButtons = Array.from($('team-pick').querySelectorAll('button'));
+  for (const b of teamButtons) { b.textContent = TEAMS[Number(b.dataset.team)]; b.addEventListener('click', () => onTeam(Number(b.dataset.team))); }
   let toastKey = '', resultKey = null;
 
   return {
@@ -65,6 +75,8 @@ export function createHud($, { onPlay, onJoin, onSeek, onLeave, onDismiss, onZon
       if (lobby) { seekBtn.disabled = lobby.iVolunteered; seekBtn.textContent = lobby.iVolunteered ? '¡Tú buscas!' : '¡Yo busco!'; }
       $('zone-pick').hidden = !(lobby && lobby.zone && lobby.iJoined);                 // the zone of a hide and seek: the first to choose decides
       if (lobby && lobby.zone) for (const b of zoneButtons) { b.setAttribute('aria-pressed', String(b.dataset.zone === lobby.zone)); b.disabled = !lobby.canPickZone; }
+      $('team-pick').hidden = !(lobby && lobby.soccer && lobby.iJoined);                // football: the first choice of each player wins
+      if (lobby && lobby.soccer) for (const b of teamButtons) { b.setAttribute('aria-pressed', String(lobby.myTeam === Number(b.dataset.team))); b.disabled = !lobby.canPickTeam; }
       const inGame = !!(lobby && lobby.iJoined) || !!(game && game.play);
       $('game-bar').hidden = !(inGame || game);
       $('game-info').textContent = barText(info);
@@ -81,7 +93,7 @@ export function createHud($, { onPlay, onJoin, onSeek, onLeave, onDismiss, onZon
       $('results').hidden = !results;
       if (results && resultKey !== results) {
         resultKey = results;
-        $('results-title').textContent = results.g === 'hide' ? '¡Terminó la escondida!' : '¡Terminó la gallina!';
+        $('results-title').textContent = results.g === 'hide' ? '¡Terminó la escondida!' : results.g === 'soccer' ? '¡Terminó el partido!' : '¡Terminó la gallina!';
         $('results-list').replaceChildren(...resultLines(results).map((l) => { const li = document.createElement('li'); li.textContent = l.text; if (l.win) li.className = 'win'; return li; }));
         $('results-stars').textContent = results.play ? (results.stars > 0 ? `⭐ +${results.stars}` : 'Sin estrellas esta vez') : '';
       }

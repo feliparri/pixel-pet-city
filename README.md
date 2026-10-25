@@ -8,7 +8,7 @@ small top-down town, walk around and greet each other with presets. Plain HTML, 
 - Private rooms by invite code (`FOCA-LUNA-42`): "Crear sala" makes one, "Unirse" needs it; only a pet whose trip was claimed sees these
   controls (see "Rooms and real pets" below for what is not enforced yet). Rooms cannot be listed and end when everyone leaves. No accounts.
 - No free-text chat: only the presets (👋 ❤️ 😄 🎉 "¡Hola!", "¡Juguemos!", "¡Chau!"). Only the pet's name and look are shared.
-- A town of 48 x 44 tiles with a plaza and fountain, four houses, the Parque (pond, trees, bushes, open grass) and the Tienda, which can
+- A town of 48 x 74 tiles with a plaza and fountain, four houses, the Parque (pond, trees, bushes, open grass) and the Tienda, which can
   be entered (it sells nothing yet: "Próximamente"). The town follows your local clock: dusk, night, lit windows and lamps.
 - Ambient life (`src/life.js`, `src/art/life.js`): sparrows that peck and fly off when a pet comes within 3 tiles and return later, butterflies over
   the garden and the Parque by day, fireflies at night (they follow the town's clock), a duck and rings on the pond and the fountain's spray.
@@ -33,7 +33,15 @@ small top-down town, walk around and greet each other with presets. Plain HTML, 
   - The lobby waits 2.5 s after the last join or button before an early start, and players repeat their join and "¡Yo busco!" every 2 s
     until it closes. Game clocks are referee-relative (the referee sends the milliseconds left): a tab that slept does not use the
     countdown or the search up, and a player missing for under 12 s is not given up.
-  - The cancha (football) and the pista (race) are drawn and signed but not playable yet.
+  - **Cancha** (football, works solo as practice): a long 16 x 22 tile pitch in the south of the Parque, fenced, with an entrance on each side
+    and a goal at each end (the pad is by the west entrance). In the lobby each player who joined picks **Azul** or **Rojo**: a player's
+    first choice wins, nobody has special power, and teams are balanced by default (a choice is honoured while its team has half the
+    players, rounded up; the rest fill the smaller team). Everybody is placed at their kickoff spot, a 3-2-1 countdown, then you kick the
+    ball by walking into it (it rolls faster than a pet walks and bounces off the fence). The referee simulates the ball and sends a sample
+    (`gball`) at every kick and every 200 ms while it rolls; every browser advances that sample with the same fixed-step physics. A goal
+    (`ggoal`) puts the ball back on the centre spot for 1.8 s. First to 3 goals or 2 minutes; the winning team earns 4 stars each, a draw
+    gives everybody 1, and with nobody on the other team there are no stars. North goal = Azul scores, south goal = Rojo scores.
+  - The pista (race) is drawn and signed but not playable yet.
   - Stars show in the HUD (`⭐ 12`) and belong to the real pet: they are kept in the trip's server state (`trip-save`, `{ v: 1, stars }`,
     saved a moment after each change); the shop that spends them is a later stage.
   - No host: one browser among the players is the invisible *referee* (the lowest peer id among the players) that simulates the shared
@@ -104,7 +112,7 @@ authorization policy); see `docs/room-access.md`.
 | `src/render.js`, `src/sprites.js`, `src/font.js`, `src/daynight.js` | drawing: integer scale, camera, props sorted with pets, day/night tint and lights |
 | `tools/stamp.mjs` | cache-busting: run `node tools/stamp.mjs` before committing changes to `src/`, `style.css` or `config.js` |
 | `shot.html`, `tools/shots.mjs` | the preview (below) |
-| `src/games/*.js`, `src/hud.js`, `src/stars.js` | game rules (pure), the per-browser game manager, the overlay and the star counter |
+| `src/games/*.js` (`soccer.js`: ball physics, teams, stars), `src/hud.js`, `src/stars.js` | game rules (pure), the per-browser game manager, the overlay and the star counter |
 | `src/town.js`, `src/main.js` | input and the game loop; the lobby and town screens |
 
 ## Previews

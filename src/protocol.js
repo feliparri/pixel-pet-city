@@ -101,8 +101,8 @@ export function validateMessage(raw, catalogue) {
 // A game has no host: the players' browsers agree on a referee (the lowest peer id among the players, see games/lobby.js) and only the
 // referee's `gstate`, `gfound`, `gchick`, `gcatch` and `gend` count. This module only checks shapes and ranges; who may say what is checked
 // by the receiver (games/manager.js).
-export const GAME_TYPES = new Set(['gopen', 'gjoin', 'gleave', 'grole', 'gzone', 'gstart', 'gstate', 'gfound', 'gchick', 'gcatch', 'gend']);
-export const PHASES = { hide: ['count', 'search'], chicken: ['play'] };
+export const GAME_TYPES = new Set(['gopen', 'gjoin', 'gleave', 'grole', 'gzone', 'gstart', 'gstate', 'gfound', 'gchick', 'gcatch', 'gend', 'gteam', 'gball', 'ggoal']);
+export const PHASES = { hide: ['count', 'search'], chicken: ['play'], soccer: ['count', 'play'] };
 export const END_REASONS = ['all', 'time', 'goal', 'left', 'few'];
 const isRound = (v) => typeof v === 'string' && /^[a-z0-9]{4,10}$/.test(v);
 const int = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
@@ -113,12 +113,17 @@ const intList = (v, lo, hi) => Array.isArray(v) && v.length <= MAX_PLAYERS && v.
  *   gjoin  { r }                "Me sumo"            gleave { r }   "Salir del juego"
  *   grole  { r, role: 'seek' }  "¡Yo busco!"
  *   gzone  { r, z }             the zone of a hide and seek lobby (park, plaza, town): the first choice wins
- *   gstart { g, r, p, s, z? }   the referee starts: roster p (peer ids, in order), seeker index s (-1 for games without a seeker), z the hide zone
+ *   gstart { g, r, p, s, z?, tm? } the referee starts: roster p (peer ids, in order), seeker index s (-1 for games without a seeker), z the hide zone,
+ *                               tm the team (0/1) of each roster index in football
  *   gstate { g, r, ph, left, f }  the shared clock: phase, ms left in it, and per roster index: seconds a hider was found (-1 not yet, -2 gone) or a score
  *   gfound { r, i, at }         roster index i was found `at` seconds into the search
  *   gchick { r, x, y, d, m, s, v?, p?, o? } the chicken's tile, facing, mood (w wander, f flee); s = 1 when it appeared there. A motion:
  *                               v = ms per step, p = its next moves from (x, y) as "uurrd" (at most 8), o = ms since it arrived at (x, y)
  *   gcatch { r, i, n }          roster index i caught it (n: its catches so far)
+ *   gteam  { r, tm }            football lobby: this player's team (0 Azul, 1 Rojo); its first choice wins
+ *   gball  { r, x, y, vx, vy, l, w } the ball: position in tenths of a tile, velocity in tenths of a tile a second, roster index of the last
+ *                               player to touch it (-1 none), ms it waits on the centre spot (after a goal); screens advance it themselves
+ *   ggoal  { r, tm, i, s }      team tm scored (roster index i touched it last, -1 none); s = [Azul, Rojo] goals now
  *   gend   { g, r, rs, f }      the game (or a lobby that could not start: rs 'few') is over, with the final f
  */
 function validateGameMessage(m) {
@@ -135,7 +140,8 @@ function validateGameMessage(m) {
     case 'gstart': {
       if (!isPlayable(m.g) || !isRound(m.r) || !Array.isArray(m.p) || m.p.length < 1 || m.p.length > MAX_PLAYERS || !m.p.every(isId) || new Set(m.p).size !== m.p.length) return null;
       if (m.z !== undefined && !HIDE_ZONE_KEYS.includes(m.z)) return null;
-      return int(m.s, -1, m.p.length - 1) ? { ...base, g: m.g, r: m.r, p: m.p.slice(), s: m.s, ...(m.z ? { z: m.z } : {}) } : null;
+      if (m.tm !== undefined && !(Array.isArray(m.tm) && m.tm.length === m.p.length && m.tm.every((v) => v === 0 || v === 1))) return null;
+      return int(m.s, -1, m.p.length - 1) ? { ...base, g: m.g, r: m.r, p: m.p.slice(), s: m.s, ...(m.z ? { z: m.z } : {}), ...(m.tm ? { tm: m.tm.slice() } : {}) } : null;
     }
     case 'gstate':
       return isPlayable(m.g) && isRound(m.r) && PHASES[m.g].includes(m.ph) && int(m.left, 0, 120000) && intList(m.f, -2, 999)
@@ -150,6 +156,14 @@ function validateGameMessage(m) {
       return { ...base, r: m.r, x: m.x, y: m.y, d: m.d, m: m.m, s: m.s, ...(m.v !== undefined ? { v: m.v } : {}), ...(m.p ? { p: m.p } : {}), ...(m.o !== undefined ? { o: m.o } : {}) };
     case 'gcatch':
       return isRound(m.r) && int(m.i, 0, MAX_PLAYERS - 1) && int(m.n, 1, 99) ? { ...base, r: m.r, i: m.i, n: m.n } : null;
+    case 'gteam':
+      return isRound(m.r) && (m.tm === 0 || m.tm === 1) ? { ...base, r: m.r, tm: m.tm } : null;
+    case 'gball':
+      return isRound(m.r) && int(m.x, 0, 1000) && int(m.y, 0, 1000) && int(m.vx, -200, 200) && int(m.vy, -200, 200) && int(m.l, -1, MAX_PLAYERS - 1) && int(m.w, 0, 3000)
+        ? { ...base, r: m.r, x: m.x, y: m.y, vx: m.vx, vy: m.vy, l: m.l, w: m.w } : null;
+    case 'ggoal':
+      return isRound(m.r) && (m.tm === 0 || m.tm === 1) && int(m.i, -1, MAX_PLAYERS - 1) && Array.isArray(m.s) && m.s.length === 2 && m.s.every((n) => int(n, 0, 99))
+        ? { ...base, r: m.r, tm: m.tm, i: m.i, s: m.s.slice() } : null;
     case 'gend':
       return isPlayable(m.g) && isRound(m.r) && END_REASONS.includes(m.rs) && intList(m.f, -2, 999) ? { ...base, g: m.g, r: m.r, rs: m.rs, f: m.f.slice() } : null;
     default:
@@ -174,6 +188,9 @@ export const LIMITS = {
   gchick: { burst: 8, perSec: 4 },     // a motion every 400 ms while it flees, a message per step while it wanders (2 a second)
   gcatch: { burst: 4, perSec: 1 },
   gend: { burst: 2, perSec: 0.3 },
+  gteam: { burst: 3, perSec: 0.5 },
+  gball: { burst: 12, perSec: 10 },    // a sample at every kick and bounce, and every 200 ms while it rolls
+  ggoal: { burst: 4, perSec: 0.5 },
 };
 
 export function createRateLimiter(now = () => Date.now()) {

@@ -1,6 +1,6 @@
 // Bakes an area (the town or an interior) into what the renderer needs: one ground canvas with every tile, small sprites for the tall
 // things that sort with the pets, the animated spots (pond ripples, the fountain), and what lights up at night (windows, lamps).
-import { TILE, HOUSES, GAME_PLACES, inPlaza } from '../map.js';
+import { TILE, HOUSES, PITCH, inPlaza } from '../map.js';
 import { canvas, noise, shadow } from './palette.js';
 import * as G from './ground.js';
 import * as PL from './places.js';
@@ -34,8 +34,8 @@ function bakeTown(area) {
       case 'S': G.grass(ctx, x, y, tx, ty); G.sign(ctx, x, y); break;
       case 'p': PL.pad(ctx, x, y, tx, ty); break;
       case 'a': PL.gate(ctx, x, y, tx, ty); break;
-      case 'y': PL.pitch(ctx, x, y, tx, ty, at, GAME_PLACES.soccer.zone); break;
-      case 'g': PL.goal(ctx, x, y, tx, ty, at, tx < GAME_PLACES.soccer.zone.x + 4 ? -1 : 1); break;
+      case 'y': PL.pitch(ctx, x, y, tx, ty); break;
+      case 'g': PL.goal(ctx, x, y, tx, ty, at, ty < PITCH.y ? -1 : 1); break;
       case 'j': PL.track(ctx, x, y, tx, ty, at); break;
       case 'V': PL.hurdle(ctx, x, y, tx, ty, at); break;
       case 'w': PL.puddle(ctx, x, y, tx, ty, at); break;

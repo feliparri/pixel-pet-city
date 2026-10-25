@@ -94,6 +94,8 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
       if (f.resolve) f.resolve();
     }
     games.update();
+    const start = games.takeStart();                              // a line-up game began: stand on the spot it gives (football's kickoff)
+    if (start && self.area === 'town') { w.snap(start[0], start[1], 'down'); net.sendPos(start[0], start[1], 'down', 'town'); held.length = 0; fadeT0 = t; }
     const mv = games.movement();
     if (mv.frozen) { w.queue = []; held.length = 0; }
     if (mv.zone && self.area === 'town' && !w.busy && !mv.zone.has(w.tileX, w.tileY)) {      // outside the game's area when it starts: run to its pad
@@ -135,6 +137,7 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
       const cp = chickWalker.pos();
       state.chicken = { x: cp.x, y: cp.y, frame: chickWalker.moving && Math.floor(t / 110) % 2 ? 1 : 0, flip: chickWalker.d === 'left' };
     } else state.chicken = null;
+    state.ball = gv.game && gv.game.ball && self.area === 'town' ? gv.game.ball : null;
     const here = !w.busy && self.area === 'town' ? spotAt(w.tileX, w.tileY) : null;      // standing on a game's pad: the button; walking onto the pad of an open lobby joins it
     if (here && gv.lobby && gv.lobby.g === here && !gv.lobby.iJoined) games.join();
     if (t - hudAt > 120) { hudAt = t; onHud({ ...gv, spot: here, wall: mv.zone && gv.game ? gv.game.name : null, frozen: mv.frozen }); }
@@ -198,6 +201,7 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
       },
       seek: () => games.volunteer(),
       zone: (z) => games.pickZone(z),
+      team: (t) => games.pickTeam(t),
       leave: () => games.leave(),
       dismiss: () => games.dismiss(),
     },
