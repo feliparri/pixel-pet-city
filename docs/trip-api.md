@@ -84,6 +84,8 @@ Request `{ "trip_id": <u32>, "seq": <the return's seq> }` (`seq` optional; when 
 
 ## Web endpoints (CORS only for `https://feliparri.github.io`; a different `Origin` gets `403`)
 
+Every action answers CORS for that origin, the board's too: the town page relays the board's signed calls over the USB cable (`docs/usb-link.md`).
+
 The browser holds a session `token` (64 hex) from the claim and sends it in the `x-trip-token` header; the body names the trip by its
 opaque `trip` ref (the uuid from the claim). The server keeps only `SHA-256(token)`.
 

@@ -5,7 +5,11 @@ import { createDb } from './db.ts';
 
 const ORIGIN = 'https://feliparri.github.io';
 const TOWN_URL = Deno.env.get('TOWN_URL') ?? 'https://feliparri.github.io/pixel-pet-city/';
-const WEB_FUNCTIONS = new Set(['trip-claim', 'trip-save', 'trip-status']);   // the browser's; the board's endpoints send no CORS headers
+
+const ACTIONS: Record<string, true> = { 'device-register': true, 'trip-start': true, 'trip-claim': true, 'trip-save': true, 'trip-recall': true, 'trip-status': true, 'trip-return': true, 'trip-ack': true };
+// The browser's: the town's own calls, and the board's, which the town page relays over the USB cable (docs/usb-link.md). The board's calls are signed, so the origin
+// rule only keeps other pages from relaying for it; the board itself (no Origin header) is unaffected.
+const WEB_FUNCTIONS = new Set(Object.keys(ACTIONS));
 
 const cors = (fn: string) => WEB_FUNCTIONS.has(fn) ? {
   'access-control-allow-origin': ORIGIN, 'vary': 'origin',
@@ -14,7 +18,6 @@ const cors = (fn: string) => WEB_FUNCTIONS.has(fn) ? {
   'access-control-max-age': '86400',
 } : {};
 
-const ACTIONS: Record<string, true> = { 'device-register': true, 'trip-start': true, 'trip-claim': true, 'trip-save': true, 'trip-recall': true, 'trip-status': true, 'trip-return': true, 'trip-ack': true };
 
 let db: ReturnType<typeof createDb> | null = null;
 
