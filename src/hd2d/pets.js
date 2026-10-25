@@ -16,7 +16,7 @@ export function createPetPainter(sprites) {
   const tmp = Object.assign(document.createElement('canvas'), { width: SIZE, height: SIZE }), tctx = tmp.getContext('2d');
 
   /** The depth-sortable item for an entity, or null when it is off screen / gone. `ctx.me` marks the local pet (its name is gold). */
-  function item(e, { cam, n, now, world, me, view }) {
+  function item(e, { cam, n, now, world, me, view, wash = null }) {
     if (!e || e.gone) return null;
     const p = e.walker.pos();
     if (p.x === null) return null;
@@ -45,6 +45,8 @@ export function createPetPainter(sprites) {
           tctx.clearRect(0, 0, SIZE, SIZE);
           drawPet(tctx, sprites, e.look, ORIGIN.x, ORIGIN.y - hop, { frame: lift > 0 ? 'happy' : headFrame(e, now, e.id), flip: e.walker.d === 'right', flap });
           if (n > 0.02) grade(tctx, tmp, n, lightAt(world.lights, wx, wy));                      // night: the veil, and the warm wash where a lamp reaches
+          const tint = wash ? wash(wx) : null;                                                    // a burst of the sky show washes its colour over the pet
+          if (tint) { tctx.globalCompositeOperation = 'source-atop'; tctx.fillStyle = `rgba(${tint.r | 0},${tint.g | 0},${tint.b | 0},${tint.a})`; tctx.fillRect(0, 0, SIZE, SIZE); tctx.globalCompositeOperation = 'source-over'; }
           c.drawImage(tmp, 0, 0, SIZE, SIZE, cx - FEET_X * s + sway * s, cy - (FEET_Y + air + lift) * s, SIZE * s, SIZE * s);
         }
         ov.labels.push({ text: e.name, x: cx + sway * s, y: cy + (2 - lift) * s, colour: e === me ? '#f8d040' : '#f4f6fa' });

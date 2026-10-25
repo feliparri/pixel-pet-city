@@ -6,17 +6,16 @@
 import { TILE } from '../map.js';
 import { drawPet, loadSprites } from '../sprites.js';
 import { cameraFor, project, sortBackToFront, snapScale, visibleTiles } from '../hd2d/camera.js';
-import { approach, lightAt, falloff, nightMultiply } from '../hd2d/light.js';
+import { approach, lightAt, nightMultiply } from '../hd2d/light.js';
 import { buildWorld, bakeGround, drawGround, standingItems, drawGlows, fountainItem, grade } from '../hd2d/scene.js';
 import { Wanderer, rng } from '../hd2d/wander.js';
 import { createShowFx } from './fx.js';
 import { SHOWS, tiltAt, showEnd, showCamera, horizonY, FALL } from './timeline.js';
 import { makeStars, drawSky, pixelUnit, LAND } from './sky.js';
-import { fireworksAt } from './fireworks.js';
-import { meteorsAt } from './meteors.js';
-import { dronesAt } from './drones.js';
+import { skyAt } from './layers.js';
 import { drawBursts, drawRockets, drawMeteors, drawDrones } from './draw.js';
 import { smooth } from './rand.js';
+import { burstTint } from './tint.js';
 
 const q = new URLSearchParams(location.search);
 const still = q.get('still') === '1', bench = q.get('bench') === '1';
@@ -39,16 +38,6 @@ function resize() {
   if (w === view.w && h === view.h) return;
   view = { w, h }; canvas.width = w; canvas.height = h;
   fx = createShowFx(w, h);
-}
-
-/** The colour the bursts wash over something standing at world x (a pet): { r, g, b, a } for a source-atop wash. */
-function burstTint(flashes, wx) {
-  let a = 0, r = 0, g = 0, b = 0;
-  for (const f of flashes) {
-    const w = falloff(Math.abs(wx - f.x), 360) * f.k * 0.5;
-    a += w; r += w * f.c[0]; g += w * f.c[1]; b += w * f.c[2];
-  }
-  return a > 0.01 ? { r: r / a, g: g / a, b: b / a, a: Math.min(0.55, a) } : null;
 }
 
 const headFrame = (e, now) => (((now + e.id.charCodeAt(0) * 397) % 3400) < 130 ? 'blink' : 'idle');
@@ -97,15 +86,6 @@ function stepPets(dt, watching) {
   for (const p of pets) { p.box = box; if (watching) p.walker.update(dt); else p.update(dt); }
 }
 
-/** What the show has in the sky at show time ts (empty lists when no show). `alpha` fades everything out when a show is cut short. */
-function skyAt(kind, ts) {
-  const none = { rockets: [], sparks: [], flashes: [] };
-  if (kind === 'fireworks') return { fw: fireworksAt(SEED, ts), meteors: [], drones: [] };
-  if (kind === 'meteors') return { fw: none, meteors: meteorsAt(SEED, ts), drones: [] };
-  if (kind === 'drones') return { fw: none, meteors: [], drones: dronesAt(SEED, ts) };
-  return { fw: none, meteors: [], drones: [] };
-}
-
 /** Draws one frame at page time `now` ms, the show being at `ts` seconds (null: no show). Returns the number of bursts on screen. */
 function frame(now, ts) {
   const dur = show ? SHOWS[show.kind].dur : 0, cut = show && show.cut != null ? show.cut : Infinity;
@@ -116,7 +96,7 @@ function frame(now, ts) {
   if (key !== groundKey) { bakeGround(world, 1, nightMultiply(1), wf, ground); groundKey = key; }
   ctx.imageSmoothingEnabled = false;
   ctx.fillStyle = `rgb(${LAND})`; ctx.fillRect(0, 0, view.w, view.h);
-  const sky = show ? skyAt(show.kind, ts) : skyAt('', 0);
+  const sky = show ? skyAt(show.kind, SEED, ts) : skyAt('', SEED, 0);
   drawSky(ctx, view, hy, now / 1000, stars, u, project(cam, focus.x, 0, 0)?.y);
   if (show) {
     drawMeteors(ctx, sky.meteors, view, hy, u, alpha);

@@ -29,14 +29,17 @@ export function createShowFx(w, h) {
   }
   return {
     /** Paints the effects over `ctx` (which already holds the scene). amount 0..1 fades them; night 0..1 sets the bloom and vignette. */
-    apply(ctx, amount, night, boost = 0) {
+    apply(ctx, amount, night, boost = 0, { bloom = true, tiltshift = true } = {}) {
       if (amount <= 0) return;
       const src = ctx.canvas;
-      blur(soft, src, [half, quarter]);
-      const sc = soft.getContext('2d');
-      sc.globalCompositeOperation = 'destination-in'; sc.drawImage(mask, 0, 0); sc.globalCompositeOperation = 'source-over';
-      ctx.globalAlpha = amount; ctx.drawImage(soft, 0, 0);
+      if (tiltshift) {
+        blur(soft, src, [half, quarter]);
+        const sc = soft.getContext('2d');
+        sc.globalCompositeOperation = 'destination-in'; sc.drawImage(mask, 0, 0); sc.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = amount; ctx.drawImage(soft, 0, 0);
+      }
       ctx.imageSmoothingEnabled = true; ctx.globalAlpha = 1;
+      if (bloom) {
       const a = q.getContext('2d'), b = q2.getContext('2d'), c = q3.getContext('2d');             // bloom: bright pass = the low-res copy to the fourth power
       a.imageSmoothingEnabled = true; a.drawImage(src, 0, 0, q.width, q.height);
       b.globalCompositeOperation = 'copy'; b.drawImage(q, 0, 0); b.globalCompositeOperation = 'multiply'; b.drawImage(q, 0, 0);
@@ -44,6 +47,7 @@ export function createShowFx(w, h) {
       blur(bloomBuf, q3, [e, e2]);
       ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(1, amount * (0.2 + 0.4 * night) * (1 + boost * 1.1)); ctx.drawImage(bloomBuf, 0, 0, ctx.canvas.width, ctx.canvas.height);
       ctx.globalCompositeOperation = 'source-over';
+      }
       ctx.globalAlpha = amount * (0.55 + 0.4 * night); ctx.drawImage(vig, 0, 0); ctx.globalAlpha = 1;
       ctx.imageSmoothingEnabled = false;
     },

@@ -27,8 +27,8 @@ export function tiltAt(ts, dur, cut = Infinity) {
 export const horizonY = (cam) => (cam.pitch >= 89.9 ? -Infinity : cam.cy - cam.focal * Math.tan(cam.pitch * RAD));
 
 /** The HD-2D camera blended with the sky camera by tilt `k` 0..1: pitch drops, the focus slides down the screen, the horizon rises into view. */
-export function showCamera(viewW, viewH, focusX, focusY, k) {
-  const base = cameraFor(viewW, viewH, focusX, focusY, 1);
+export function showCamera(viewW, viewH, focusX, focusY, k, opts = {}) {
+  const base = cameraFor(viewW, viewH, focusX, focusY, 1, opts);
   const [fx, fy] = snapFocus(base, focusX, focusY);
   const focal = base.focal * lerp(1, SKY.zoom, k), cyT = viewH * SKY.cy;
   const pitchT = Math.atan((cyT - viewH * SKY.horizon) / focal) / RAD;

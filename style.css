@@ -66,6 +66,7 @@ a.btn { display: inline-block; text-decoration: none; }
 .zone-pick .btn:disabled:not([aria-pressed="true"]) { opacity: .5; }
 .game-actions { margin-top: auto; display: flex; gap: .6rem; flex-wrap: wrap; justify-content: center; padding-bottom: .4rem; }
 .banner { position: absolute; top: 38%; left: 0; right: 0; text-align: center; font-size: clamp(1.6rem, 9vw, 3rem); font-weight: 800; color: #fff; text-shadow: 0 3px 0 #000, 0 0 12px #000; letter-spacing: .03em; }
+.show-back { position: absolute; top: 3.5rem; right: max(.6rem, env(safe-area-inset-right)); background: rgba(38,44,68,.8); }
 .toasts { position: absolute; top: 3.5rem; left: .4rem; right: .4rem; display: flex; flex-direction: column; align-items: center; gap: .3rem; }
 .toast { background: rgba(244,246,250,.95); color: var(--bg); font-weight: 800; font-size: 1.1rem; padding: .35rem .8rem; border: 2px solid var(--bg); }
 .toast.found { background: var(--gold); }
@@ -101,6 +102,7 @@ a.btn { display: inline-block; text-decoration: none; }
   .touch #status { display: none; }
   .touch .hud { padding: 2.6rem .4rem .4rem; }
   .touch .toasts { top: 2.8rem; }
+  .touch .show-back { top: 2.7rem; }
   /* the stage gets the height: a thin bar, and the emotes behind the 💬 button, as a row over the stage */
   .touch .bar { flex-wrap: nowrap; gap: .3rem; padding: max(.15rem, env(safe-area-inset-top)) max(.4rem, env(safe-area-inset-right)) .15rem max(.4rem, env(safe-area-inset-left)); border-bottom-width: 1px; }
   .touch .bar .btn.small { min-height: 1.75rem; padding: .1rem .5rem; font-size: .75rem; border-bottom-width: 3px; }

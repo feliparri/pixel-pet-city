@@ -159,7 +159,7 @@ async function enter(code, { transport = mode, arrival = null, solo = false } = 
   showStars();
   const counter = { add(n) { stars.add(n); showStars(); } };
   window.cityDebug = () => ({ town, net });                    // handy in the console when testing with two tabs
-  town = startTown({ canvas: $('view'), stage: $('stage'), pad: touch ? { dpad: $('dpad'), a: $('pad-a'), b: $('pad-b') } : null, sprites, font, net, me, entrance: arrival, stars: counter, onHud: (info) => hud && hud.update(info), onHdMode: () => paintFx() });
+  town = startTown({ canvas: $('view'), stage: $('stage'), pad: touch ? { dpad: $('dpad'), a: $('pad-a'), b: $('pad-b') } : null, sprites, font, net, me, entrance: arrival, stars: counter, onHud: (info) => hud && hud.update(info), onHdMode: () => paintFx(), onShow: (on) => { $('show-back').hidden = !on; } });
   if (!town.hd.locked) town.hd.set(hdPref);
   paintFx();
   setStatus('connected');
@@ -182,6 +182,7 @@ function setStatus(status) {
 }
 
 function closeRoom() {
+  $('show-back').hidden = true;
   if (hud) hud.update({ lobby: null, game: null, results: null, notices: [], spot: null });
   if (town) { town.destroy(); town = null; }
   if (net) { net.leave(); net = null; }
@@ -331,6 +332,7 @@ async function boot() {
   }
   fillItemSelects();
   buildEmotes();
+  $('show-back').addEventListener('click', () => { if (town) town.events.cut(); });
   $('fx-toggle').addEventListener('click', () => { if (!town || town.hd.locked) return; hdPref = !town.hd.on; store.set('city.hd2d', hdPref ? '1' : '0'); town.hd.set(hdPref, true); paintFx(); });
   hud = createHud($, { onPlay: () => town && town.games.play(), onJoin: () => town && town.games.join(), onSeek: () => town && town.games.seek(), onZone: (z) => town && town.games.zone(z), onTeam: (t) => town && town.games.team(t), onLeave: () => town && town.games.leave(), onDismiss: () => town && town.games.dismiss() });
   if (entry === 'trip') {

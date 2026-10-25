@@ -14,6 +14,10 @@ import { GAME_RULES } from './games/rules.js';
 import { stumbled, paceAt, RACE } from './games/race.js';
 import { activityOf, radarPets } from './radar.js';
 import { createLife, stepLife, lifeFrame } from './life.js';
+import config from '../config.js';
+import { isConfigured } from './config-check.js';
+import { createEventsApi } from './events-client.js';
+import { createTownEvents, parseDevEvent } from './town-events.js';
 
 const FADE_MS = 240;                                  // the fade-in after a door
 const KEY_DIRS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', w: 'up', s: 'down', a: 'left', d: 'right', W: 'up', S: 'down', A: 'left', D: 'right' };
@@ -28,7 +32,7 @@ function spawnFor(id) {
  * me: { name, look }; net: a createNet() session already joined; entrance: an entrance id to play on arrival (a visiting pet), or null;
  * stars: the pet's star counter ({ add(n) }); onHud(info): called a few times a second with what the game buttons and panels need.
  * Returns { onNetEvent, emote, playExit, games: { play, join, seek, leave, dismiss }, destroy }. */
-export function startTown({ canvas, stage, pad = null, sprites, font, net, me, entrance = null, stars = { add() {} }, onHud = () => {}, onHdMode = () => {} }) {
+export function startTown({ canvas, stage, pad = null, sprites, font, net, me, entrance = null, stars = { add() {} }, onHud = () => {}, onHdMode = () => {}, onShow = () => {} }) {
   const [sx, sy] = spawnFor(net.id);
   const self = { id: net.id, name: me.name, look: me.look, stats: me.stats || null, act: 'idle', walker: new Walker(sx, sy), emote: null, jumpAt: null, area: 'town' };
   if (entrance) self.fx = { id: entrance, phase: 'arrive', t0: performance.now(), resolve: null };
@@ -46,6 +50,9 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     id: net.id, send: (m) => net.sendGame(m), present: () => new Set(net.peers().map((p) => p.id)), name: names, now: () => performance.now(), award: (n) => stars.add(n),
     pos: (pid) => (pid === self.id ? { x: self.walker.tileX, y: self.walker.tileY, area: self.area } : net.peers().find((p) => p.id === pid) || null),
   });
+  const dev = parseDevEvent(location.search, Date.now());           // development only: ?dev=1&event=fireworks:5 fakes a show that starts in 5 s, with no server
+  const events = createTownEvents({ api: createEventsApi({ base: `${config.supabaseUrl}/functions/v1/trip` }), devEvents: dev.length ? dev : null, notify: (text) => games.notify(text), onShow });
+  if (dev.length || isConfigured(config)) events.start();            // the scheduled sky shows (src/town-events.js)
   const chickWalker = new Walker(30, 40);
   let chickSeq = 0, hudAt = -Infinity, wasLobby = null;
   let racing = false, slowUntil = 0, lastTile = null;          // the obstacle race: a pet that steps onto an obstacle walks slower for RACE.slowMs
@@ -164,6 +171,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     const here = !w.busy && self.area === 'town' ? spotAt(w.tileX, w.tileY) : null;      // standing on a game's pad: the button; walking onto the pad of an open lobby joins it
     if (here && gv.lobby && gv.lobby.g === here && !gv.lobby.iJoined) games.join();
     if (t - hudAt > 120) { hudAt = t; onHud({ ...gv, spot: here, wall: mv.zone && gv.game ? gv.game.name : null, frozen: mv.frozen }); }
+    state.show = events.tick(self.area !== 'town' ? 'inside' : renderer.hd ? 'hd' : 'flat');      // the show that runs now, the same moment on every screen
     renderer.draw(state, t);
     raf = requestAnimationFrame(frame);
   }
@@ -227,6 +235,8 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
 
   return {
     onNetEvent,
+    /** The scheduled sky show: "Volver" winds it down on this screen only. */
+    events: { cut: () => events.cut() },
     /** The HD-2D view: is it on, switch it (the page remembers the choice), and is it locked off (?flat=1). */
     hd: { get on() { return renderer.hd; }, set: (on, manual) => renderer.setHd(on, manual), stats: () => renderer.stats(), get locked() { return renderer.flat; } },
     /** The pets of this room for the radar (this pet first): [{ n, sp, st, s, a }]. */
@@ -261,6 +271,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     },
     destroy() {
       alive = false;
+      events.stop(); onShow(false);
       if (self.fx && self.fx.resolve) self.fx.resolve();
       cancelAnimationFrame(raf);
       ro.disconnect();
