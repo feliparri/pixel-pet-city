@@ -71,13 +71,32 @@ export function ball(ctx, cx, cy) {
   BALL.forEach((row, j) => { for (let i = 0; i < 7; i++) if (row[i] !== '.') dot(ctx, row[i] === 'k' ? P.ink : '#ffffff', cx - 3 + i, cy - 3 + j); });
 }
 
-/** One lane of the pista: packed earth with a lighter lane line and a darker rim on the outer sides. */
+const laneLike = (c) => c === 'j' || c === 'V' || c === 'w' || c === 'W' || c === 'f';
+
+/** One lane tile of the pista, running north: packed earth, a dashed line between lanes, a cream rim on the outer sides and the start line (thick) at the bottom end. */
 export function track(ctx, x, y, tx, ty, at) {
   rect(ctx, P.d1, x, y, 16, 16);
   for (let i = 0; i < 7; i++) dot(ctx, noise(tx, ty, 100 + i) > 0.5 ? P.d0 : P.d2, x + ((noise(tx, ty, 110 + i) * 15) | 0), y + ((noise(tx, ty, 120 + i) * 15) | 0));
-  if (at(0, -1) !== 'j' && at(0, -1) !== 'V' && at(0, -1) !== 'w') rect(ctx, P.cream, x, y, 16, 2); else if ((tx & 1) === 0) rect(ctx, P.d3, x + 2, y, 6, 1);
-  if (at(0, 1) !== 'j' && at(0, 1) !== 'V' && at(0, 1) !== 'w') rect(ctx, P.cream, x, y + 14, 16, 2);
-  if (at(-1, 0) !== 'j' && at(-1, 0) !== 'V' && at(-1, 0) !== 'w') rect(ctx, P.cream, x, y, 2, 16);        // the start line
+  if (!laneLike(at(-1, 0))) rect(ctx, P.cream, x, y, 2, 16); else for (let j = 1; j < 16; j += 4) rect(ctx, P.d3, x, y + j, 1, 2);
+  if (!laneLike(at(1, 0))) rect(ctx, P.cream, x + 14, y, 2, 16);
+  if (!laneLike(at(0, 1))) { rect(ctx, P.cream, x, y + 12, 16, 4); rect(ctx, P.d4, x, y + 12, 16, 1); }                 // the start line
+}
+
+/** The finish row: the lane's earth under a checkered strip across the whole tile. */
+export function finish(ctx, x, y, tx, ty, at) {
+  track(ctx, x, y, tx, ty, at);
+  for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) rect(ctx, (i + j + tx) % 2 ? P.ink : P.cream, x + i * 4, y + j * 4, 4, 4);
+  if (!laneLike(at(-1, 0))) rect(ctx, P.cream, x, y, 1, 16);
+  if (!laneLike(at(1, 0))) rect(ctx, P.cream, x + 15, y, 1, 16);
+}
+
+/** A hay bale on a lane: a round bale seen from the side, tied with two bands. */
+export function hay(ctx, x, y, tx, ty, at) {
+  track(ctx, x, y, tx, ty, at);
+  shadow(ctx, x + 8, y + 14, 6.5, 1.8, 0.3);
+  rect(ctx, P.ink, x + 2, y + 5, 12, 10); rect(ctx, P.yellow, x + 3, y + 6, 10, 8); rect(ctx, P.yellow2, x + 3, y + 6, 10, 2); rect(ctx, P.d2, x + 3, y + 12, 10, 2);
+  rect(ctx, P.w3, x + 6, y + 6, 1, 8); rect(ctx, P.w3, x + 10, y + 6, 1, 8);
+  for (let i = 0; i < 5; i++) dot(ctx, noise(tx, ty, 130 + i) > 0.5 ? P.d1 : P.yellow2, x + 3 + ((noise(tx, ty, 140 + i) * 9) | 0), y + 8 + ((noise(tx, ty, 150 + i) * 4) | 0));
 }
 
 /** A hurdle across a lane: two posts and a striped bar. */

@@ -39,6 +39,8 @@ function bakeTown(area) {
       case 'j': PL.track(ctx, x, y, tx, ty, at); break;
       case 'V': PL.hurdle(ctx, x, y, tx, ty, at); break;
       case 'w': PL.puddle(ctx, x, y, tx, ty, at); break;
+      case 'W': PL.hay(ctx, x, y, tx, ty, at); break;
+      case 'f': PL.finish(ctx, x, y, tx, ty, at); break;
       case 'G': G.grass(ctx, x, y, tx, ty); if (raw(tx - 1, ty) !== 'G' && raw(tx, ty - 1) !== 'G') out.props.push({ x, y: y + 32 - 40, sortY: y + 32, sprite: k.coop }); break;
       case 'o': G.plaza(ctx, x, y, tx, ty, at); break;
       case 't': G.grass(ctx, x, y, tx, ty); shadow(ctx, x + 14, y + 13, 13, 4, 0.32); out.props.push({ x: x - 8, y: y + 16 - 40, sortY: y + 16, sprite: k.oak[(tx * 3 + ty) & 1] }); break;

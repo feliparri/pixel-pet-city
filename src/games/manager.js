@@ -8,6 +8,7 @@ import { openLobby, joinLobby, leaveLobby, volunteerSeeker, chooseZone, chooseTe
 import { tickHide, hideResults, hideStars, seekerSees } from './hide.js';
 import { createChicken, stepChicken, catcher, spawnTile, catchesToWin, planRoute, encodeRoute, decodeRoute, CHICKEN } from './chicken.js';
 import { createBall, advanceBall, kickBall, centreSpot, assignTeams, soccerStars, winnerTeam, kickoffTile, scorer, SOCCER, TEAMS } from './soccer.js';
+import { tickRace, startSlot, raceResults } from './race.js';
 import { PHASES } from '../protocol.js';
 import { GAME_PLACES, HIDE_ZONES, DEFAULT_HIDE_ZONE, chickenTile, tileAt, inZone } from '../map.js';
 
@@ -16,6 +17,7 @@ const NOTICE_MS = 3200;
 const BALL_SEND_MS = 200;                              // the referee repeats the ball's sample this often while it rolls
 const BALL_IDLE_MS = 1000;                             // ... and this often while it rests
 const SOCCER_ZONE = { name: 'Cancha', wall: 'Vuelve a la cancha', pad: GAME_PLACES.soccer.spot[0], has: (x, y) => inZone('soccer', x, y) };
+const RACE_ZONE = { name: 'Pista', wall: 'Vuelve a la pista', pad: GAME_PLACES.race.spot[0], has: (x, y) => inZone('race', x, y) };
 const STALL_MS = 1500;                                // a gap between two updates this long means this tab was asleep: the clocks wait for it
 const LOBBY_GRACE_MS = 4000;                          // a lobby whose start never came is dropped this long after its time
 const newRound = (rng) => Array.from({ length: 6 }, () => Math.floor(rng() * 36).toString(36)).join('');
@@ -129,7 +131,7 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
     if (from !== referee()) return;                                                    // shared state is only believed from the referee
     if (m.t === 'gstate') {
       if (game.g !== m.g || PHASES[game.g].indexOf(m.ph) < PHASES[game.g].indexOf(game.phase)) return;       // a phase never goes back
-      if (m.ph !== game.phase && game.g === 'soccer') { game.ballAt = now(); game.pauseUntil = now(); }
+      if (m.ph !== game.phase) { game.playAt = now(); if (game.g === 'soccer') { game.ballAt = now(); game.pauseUntil = now(); } }
       game.phase = m.ph; game.phaseEnd = now() + m.left;
       m.f.forEach((v, i) => { if (i < game.f.length) game.f[i] = v; });
     } else if (m.t === 'gfound') {
@@ -137,6 +139,8 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
     } else if (m.t === 'gchick') {
       if (game.g !== 'chicken') return;
       game.chick = { x: m.x, y: m.y, d: m.d, m: m.m, snap: m.s === 1, seq: (game.chick ? game.chick.seq : 0) + 1, v: m.v || 0, o: m.o || 0, route: decodeRoute(m.x, m.y, m.p) };
+    } else if (m.t === 'gfin') {
+      if (game.g === 'race') applyFin(m.i, m.n);
     } else if (m.t === 'gball') {
       if (game.g !== 'soccer') return;
       game.ball = { x: m.x / 10, y: m.y / 10, vx: m.vx / 10, vy: m.vy / 10, acc: 0, last: m.l, kick: null };
@@ -153,17 +157,19 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
   function begin(m) {
     if (m.s >= 0) seekCount.set(m.p[m.s], (seekCount.get(m.p[m.s]) || 0) + 1);
     const t = now(), rules = GAME_RULES[m.g], hide = m.g === 'hide';
-    const soccer = m.g === 'soccer', teams = soccer ? (m.tm || assignTeams(m.p, [])) : null;
+    const soccer = m.g === 'soccer', race = m.g === 'race', teams = soccer ? (m.tm || assignTeams(m.p, [])) : null;
     game = {
       g: m.g, r: m.r, roster: m.p.slice(), seeker: m.s, play: m.p.includes(id) && !!lobby && lobby.joined.includes(id), gone: new Set(),
-      f: soccer ? [0, 0] : m.p.map(() => (hide ? -1 : 0)), phase: hide || soccer ? 'count' : 'play', phaseEnd: t + (hide || soccer ? rules.countMs : rules.roundMs),
+      f: soccer ? [0, 0] : m.p.map(() => (hide ? -1 : 0)), phase: hide || soccer || race ? 'count' : 'play', phaseEnd: t + (hide || soccer || race ? rules.countMs : rules.roundMs), playAt: t, firstAt: null,
       zone: hide ? (HIDE_ZONES[m.z] ? m.z : DEFAULT_HIDE_ZONE) : null, chick: null, sim: null, respawnAt: t + 800,
       teams, ball: soccer ? createBall() : null, ballAt: t, pauseUntil: t, ballSentAt: -Infinity, headings: new Map(), startSpot: null,
     };
+    if (race && game.play) game.startSpot = startSlot(m.p.indexOf(id));
     if (soccer && game.play) { const me = m.p.indexOf(id), k = teams.slice(0, me).filter((v) => v === teams[me]).length; game.startSpot = kickoffTile(teams[me], k); }
     lobby = null; results = null;
     stateAt = -Infinity; absentSince.clear();
-    if (game.play && soccer) say(`¡Equipo ${TEAMS[teams[m.p.indexOf(id)]]}!`, 'start');
+    if (game.play && race) say('¡A la línea de salida!', 'start');
+    else if (game.play && soccer) say(`¡Equipo ${TEAMS[teams[m.p.indexOf(id)]]}!`, 'start');
     else if (game.play) say(hide ? (m.p[m.s] === id ? 'Tú buscas. ¡Cuenta hasta 15!' : '¡Escóndete!') : '¡Pilla a la gallina!', 'start');
     else say('Hay un juego: puedes mirar', 'info');
   }
@@ -196,6 +202,9 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
       const sizes = [0, 0];
       g.teams.forEach((tm) => { sizes[tm]++; });
       rows = g.roster.map((_, i) => ({ i, role: 'player', team: g.teams[i], stars: soccerStars(g.teams[i], f, sizes) }));
+      if (mine >= 0 && g.play) { stars = rows[mine].stars; award1(`${g.r}:end`, stars); }
+    } else if (g.g === 'race') {
+      rows = raceResults(f).map((r) => ({ ...r, role: 'player' }));
       if (mine >= 0 && g.play) { stars = rows[mine].stars; award1(`${g.r}:end`, stars); }
     } else {
       rows = f.map((n, i) => ({ i, role: 'player', found: n, stars: n * GAME_RULES.chicken.starsPerCatch }));
@@ -240,12 +249,12 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
       if (referee() === null) game = null;                     // nobody is left to run it
       return;
     }
-    if (game.g === 'hide') refereeHide(t); else if (game.g === 'soccer') refereeSoccer(t, goal); else refereeChicken(t);
+    if (game.g === 'hide') refereeHide(t); else if (game.g === 'soccer') refereeSoccer(t, goal); else if (game.g === 'race') refereeRace(t); else refereeChicken(t);
   }
 
   const stateMsg = (extra = {}) => ({ t: 'gstate', g: game.g, r: game.r, ph: game.phase, left: Math.max(0, Math.min(120000, Math.round(game.phaseEnd - now()))), f: game.f.slice(), ...extra });
   const broadcastState = (t) => { if (t - stateAt >= STATE_MS) { stateAt = t; send(stateMsg()); } };
-  const petPos = (pid) => { const p = tile(pid); return p && (game.g === 'chicken' || (game.g === 'soccer' ? SOCCER_ZONE.has(p.x, p.y) : HIDE_ZONES[game.zone].has(p.x, p.y))) ? p : null; };
+  const petPos = (pid) => { const p = tile(pid); return p && (game.g === 'chicken' || (game.g === 'soccer' ? SOCCER_ZONE.has(p.x, p.y) : game.g === 'race' ? RACE_ZONE.has(p.x, p.y) : HIDE_ZONES[game.zone].has(p.x, p.y))) ? p : null; };
 
   function refereeHide(t) {
     const s = { roster: game.roster, seeker: game.seeker, phase: game.phase, phaseEnd: game.phaseEnd, found: game.f };
@@ -305,6 +314,30 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
       } else if (kicked || t - game.ballSentAt >= (game.ball.vx || game.ball.vy ? BALL_SEND_MS : BALL_IDLE_MS)) sendBall(t);
       if (t >= game.phaseEnd) { const f = game.f.slice(); send({ t: 'gend', g: 'soccer', r: game.r, rs: 'time', f }); finish('time', f); return; }
     }
+    broadcastState(t);
+  }
+
+  // ---- the obstacle race: the referee gives the places in the order the pets reach the finish row ----
+  function applyFin(i, n) {
+    if (i < 0 || i >= game.roster.length) return;
+    game.f[i] = n;
+    say(game.roster[i] === id ? `¡Llegaste ${n}º!` : `¡${name(game.roster[i])} llegó ${n}º!`, 'found');
+  }
+
+  function refereeRace(t) {
+    if (game.phase === 'count' && t >= game.phaseEnd) {
+      game.phase = 'play'; game.phaseEnd = t + GAME_RULES.race.roundMs; game.playAt = t; stateAt = -Infinity;
+      say('¡Ya!', 'start');
+    }
+    const s = { roster: game.roster, f: game.f, phase: game.phase, phaseEnd: game.phaseEnd, firstAt: game.firstAt };
+    const events = tickRace(s, t, petPos, (pid) => !game.gone.has(game.roster.indexOf(pid)) && here(pid));
+    game.firstAt = s.firstAt;
+    let end = null;
+    for (const e of events) {
+      if (e.type === 'finish') { send({ t: 'gfin', r: game.r, i: e.i, n: e.n }); applyFin(e.i, e.n); stateAt = -Infinity; }
+      else if (e.type === 'end') end = e.reason;
+    }
+    if (end) { const f = game.f.slice(); send({ t: 'gend', g: 'race', r: game.r, rs: end, f }); finish(end, f); return; }
     broadcastState(t);
   }
 
@@ -368,6 +401,7 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
         g: game.g, name: rules.name, phase: game.phase, left: Math.max(0, game.phaseEnd - t), role, play: game.play, seekerId: game.seeker >= 0 ? game.roster[game.seeker] : null,
         hidersLeft: game.g === 'hide' ? game.f.filter((v, i) => i !== game.seeker && v === -1).length : 0, scores: game.g === 'chicken' ? game.roster.map((p, i) => ({ id: p, name: name(p), n: game.f[i] })) : null,
         zone: game.zone, zoneName: game.zone ? HIDE_ZONES[game.zone].name : null, chick: game.chick, referee: referee() === id,
+        ...(game.g === 'race' ? { places: game.f.slice(), arrived: game.f.filter((v) => v > 0).length, total: game.roster.length - game.gone.size + game.f.filter((v, i) => v > 0 && game.gone.has(i)).length, place: mine >= 0 ? game.f[mine] : 0, since: game.phase === 'play' ? t - game.playAt : -1 } : {}),
         ...(game.g === 'soccer' ? { teams: game.teams.slice(), team: mine >= 0 ? game.teams[mine] : null, score: game.f.slice(0, 2), ball: { x: game.ball.x, y: game.ball.y }, pause: Math.max(0, game.pauseUntil - t) } : {}),
       };
     }
@@ -380,8 +414,8 @@ export function createGames({ id, send, present, pos, name = (i) => i, award = (
    */
   function movement() {
     if (!game || !game.play) return { frozen: false, zone: null, closed: false };
-    const frozen = (game.g === 'hide' && game.phase === 'count' && game.roster[game.seeker] === id) || (game.g === 'soccer' && game.phase === 'count');
-    return { frozen, zone: game.g === 'hide' && game.zone !== 'town' ? HIDE_ZONES[game.zone] : game.g === 'soccer' ? SOCCER_ZONE : null, closed: true };
+    const frozen = (game.g === 'hide' && game.phase === 'count' && game.roster[game.seeker] === id) || ((game.g === 'soccer' || game.g === 'race') && game.phase === 'count');
+    return { frozen, zone: game.g === 'hide' && game.zone !== 'town' ? HIDE_ZONES[game.zone] : game.g === 'soccer' ? SOCCER_ZONE : game.g === 'race' ? RACE_ZONE : null, closed: true };
   }
 
   /** For the seeker's screen: null, or `{ full, see(pet tile, inBush) }`. `full` = the countdown (everything dark). */

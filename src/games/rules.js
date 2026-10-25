@@ -21,6 +21,10 @@ export const GAME_RULES = {
     name: 'Cancha', play: 'Jugar a la Cancha', invite: '¡Fútbol! ¿Juegan?', min: 1,
     countMs: 3000, roundMs: 120000, goal: 3,
   },
+  race: {
+    name: 'Pista', play: 'Jugar a la Carrera', invite: '¡Carrera de obstáculos! ¿Juegan?', min: 1,
+    countMs: 3000, roundMs: 60000, capMs: 20000, slowMs: 1000, slowStepMs: 320, stars: [5, 3, 2], finishStars: 1,
+  },
 };
 export const PLAYABLE = Object.keys(GAME_RULES);
 export const isPlayable = (g) => typeof g === 'string' && Object.hasOwn(GAME_RULES, g);

@@ -101,8 +101,8 @@ export function validateMessage(raw, catalogue) {
 // A game has no host: the players' browsers agree on a referee (the lowest peer id among the players, see games/lobby.js) and only the
 // referee's `gstate`, `gfound`, `gchick`, `gcatch` and `gend` count. This module only checks shapes and ranges; who may say what is checked
 // by the receiver (games/manager.js).
-export const GAME_TYPES = new Set(['gopen', 'gjoin', 'gleave', 'grole', 'gzone', 'gstart', 'gstate', 'gfound', 'gchick', 'gcatch', 'gend', 'gteam', 'gball', 'ggoal']);
-export const PHASES = { hide: ['count', 'search'], chicken: ['play'], soccer: ['count', 'play'] };
+export const GAME_TYPES = new Set(['gopen', 'gjoin', 'gleave', 'grole', 'gzone', 'gstart', 'gstate', 'gfound', 'gchick', 'gcatch', 'gend', 'gteam', 'gball', 'ggoal', 'gfin']);
+export const PHASES = { hide: ['count', 'search'], chicken: ['play'], soccer: ['count', 'play'], race: ['count', 'play'] };
 export const END_REASONS = ['all', 'time', 'goal', 'left', 'few'];
 const isRound = (v) => typeof v === 'string' && /^[a-z0-9]{4,10}$/.test(v);
 const int = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
@@ -124,6 +124,7 @@ const intList = (v, lo, hi) => Array.isArray(v) && v.length <= MAX_PLAYERS && v.
  *   gball  { r, x, y, vx, vy, l, w } the ball: position in tenths of a tile, velocity in tenths of a tile a second, roster index of the last
  *                               player to touch it (-1 none), ms it waits on the centre spot (after a goal); screens advance it themselves
  *   ggoal  { r, tm, i, s }      team tm scored (roster index i touched it last, -1 none); s = [Azul, Rojo] goals now
+ *   gfin   { r, i, n }          roster index i reached the finish of the race in place n (gstate's f holds each place, 0 still running)
  *   gend   { g, r, rs, f }      the game (or a lobby that could not start: rs 'few') is over, with the final f
  */
 function validateGameMessage(m) {
@@ -164,6 +165,8 @@ function validateGameMessage(m) {
     case 'ggoal':
       return isRound(m.r) && (m.tm === 0 || m.tm === 1) && int(m.i, -1, MAX_PLAYERS - 1) && Array.isArray(m.s) && m.s.length === 2 && m.s.every((n) => int(n, 0, 99))
         ? { ...base, r: m.r, tm: m.tm, i: m.i, s: m.s.slice() } : null;
+    case 'gfin':
+      return isRound(m.r) && int(m.i, 0, MAX_PLAYERS - 1) && int(m.n, 1, MAX_PLAYERS) ? { ...base, r: m.r, i: m.i, n: m.n } : null;
     case 'gend':
       return isPlayable(m.g) && isRound(m.r) && END_REASONS.includes(m.rs) && intList(m.f, -2, 999) ? { ...base, g: m.g, r: m.r, rs: m.rs, f: m.f.slice() } : null;
     default:
@@ -191,6 +194,7 @@ export const LIMITS = {
   gteam: { burst: 3, perSec: 0.5 },
   gball: { burst: 12, perSec: 10 },    // a sample at every kick and bounce, and every 200 ms while it rolls
   ggoal: { burst: 4, perSec: 0.5 },
+  gfin: { burst: 14, perSec: 2 },      // the whole field may arrive at once
 };
 
 export function createRateLimiter(now = () => Date.now()) {

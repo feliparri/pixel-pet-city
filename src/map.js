@@ -30,8 +30,10 @@ export const TILES = {
   'y': { name: 'pitch', solid: false },        // the cancha's grass
   'g': { name: 'goal', solid: true },
   'j': { name: 'track', solid: false },        // the pista's lanes
-  'V': { name: 'hurdle', solid: false },       // walkable for now: the race game will make pets jump it
+  'V': { name: 'hurdle', solid: false },       // walkable: stepping onto it slows the pet
   'w': { name: 'puddle', solid: false },
+  'W': { name: 'hay', solid: false },          // a hay bale on the pista: walkable, it slows the pet
+  'f': { name: 'finish', solid: false },       // the checkered finish row of the pista
   // the shop
   '_': { name: 'floor', solid: false },
   'r': { name: 'rug', solid: false },
@@ -80,19 +82,19 @@ export const SIGNS = [
   { area: 'town', x: 16, y: 34, text: 'Escondida', sub: 'Jugar' },
   { area: 'town', x: 33, y: 42, text: 'Gallina', sub: 'Jugar' },
   { area: 'town', x: 13, y: 57, text: 'Cancha', sub: 'Jugar' },
-  { area: 'town', x: 12, y: 39, text: 'Pista', sub: 'Pronto' },
+  { area: 'town', x: 43, y: 69, text: 'Pista', sub: 'Jugar' },
   { area: 'shop', x: 6.5, y: 2, text: 'Tienda', sub: 'Próximamente' },
 ];
 
 /**
  * The games' places, all in the Parque. `spot`: the pad tiles a pet stands on to start the game, `sign`: its signpost, `zone`: the
- * tiles the game is played on (pets playing cannot leave it). `playable: false` places are drawn and signed but have no game yet.
+ * tiles the game is played on (pets playing cannot leave it).
  */
 export const GAME_PLACES = {
   hide: { name: 'Escondida', area: 'town', spot: [[17, 34]], sign: [16, 34], zone: { x: 1, y: 32, w: 46, h: 41 } },
   chicken: { name: 'Pillar la gallina', area: 'town', spot: [[29, 42]], sign: [33, 42], zone: { x: 26, y: 37, w: 11, h: 6 } },
   soccer: { name: 'Cancha', area: 'town', spot: [[13, 59]], sign: [13, 57], zone: { x: 13, y: 44, w: 22, h: 29 } },
-  race: { name: 'Pista', area: 'town', playable: false, spot: [[12, 40]], sign: [12, 39], zone: { x: 12, y: 38, w: 10, h: 5 } },
+  race: { name: 'Pista', area: 'town', spot: [[40, 69]], sign: [43, 69], icon: [43.5, 67.15], zone: { x: 36, y: 46, w: 9, h: 27 } },
 };
 export const GAME_IDS = Object.keys(GAME_PLACES);
 /**
@@ -103,10 +105,19 @@ export const GAME_IDS = Object.keys(GAME_PLACES);
  */
 export const PITCH = { x: 16, y: 48, w: 16, h: 22 };
 export const GOAL = { x0: 21, x1: 27, depth: 2 };
+/**
+ * The pista (obstacle race), in tiles: three lanes x0..x1 running north from the start line (the bottom edge of row yBottom, pets line up
+ * below it) to the checkered finish row yTop. A fence runs along both sides and across the far end. Hurdles, hay bales and puddles (the
+ * OBSTACLES chars) are walkable but slow a pet that steps onto them.
+ */
+export const TRACK = { x0: 39, x1: 41, yTop: 48, yBottom: 67 };
+export const OBSTACLES = new Set(['V', 'W', 'w']);
 export const inZone = (g, x, y) => {
   const z = Object.hasOwn(GAME_PLACES, g) ? GAME_PLACES[g].zone : null;
   return !!z && Number.isInteger(x) && Number.isInteger(y) && x >= z.x && y >= z.y && x < z.x + z.w && y < z.y + z.h;
 };
+/** Is there an obstacle of the pista (hurdle, hay bale or puddle) on this tile of the town? */
+export const isObstacle = (x, y) => OBSTACLES.has(tileAt(x, y, 'town'));
 /** The game whose pad is at this tile of the town, or null. */
 export const spotAt = (x, y) => GAME_IDS.find((g) => GAME_PLACES[g].spot.some(([sx, sy]) => sx === x && sy === y)) || null;
 
@@ -114,7 +125,7 @@ export const spotAt = (x, y) => GAME_IDS.find((g) => GAME_PLACES[g].spot.some(([
 export const PLACES = [
   { id: 'shop', area: 'town', icon: 'shop', x: 35.5, y: 5.7 },
   { id: 'park', area: 'town', icon: 'park', x: 21.5, y: 29.15 },
-  ...GAME_IDS.map((g) => ({ id: g, area: 'town', icon: g, x: GAME_PLACES[g].spot[0][0] + 0.5, y: GAME_PLACES[g].sign[1] - 1.85 })),
+  ...GAME_IDS.map((g) => ({ id: g, area: 'town', icon: g, x: GAME_PLACES[g].icon ? GAME_PLACES[g].icon[0] : GAME_PLACES[g].spot[0][0] + 0.5, y: GAME_PLACES[g].icon ? GAME_PLACES[g].icon[1] : GAME_PLACES[g].sign[1] - 1.85 })),
 ];
 
 export const SPAWNS = [[19, 18], [28, 18], [18, 21], [29, 21], [19, 24], [28, 24], [22, 24], [25, 24]];
@@ -180,15 +191,11 @@ function buildTown() {
     fill(12, 37, 35, 36, '.');
     fill(23, 37, 2, 8, '=');
     set(13, 37, 'L'); set(25, 37, 'L');
-    fill(11, 43, 13, 2, '='); fill(11, 43, 2, 18, '=');                // the way to the cancha: along the road's end, then down the west side of the pitch
+    fill(11, 43, 34, 2, '='); fill(11, 43, 2, 18, '=');                // the way to the cancha: along the road's end, then down the west side of the pitch
     for (const gp of Object.values(GAME_PLACES)) {
       for (const [x, y] of gp.spot) set(x, y, 'p');
       set(gp.sign[0], gp.sign[1], 'S');
     }
-    // the pista: three lanes with two hurdles each and a few puddles
-    fill(13, 39, 9, 3, 'j');
-    for (const x of [16, 19]) fill(x, 39, 1, 3, 'V');
-    for (const [x, y] of [[14, 40], [18, 41], [21, 39], [17, 39]]) set(x, y, 'w');
     // the gallinero: a fenced pen with a coop and the gate open towards the pad
     fill(28, 38, 7, 1, 'F'); fill(28, 41, 7, 1, 'F'); fill(28, 39, 1, 2, 'F'); fill(34, 39, 1, 2, 'F');
     set(29, 41, 'a'); fill(32, 39, 2, 2, 'G');
@@ -200,10 +207,20 @@ function buildTown() {
     fill(GOAL.x0, py - GOAL.depth, GOAL.x1 - GOAL.x0, GOAL.depth, 'g'); fill(GOAL.x0, py + ph, GOAL.x1 - GOAL.x0, GOAL.depth, 'g');
     for (const [x, y] of [[14, 46], [33, 46], [14, 71], [33, 71], [14, 62]]) set(x, y, 'L');
     for (const [x, y] of [[3, 46], [8, 48], [4, 52], [9, 55], [3, 58], [8, 62], [5, 66], [9, 69], [3, 71], [36, 47], [42, 50], [38, 54], [45, 57], [37, 61], [43, 64], [39, 68], [45, 70], [35, 50], [20, 72], [29, 72]]) set(x, y, (x + y) % 3 ? 't' : 'T');
-    for (const [x, y] of [[10, 45], [10, 51], [9, 58], [10, 64], [6, 70], [36, 45], [36, 52], [35, 57], [36, 65], [41, 71], [19, 44], [28, 44], [24, 72], [4, 49], [44, 53], [6, 60], [41, 60]]) set(x, y, 'b');
+    for (const [x, y] of [[10, 45], [10, 51], [9, 58], [10, 64], [6, 70], [36, 45], [36, 52], [35, 57], [36, 65], [41, 71], [24, 72], [4, 49], [44, 53], [6, 60], [41, 60]]) set(x, y, 'b');
     // the rest of the park: trees at the edges and bushes to hide in
     for (const [x, y] of [[12, 42], [22, 40], [36, 42], [46, 42], [46, 37], [27, 40], [42, 42], [26, 42]]) set(x, y, (x + y) % 3 ? 't' : 'T');
     for (const [x, y] of [[14, 37], [18, 38], [21, 37], [15, 42], [20, 42], [22, 38], [22, 42], [26, 38], [26, 41], [36, 38], [36, 41], [37, 42], [44, 42], [46, 39], [46, 41], [19, 34], [22, 33], [28, 34], [32, 32], [38, 34], [45, 34], [11, 33], [26, 32], [39, 32]]) set(x, y, 'b');
+    // the pista: a long fenced track of three lanes running north from the start line to the checkered finish, with obstacles (see TRACK)
+    fill(36, 46, 9, 27, '.');
+    for (const [x, y] of GAME_PLACES.race.spot) set(x, y, 'p');
+    set(GAME_PLACES.race.sign[0], GAME_PLACES.race.sign[1], 'S');
+    const { x0, x1, yTop, yBottom } = TRACK;
+    fill(x0 - 1, yTop - 1, x1 - x0 + 3, 1, 'F'); fill(x0 - 1, yTop, 1, yBottom - yTop + 1, 'F'); fill(x1 + 1, yTop, 1, yBottom - yTop + 1, 'F');
+    fill(x0, yTop, x1 - x0 + 1, 1, 'f'); fill(x0, yTop + 1, x1 - x0 + 1, yBottom - yTop, 'j');
+    const rows = { 64: 'V.V', 62: '.w.', 60: 'W..', 58: '.VW', 56: 'w.V', 54: '.Ww', 52: 'VV.', 50: '..W' };
+    for (const [y, pattern] of Object.entries(rows)) for (let i = 0; i < pattern.length; i++) if (pattern[i] !== '.') set(x0 + i, Number(y), pattern[i]);
+    for (const [x, y] of [[37, 50], [37, 60], [44, 52], [44, 62], [37, 71], [44, 71]]) set(x, y, (x + y) % 3 ? 't' : 'T');
     // trees: the border and some clumps between the houses (never on a path)
     for (let x = 0; x < w; x++) { set(x, 0, x % 2 ? 'T' : 't'); set(x, h - 1, x % 2 ? 't' : 'T'); }
     for (let x = 1; x < w - 1; x++) set(x, h - 1, 'h');          // the park's south edge is a low hedge: tall trees there would cover the game pads

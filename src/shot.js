@@ -13,9 +13,9 @@ import { Walker } from './walker.js';
 import { createLife, stepLife, lifeFrame } from './life.js';
 
 const q = new URLSearchParams(location.search);
-const kind = ['town', 'shop', 'view', 'park', 'seek', 'coop', 'sprint', 'life', 'pitch'].includes(q.get('shot')) ? q.get('shot') : 'town';
+const kind = ['town', 'shop', 'view', 'park', 'seek', 'coop', 'sprint', 'life', 'pitch', 'race'].includes(q.get('shot')) ? q.get('shot') : 'town';
 const hour = q.has('hour') && Number.isFinite(Number(q.get('hour'))) ? Number(q.get('hour')) : 13;
-const scale = Math.max(1, Math.min(6, Number(q.get('scale')) | 0 || (kind === 'shop' ? 4 : kind === 'view' || kind === 'life' || kind === 'pitch' || kind === 'seek' || kind === 'coop' || kind === 'sprint' ? 3 : 2)));
+const scale = Math.max(1, Math.min(6, Number(q.get('scale')) | 0 || (kind === 'shop' ? 4 : kind === 'view' || kind === 'life' || kind === 'pitch' || kind === 'race' || kind === 'seek' || kind === 'coop' || kind === 'sprint' ? 3 : 2)));
 
 const pet = (id, species, stage, items, x, y, d = 'down') => ({ id, name: id, look: { species, stage, items }, walker: new Walker(x, y, d), emote: null });
 const CAST = {
@@ -25,6 +25,7 @@ const CAST = {
   sprint: [pet('Mochi', 'cat', 2, ['tophat', '', '', ''], 19, 24, 'right'), pet('Luna', 'seal', 1, ['', '', '', ''], 17, 26, 'right')],
   life: [pet('Mochi', 'cat', 2, ['tophat', '', '', ''], 14, 36, 'right'), pet('Rana', 'frog', 2, ['', '', '', ''], 18, 39, 'left')],
   pitch: [pet('Mochi', 'cat', 2, ['tophat', '', '', ''], 22, 62, 'up'), pet('Luna', 'seal', 1, ['', '', '', ''], 27, 56, 'down'), pet('Rana', 'frog', 2, ['', '', '', ''], 19, 54, 'right'), pet('Nube', 'cat', 0, ['', '', '', ''], 25, 66, 'up'), pet('Coco', 'seal', 2, ['', '', '', ''], 13, 59, 'right')],
+  race: [pet('Mochi', 'cat', 2, ['tophat', '', '', ''], 40, 59, 'up'), pet('Luna', 'seal', 1, ['', '', '', ''], 39, 68, 'up'), pet('Rana', 'frog', 2, ['', '', '', ''], 41, 61, 'up'), pet('Nube', 'cat', 0, ['', '', '', ''], 40, 69, 'up')],
   shop: [pet('Mochi', 'cat', 2, ['', '', '', ''], 6, 8, 'up'), pet('Luna', 'seal', 1, ['', '', '', ''], 9, 7, 'left')],
 };
 
@@ -49,6 +50,7 @@ async function main() {
   stepLife(life, [], 0);
   stepLife(life, entities.filter((e) => e.walker.tileY > 28).map((e) => ({ x: e.walker.tileX, y: e.walker.tileY })), lifeNow - 500);
   const lifeScene = kind === 'shop' ? null : lifeFrame(life, lifeNow, amb);
+  if (kind === 'race') { vw = 12 * TILE; vh = 28 * TILE; cam = { x: 34 * TILE, y: 46 * TILE }; }
   if (kind === 'pitch') { vw = 24 * TILE; vh = 32 * TILE; cam = { x: 12 * TILE, y: 44 * TILE }; }
   if (kind === 'life') { vw = 20 * TILE; vh = 14 * TILE; cam = { x: 2 * TILE, y: 30 * TILE }; }
   const scene = document.createElement('canvas');

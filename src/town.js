@@ -7,6 +7,7 @@ import { ambientAt, hourNow } from './daynight.js';
 import { entranceState } from './entrance.js';
 import { createGames } from './games/manager.js';
 import { GAME_RULES } from './games/rules.js';
+import { stumbled, paceAt, RACE } from './games/race.js';
 import { createLife, stepLife, lifeFrame } from './life.js';
 
 const FADE_MS = 240;                                  // the fade-in after a door
@@ -40,6 +41,7 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
   });
   const chickWalker = new Walker(30, 40);
   let chickSeq = 0, hudAt = -Infinity, wasLobby = null;
+  let racing = false, slowUntil = 0, lastTile = null;          // the obstacle race: a pet that steps onto an obstacle walks slower for RACE.slowMs
   self.walker.onStep = (x, y, d) => net.sendPos(x, y, d, self.area);
   net.sendPos(sx, sy, 'down', 'town');
 
@@ -108,6 +110,12 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
       const nx = w.tileX + dx, ny = w.tileY + dy;
       if (isWalkable(nx, ny, self.area) && canEnter(nx, ny, mv.zone, mv.closed)) w.stepToward(nx, ny); else w.face(d);
     }
+    if (racing) {
+      const cur = { x: w.tileX, y: w.tileY };
+      if (stumbled(lastTile, cur)) { slowUntil = t + RACE.slowMs; games.notify('¡Tropezaste!', 'wall'); }
+      lastTile = cur;
+      w.stepOverride = paceAt(t, slowUntil);
+    } else if (w.stepOverride) { w.stepOverride = null; lastTile = null; }
     w.update(dt);
     if (!w.busy && !self.fx) {                                    // arrived on a door: go through it
       const door = doorAt(w.tileX, w.tileY, self.area);
@@ -126,6 +134,7 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
       state.life = lifeFrame(life, t, state.amb);
     } else state.life = null;
     const gv = games.view();
+    racing = !!(gv.game && gv.game.g === 'race' && gv.game.play && gv.game.phase === 'play' && self.area === 'town');
     const ck = gv.game && gv.game.chick;
     if (ck && ck.seq !== chickSeq) {                                                       // a new motion: continue along its route, correct only what differs
       chickSeq = ck.seq;

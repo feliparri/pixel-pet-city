@@ -10,6 +10,7 @@ const clock = (ms) => { const s = secs(ms); return `${Math.floor(s / 60)}:${Stri
 /** The banner text for a game, or ''. */
 export function bannerText(game) {
   if (!game || !game.play) return '';
+  if (game.g === 'race') return game.phase === 'count' ? String(secs(game.left)) : game.since >= 0 && game.since < 900 ? '¡Ya!' : '';
   if (game.g === 'soccer' && game.phase === 'count') return `¡Saque en ${secs(game.left)}!`;
   if (game.g === 'hide' && game.phase === 'count') return game.role === 'seeker' ? `Contando... ${secs(game.left)}` : `¡Escóndete! ${secs(game.left)}`;
   if (game.g === 'hide' && game.role === 'found') return '¡Te encontraron! Mira el juego';
@@ -23,6 +24,7 @@ export function barText(info) {
   if (!game) return '';
   const watching = game.play ? '' : ' · Mirando';
   if (game.g === 'hide') return `${game.name}${game.zoneName ? ` (${game.zoneName})` : ''} · ${game.phase === 'count' ? `Cuenta ${secs(game.left)}` : clock(game.left)} · Faltan ${game.hidersLeft}${watching}`;
+  if (game.g === 'race') return game.phase === 'count' ? `${game.name} · Salida en ${secs(game.left)}` : `${game.name} · ${clock(game.left)} · Llegaron ${game.arrived}/${game.total}${game.play && game.place > 0 ? ` · Tú: ${game.place}º` : watching}`;
   if (game.g === 'soccer') return `${game.name} · ${clock(game.left)} · Azul ${game.score[0]} - ${game.score[1]} Rojo${game.play && game.team !== null ? ` · Tú: ${TEAMS[game.team]}` : watching}`;
   const score = game.scores.map((s) => `${s.name} ${s.n}`).join(' · ');
   return `${game.name} · ${clock(game.left)} · ${score}${watching}`;
@@ -34,6 +36,10 @@ export function resultLines(res) {
     const [a, b] = res.score;
     return [{ text: a === b ? `Empate ${a} - ${b}` : `Azul ${a} - ${b} Rojo`, win: false },
       ...res.rows.map((r) => ({ text: `${res.names[r.i]} (${TEAMS[r.team]})`, win: a !== b && r.team === (a > b ? 0 : 1) }))];
+  }
+  if (res.g === 'race') {
+    const done = res.rows.filter((r) => r.place > 0).sort((a, b) => a.place - b.place);
+    return [...done.map((r) => ({ text: `${r.place}º ${res.names[r.i]}`, win: r.place === 1 })), ...res.rows.filter((r) => r.place === 0).map((r) => ({ text: `${res.names[r.i]}: no llegó`, win: false }))];
   }
   return res.rows.map((r) => {
     const who = res.names[r.i];
@@ -93,7 +99,7 @@ export function createHud($, { onPlay, onJoin, onSeek, onLeave, onDismiss, onZon
       $('results').hidden = !results;
       if (results && resultKey !== results) {
         resultKey = results;
-        $('results-title').textContent = results.g === 'hide' ? '¡Terminó la escondida!' : results.g === 'soccer' ? '¡Terminó el partido!' : '¡Terminó la gallina!';
+        $('results-title').textContent = results.g === 'hide' ? '¡Terminó la escondida!' : results.g === 'soccer' ? '¡Terminó el partido!' : results.g === 'race' ? '¡Terminó la carrera!' : '¡Terminó la gallina!';
         $('results-list').replaceChildren(...resultLines(results).map((l) => { const li = document.createElement('li'); li.textContent = l.text; if (l.win) li.className = 'win'; return li; }));
         $('results-stars').textContent = results.play ? (results.stars > 0 ? `⭐ +${results.stars}` : 'Sin estrellas esta vez') : '';
       }

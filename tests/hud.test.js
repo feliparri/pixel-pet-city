@@ -46,3 +46,17 @@ test('football: the bar shows the score and my team, the banner counts down to t
   ]);
   assert.equal(resultLines({ ...res, score: [1, 1], rows: res.rows.map((r) => ({ ...r, stars: 1 })) })[0].text, 'Empate 1 - 1');
 });
+
+test('race: the banner counts 3-2-1 then says go, the bar shows who arrived, the results list the places', () => {
+  const g = { g: 'race', name: 'Pista', phase: 'play', left: 41000, play: true, since: 2500, arrived: 1, total: 3, place: 2 };
+  assert.equal(bannerText({ ...g, phase: 'count', left: 2100, since: -1 }), '3');
+  assert.equal(bannerText({ ...g, phase: 'count', left: 900, since: -1 }), '1');
+  assert.equal(bannerText({ ...g, since: 300 }), '¡Ya!');
+  assert.equal(bannerText(g), '');
+  assert.equal(bannerText({ ...g, phase: 'count', left: 2100, play: false }), '');
+  assert.equal(barText({ game: g }), 'Pista · 0:41 · Llegaron 1/3 · Tú: 2º');
+  assert.equal(barText({ game: { ...g, place: 0 } }), 'Pista · 0:41 · Llegaron 1/3');
+  assert.equal(barText({ game: { ...g, phase: 'count', left: 2100, since: -1 } }), 'Pista · Salida en 3');
+  const res = { g: 'race', names: ['Ana', 'Beto', 'Cleo'], rows: [{ i: 0, place: 2, stars: 3 }, { i: 1, place: 0, stars: 0 }, { i: 2, place: 1, stars: 5 }] };
+  assert.deepEqual(resultLines(res), [{ text: '1º Cleo', win: true }, { text: '2º Ana', win: false }, { text: 'Beto: no llegó', win: false }]);
+});

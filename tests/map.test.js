@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { AREAS, AREA_NAMES, TILES, SIGNS, SPAWNS, ENTRY, HOUSES, DOORS, GAME_PLACES, GAME_IDS, PLACES, PITCH, GOAL, MAP_W, MAP_H, inZone, spotAt, isWalkable, inMap, tileAt, doorAt, getArea, TILE } from '../src/map.js';
+import { AREAS, AREA_NAMES, TILES, SIGNS, SPAWNS, ENTRY, HOUSES, DOORS, GAME_PLACES, GAME_IDS, PLACES, PITCH, GOAL, TRACK, isObstacle, MAP_W, MAP_H, inZone, spotAt, isWalkable, inMap, tileAt, doorAt, getArea, TILE } from '../src/map.js';
 import { ICON_NAMES } from '../src/art/icons.js';
 import { findPath, stepDir } from '../src/path.js';
 
@@ -185,4 +185,31 @@ test('every place has a floating icon, and the icons sit above their pads', () =
   assert.deepEqual(ids, ['chicken', 'hide', 'park', 'race', 'shop', 'soccer']);
   for (const p of PLACES) assert.ok(ICON_NAMES.includes(p.icon), `icon ${p.icon} is drawn`);
   for (const g of GAME_IDS) { const p = PLACES.find((e) => e.id === g); assert.ok(p.y < GAME_PLACES[g].spot[0][1]); }
+});
+
+test('the pista: three lanes running north from a start line to a checkered finish, fenced, with obstacles and always a free lane, and a pad below the start', () => {
+  const lanes = []; for (let x = TRACK.x0; x <= TRACK.x1; x++) lanes.push(x);
+  assert.equal(lanes.length, 3);
+  assert.ok(TRACK.yBottom - TRACK.yTop >= 16, 'a long track: at least 16 rows');
+  for (const x of lanes) {
+    assert.equal(tileAt(x, TRACK.yTop), 'f', `finish ${x}`);
+    for (let y = TRACK.yTop + 1; y <= TRACK.yBottom; y++) assert.ok(isWalkable(x, y), `lane ${x},${y}`);
+    assert.equal(isWalkable(x, TRACK.yTop - 1), false, 'the fence closes the far end');
+  }
+  for (let y = TRACK.yTop; y <= TRACK.yBottom; y++) for (const x of [TRACK.x0 - 1, TRACK.x1 + 1]) assert.equal(isWalkable(x, y), false, `fence ${x},${y}`);
+  let n = 0;
+  for (let y = TRACK.yTop + 1; y <= TRACK.yBottom; y++) {
+    const blocked = lanes.filter((x) => isObstacle(x, y)).length;
+    n += blocked;
+    assert.ok(blocked <= 2, `row ${y} leaves a free lane`);
+  }
+  assert.ok(n >= 10, `obstacles: ${n}`);
+  const kinds = new Set(); for (let y = TRACK.yTop + 1; y <= TRACK.yBottom; y++) for (const x of lanes) if (isObstacle(x, y)) kinds.add(tileAt(x, y));
+  assert.deepEqual([...kinds].sort(), ['V', 'W', 'w'], 'hurdles, hay bales and puddles');
+  assert.equal(isObstacle(0, 0), false); assert.equal(isObstacle(-1, 5), false);
+  const [px, py] = GAME_PLACES.race.spot[0];
+  assert.ok(py > TRACK.yBottom && inZone('race', px, py), 'the pad is below the start line, in the zone');
+  assert.ok(findPath(px, py, TRACK.x0, TRACK.yTop + 2).length > 0 && findPath(23, 30, px, py).length > 0);
+  for (let y = TRACK.yTop; y <= TRACK.yBottom; y++) for (const x of lanes) assert.ok(inZone('race', x, y));
+  assert.equal(PLACES.find((p) => p.id === 'race').y < py, true);
 });

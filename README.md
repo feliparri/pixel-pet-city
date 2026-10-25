@@ -41,7 +41,12 @@ small top-down town, walk around and greet each other with presets. Plain HTML, 
     (`gball`) at every kick and every 200 ms while it rolls; every browser advances that sample with the same fixed-step physics. A goal
     (`ggoal`) puts the ball back on the centre spot for 1.8 s. First to 3 goals or 2 minutes; the winning team earns 4 stars each, a draw
     gives everybody 1, and with nobody on the other team there are no stars. North goal = Azul scores, south goal = Rojo scores.
-  - The pista (race) is drawn and signed but not playable yet.
+  - **Pista** (obstacle race, works solo as practice): a 20 row track of three lanes in the south-east of the Parque, fenced, running
+    north from a start line to a checkered finish row (the pad is below the start line). Hurdles, hay bales and puddles are walkable but
+    a pet that steps onto one walks at half pace for 1 s ("¡Tropezaste!"; each screen slows its own pet, the others just see slower steps).
+    Everybody lines up below the start line, a 3-2-1 countdown, then "¡Ya!". The referee gives the places in the order the pets reach the
+    finish row (`gfin`, ties by roster order) and shows who has arrived; the race closes when everybody is in, 20 s after the first
+    finisher, or at 60 s. Stars by place: 5, 3, 2, then 1 for any other finisher; nothing for those who did not arrive or when racing alone.
   - Stars show in the HUD (`⭐ 12`) and belong to the real pet: they are kept in the trip's server state (`trip-save`, `{ v: 1, stars }`,
     saved a moment after each change); the shop that spends them is a later stage.
   - No host: one browser among the players is the invisible *referee* (the lowest peer id among the players) that simulates the shared
@@ -112,7 +117,7 @@ authorization policy); see `docs/room-access.md`.
 | `src/render.js`, `src/sprites.js`, `src/font.js`, `src/daynight.js` | drawing: integer scale, camera, props sorted with pets, day/night tint and lights |
 | `tools/stamp.mjs` | cache-busting: run `node tools/stamp.mjs` before committing changes to `src/`, `style.css` or `config.js` |
 | `shot.html`, `tools/shots.mjs` | the preview (below) |
-| `src/games/*.js` (`soccer.js`: ball physics, teams, stars), `src/hud.js`, `src/stars.js` | game rules (pure), the per-browser game manager, the overlay and the star counter |
+| `src/games/*.js` (`soccer.js`: ball physics, teams, stars; `race.js`: places, stars, slowdown), `src/hud.js`, `src/stars.js` | game rules (pure), the per-browser game manager, the overlay and the star counter |
 | `src/town.js`, `src/main.js` | input and the game loop; the lobby and town screens |
 
 ## Previews

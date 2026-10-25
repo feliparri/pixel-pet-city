@@ -8,7 +8,7 @@ import { seekerSees, touching, createHide, tickHide, hideStars, hideResults } fr
 import { createChicken, stepChicken, catcher, spawnTile, CHICKEN, planRoute, encodeRoute, decodeRoute } from '../src/games/chicken.js';
 import { Walker } from '../src/walker.js';
 import { createGames } from '../src/games/manager.js';
-import { GAME_PLACES, HIDE_ZONES, DOORS, chickenTile, isWalkable, tileAt, TILES } from '../src/map.js';
+import { GAME_PLACES, HIDE_ZONES, DOORS, chickenTile, isWalkable, tileAt, TILES, TRACK } from '../src/map.js';
 
 const A = 'aaaaaap', B = 'bbbbbbp', C = 'ccccccp', D = 'ddddddp';
 const ok = (m) => validateMessage({ id: A, ...m }, {});
@@ -902,4 +902,65 @@ test('football: alone it is practice, with nobody to play against there are no s
   const before = ballOf(q, B);
   q.mgr(B).onMessage({ t: 'gball', id: B, r: q.mgr(A).view().game ? 'zzzzzz' : 'zzzzzz', x: 10, y: 10, vx: 0, vy: 0, l: 0, w: 0 });
   assert.deepEqual(ballOf(q, B), before, 'a message from the wrong round or player changes nothing');
+});
+
+// ---- the obstacle race ----
+test('race messages: a finish is validated, and the race has a countdown phase', () => {
+  assert.deepEqual(ok({ t: 'gfin', r: 'abc123', i: 2, n: 1, x: 1 }), { t: 'gfin', id: A, r: 'abc123', i: 2, n: 1 });
+  for (const m of [{ t: 'gfin', r: 'abc123', i: 13, n: 1 }, { t: 'gfin', r: 'abc123', i: 0, n: 0 }, { t: 'gfin', r: 'abc123', i: 0, n: 14 }, { t: 'gfin', i: 0, n: 1 }]) assert.equal(ok(m), null, JSON.stringify(m));
+  assert.ok(ok({ t: 'gstate', g: 'race', r: 'abc123', ph: 'count', left: 3000, f: [0, 0] }));
+  assert.ok(ok({ t: 'gopen', g: 'race', r: 'abc123', left: 10000 }));
+  assert.equal(ok({ t: 'gstate', g: 'race', r: 'abc123', ph: 'search', left: 1, f: [] }), null);
+  assert.ok(LIMITS.gfin && GAME_TYPES.has('gfin'));
+});
+
+test('race: a 3-2-1 countdown at the start line, then the places in order of arrival, and stars by place', () => {
+  const r = room([A, B, C]);
+  r.mgr(A).open('race'); r.mgr(B).join(); r.mgr(C).join();
+  r.run(4000);
+  for (const id of [A, B, C]) {
+    const v = r.mgr(id).view().game;
+    assert.deepEqual([v.g, v.phase, v.play], ['race', 'count', true]);
+  }
+  assert.equal(r.mgr(A).movement().frozen, true, 'nobody moves during the countdown');
+  assert.equal(r.mgr(A).movement().zone.name, 'Pista');
+  const slots = [A, B, C].map((id) => r.mgr(id).takeStart());
+  assert.ok(slots.every((s) => s && s[1] > TRACK.yBottom), 'everybody lines up below the start line');
+  assert.equal(new Set(slots.map((s) => s.join())).size, 3, 'on different lanes');
+  assert.ok(r.mgr(A).view().game.left > 0 && r.mgr(A).view().game.left <= 3000);
+  r.run(2200);
+  assert.deepEqual([r.mgr(B).view().game.phase, r.mgr(B).movement().frozen], ['play', false]);
+  assert.ok(r.mgr(B).view().game.since >= 0 && r.mgr(B).view().game.since < 900, 'just started: the screen shows "¡Ya!"');
+  r.place(B, 40, 55); r.run(500);
+  r.place(C, 41, TRACK.yTop); r.run(300);
+  assert.deepEqual(r.mgr(A).view().game.places, [0, 0, 1]);
+  assert.ok(r.mgr(A).view().notices.some((n) => /C.*1/.test(n.text)), 'the arrival is announced');
+  r.place(A, 39, TRACK.yTop); r.run(300);
+  assert.equal(r.mgr(B).view().game.arrived, 2);
+  r.place(B, 40, TRACK.yTop); r.run(500);
+  assert.equal(r.mgr(A).view().game, null, 'everybody finished: over');
+  const res = r.mgr(C).view().results;
+  assert.deepEqual([res.g, res.reason], ['race', 'all']);
+  assert.deepEqual(res.rows.map((x) => [x.place, x.stars]), [[2, 3], [3, 2], [1, 5]]);
+  assert.deepEqual([r.stars.get(A), r.stars.get(B), r.stars.get(C)], [3, 2, 5]);
+});
+
+test('race: those who never arrive get nothing, the race closes 20 s after the first finisher, and a lone racer is practising', () => {
+  const r = room([A, B]);
+  r.mgr(A).open('race'); r.mgr(B).join();
+  r.run(7200);
+  r.place(A, 40, TRACK.yTop);
+  r.run(21000);
+  assert.equal(r.mgr(B).view().game, null);
+  const res = r.mgr(B).view().results;
+  assert.equal(res.reason, 'time');
+  assert.deepEqual(res.rows.map((x) => [x.place, x.stars]), [[1, 5], [0, 0]]);
+  assert.deepEqual([r.stars.get(A), r.stars.get(B)], [5, 0]);
+  const solo = room([A]);
+  solo.mgr(A).open('race');
+  solo.run(3500 + 3200);
+  solo.place(A, 40, TRACK.yTop);
+  solo.run(500);
+  assert.equal(solo.mgr(A).view().results.reason, 'all');
+  assert.equal(solo.stars.get(A), 0);
 });
