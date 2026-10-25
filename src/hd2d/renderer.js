@@ -5,7 +5,7 @@ import { TILE, SIGNS, PLACES, getArea } from '../map.js';
 import { createRenderer, drawEmoteBubble, MIN_VIEW_H, VIEW_H } from '../render.js';
 import { drawText, textWidth, textCanvas } from '../font.js';
 import { badge, bobY, BADGE } from '../art/icons.js';
-import { cameraFor, focusBounds, snapFocus, sortBackToFront, screenToTile, standAt, project } from './camera.js';
+import { cameraFor, followFocus, snapFocus, sortBackToFront, screenToTile, standAt, project } from './camera.js';
 import { groundMult } from './light.js';
 import { buildWorld, bakeGround, drawGround, standingItems, drawGlows, fountainItem } from './scene.js';
 import { createFx } from './fx.js';
@@ -69,9 +69,8 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
 
     const mp = state.me.walker.pos();                                   // the camera follows the player, inside the map
     const probe = cameraFor(view.w, view.h, MAP_W / 2, MAP_H / 2, 1, { ref });
-    const b = focusBounds(probe, view.w, view.h, MAP_W, MAP_H);
-    const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-    const tx = clamp(mp.x * TILE + TILE / 2, b.x0, b.x1), ty = clamp(mp.y * TILE + TILE / 2, b.y0, b.y1);
+    const t = followFocus(view.w, view.h, mp.x * TILE + TILE / 2, mp.y * TILE + TILE, MAP_W, MAP_H, { ref });
+    const tx = t.x, ty = t.y;
     if (!focus) focus = { x: tx, y: ty };
     else { const k = 1 - Math.exp(-dt / 140); focus.x += (tx - focus.x) * k; focus.y += (ty - focus.y) * k; }
     const [fxp, fyp] = snapFocus(probe, focus.x, focus.y);

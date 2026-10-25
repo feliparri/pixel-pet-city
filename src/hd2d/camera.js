@@ -122,3 +122,22 @@ export function focusBounds(cam, viewW, viewH, mapW, mapH, northSlack = 48) {
   const [x0, x1] = span(left, right, mapW), [y0, y1] = span(north, south, mapH);
   return { x0, x1, y0, y1 };
 }
+
+/**
+ * Where the camera's focus goes to follow a player standing at world (px, py) (the feet): inside `focusBounds` so the view stays on the
+ * map, except where that would push the player toward the edge of the screen: then the focus moves back toward the player just far enough
+ * that the player stays inside a margin of the view (what lies beyond the map's edge is only fog and darkness). `opts` are the cameraFor options.
+ */
+export function followFocus(viewW, viewH, px, py, mapW, mapH, opts = {}, margin = { x: 0.1, top: 0.06, bottom: 0.1 }) {
+  const probe = cameraFor(viewW, viewH, mapW / 2, mapH / 2, 1, opts), b = focusBounds(probe, viewW, viewH, mapW, mapH);
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const cx = clamp(px, b.x0, b.x1), cy = clamp(py, b.y0, b.y1);
+  const inside = (fx, fy) => {
+    const p = project(cameraFor(viewW, viewH, fx, fy, 1, opts), px, py);
+    return !!p && p.x >= viewW * margin.x && p.x <= viewW * (1 - margin.x) && p.y - 34 * p.scale >= viewH * margin.top && p.y <= viewH * (1 - margin.bottom);
+  };
+  if (inside(cx, cy)) return { x: cx, y: cy };
+  let lo = 0, hi = 1;                                                    // the least step towards the player that keeps it in view (hi = 1 is the player itself)
+  for (let i = 0; i < 14; i++) { const mid = (lo + hi) / 2; if (inside(cx + (px - cx) * mid, cy + (py - cy) * mid)) hi = mid; else lo = mid; }
+  return { x: cx + (px - cx) * hi, y: cy + (py - cy) * hi };
+}

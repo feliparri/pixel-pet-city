@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { makeCamera, cameraFor, MAX_REACH, focusBounds, snapScale, snapFocus, visibleTiles, project, unproject, groundRow, depthOf, billboardScale, standAt, tileToScreen, screenToTile, sortBackToFront, TILE } from '../src/hd2d/camera.js';
+import { makeCamera, cameraFor, MAX_REACH, focusBounds, followFocus, snapScale, snapFocus, visibleTiles, project, unproject, groundRow, depthOf, billboardScale, standAt, tileToScreen, screenToTile, sortBackToFront, TILE } from '../src/hd2d/camera.js';
 import { groundMult, NIGHT_TINT, falloff, lightAt, nightMultiply, spriteGrade, approach, LAMP_RADIUS } from '../src/hd2d/light.js';
 import { createGovernor, LEVELS, SLOW_MS } from '../src/hd2d/quality.js';
 import { Wanderer, rng } from '../src/hd2d/wander.js';
-import { isWalkable } from '../src/map.js';
+import { isWalkable, getArea } from '../src/map.js';
 
 const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} is not within ${eps} of ${b}`);
 const cam = (extra = {}) => makeCamera({ focusX: 400, focusY: 320, pitch: 40, dist: 330, focal: 1000, cx: 640, cy: 380, ...extra });
@@ -239,4 +239,29 @@ test('the levels only get cheaper: resolution never rises and effects are only e
     assert.ok(b.res <= a.res && b.rowStep >= a.rowStep);
     assert.ok(!(b.bloom && !a.bloom) && !(b.tiltshift && !a.tiltshift));
   }
+});
+
+test('the player stays on screen with a margin on every walkable tile, also along the edges of the map', () => {
+  const town = getArea('town'), W = town.w * TILE, H = town.h * TILE;
+  for (const [vw, vh, ref] of [[1280, 720, 230], [1266, 585, 170], [750, 1136, 230]]) {
+    const opts = { ref };
+    let checked = 0, atEdge = 0;
+    for (let ty = 0; ty < town.h; ty++) for (let tx = 0; tx < town.w; tx++) {
+      if (!isWalkable(tx, ty)) continue;
+      const px = tx * TILE + TILE / 2, py = ty * TILE + TILE;
+      const f = followFocus(vw, vh, px, py, W, H, opts), p = project(cameraFor(vw, vh, f.x, f.y, 1, opts), px, py);
+      assert.ok(p.x >= vw * 0.1 - 1e-6 && p.x <= vw * 0.9 + 1e-6, `${vw}x${vh} tile ${tx},${ty}: x ${p.x.toFixed(0)}`);
+      assert.ok(p.y - 34 * p.scale >= vh * 0.06 - 1e-6 && p.y <= vh * 0.9 + 1e-6, `${vw}x${vh} tile ${tx},${ty}: y ${p.y.toFixed(0)}`);
+      checked++; if (tx <= 1 || ty <= 1 || tx >= town.w - 2 || ty >= town.h - 2) atEdge++;
+    }
+    assert.ok(checked > 1000 && atEdge > 20, `${checked} tiles, ${atEdge} on the edge`);
+  }
+});
+
+test('away from the edges the focus is the player itself, and it never leaves the clamped bounds by more than it must', () => {
+  const W = 768, H = 1184, opts = { ref: 230 };
+  const mid = followFocus(1280, 720, 384, 592, W, H, opts);
+  near(mid.x, 384); near(mid.y, 592);
+  const corner = followFocus(1280, 720, 8, 8, W, H, opts), b = focusBounds(cameraFor(1280, 720, W / 2, H / 2, 1, opts), 1280, 720, W, H);
+  assert.ok(corner.x < b.x0 && corner.x >= 8 && corner.y < b.y0 && corner.y >= 8);
 });
