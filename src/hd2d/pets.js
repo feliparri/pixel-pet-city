@@ -43,17 +43,18 @@ export function createPetPainter(sprites) {
         if (!(fx && flickers(e.fx.id, e.fx.phase, now - e.fx.t0))) {
           const flap = (e.walker.moving || lift > 0) && Math.floor(now / 140) % 2 === 1;
           tctx.clearRect(0, 0, SIZE, SIZE);
-          drawPet(tctx, sprites, e.look, ORIGIN.x, ORIGIN.y - hop, { frame: lift > 0 ? 'happy' : headFrame(e, now, e.id), flip: e.walker.d === 'right', flap });
+          drawPet(tctx, e.sprites || sprites, e.look, ORIGIN.x, ORIGIN.y - hop, { frame: lift > 0 ? 'happy' : headFrame(e, now, e.id), flip: e.walker.d === 'right', flap });
           if (n > 0.02) grade(tctx, tmp, n, lightAt(world.lights, wx, wy));                      // night: the veil, and the warm wash where a lamp reaches
           const tint = wash ? wash(wx) : null;                                                    // a burst of the sky show washes its colour over the pet
           if (tint) { tctx.globalCompositeOperation = 'source-atop'; tctx.fillStyle = `rgba(${tint.r | 0},${tint.g | 0},${tint.b | 0},${tint.a})`; tctx.fillRect(0, 0, SIZE, SIZE); tctx.globalCompositeOperation = 'source-over'; }
           c.drawImage(tmp, 0, 0, SIZE, SIZE, cx - FEET_X * s + sway * s, cy - (FEET_Y + air + lift) * s, SIZE * s, SIZE * s);
         }
-        ov.labels.push({ text: e.name, x: cx + sway * s, y: cy + (2 - lift) * s, colour: e === me ? '#f8d040' : '#f4f6fa' });
+        ov.labels.push({ text: e.name, x: cx + sway * s, y: cy + (2 - lift) * s, colour: e === me ? '#f8d040' : e.npc ? '#a8e6cf' : '#f4f6fa' });
       }
       if (fx) effects(true, sway, -lift);
       if (e.emote && now < e.emote.until && !lift && !(fx && fx.hidden)) ov.bubbles.push({ x: cx, y: cy - (CELL + hop + air) * s, e: e.emote.e });
-      ov.hits.push({ e, x: cx - 14 * s, y: cy - (CELL + air) * s, w: 28 * s, h: (CELL + 4) * s });
+      else if (e.say && !lift) ov.bubbles.push({ x: cx, y: cy - (CELL + hop) * s, text: e.say });                  // a villager's line
+      if (!e.npc) ov.hits.push({ e, x: cx - 14 * s, y: cy - (CELL + air) * s, w: 28 * s, h: (CELL + 4) * s });
     } };
   }
   return { item };

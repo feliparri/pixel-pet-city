@@ -54,9 +54,9 @@ export const headFrame = (e, now, id) => {
 /**
  * Paints one frame of an area into `sctx` (1 px = 1 game pixel, view of `vw` x `vh`).
  * opts: { area (name), cam {x, y}, entities [{ id, name, look, walker, emote?, jumpAt?, fx?, gone? }], me, now, amb {tint, night}, sprites, font, marker?, fade? }.
- * Returns the emote bubbles to draw at the final size: [{ x, y, e }] in view pixels.
+ * Returns the bubbles to draw at the final size: [{ x, y, e }] (an emote) or [{ x, y, text }] (a line) in view pixels. `talk`: [{ x, y, text }] lines in map px.
  */
-export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now, amb = NO_LIGHT, sprites, font, marker = null, fade = 0, chicken = null, dark = null, life = null, ball = null }) {
+export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now, amb = NO_LIGHT, sprites, font, marker = null, fade = 0, chicken = null, dark = null, life = null, ball = null, talk = null }) {
   const area = getArea(areaName), baked = bakeArea(area);
   sctx.imageSmoothingEnabled = false;
   sctx.fillStyle = '#0e101a';
@@ -109,14 +109,16 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
         }
         if (!(fx && flickers(e.fx.id, e.fx.phase, now - e.fx.t0))) {
           const flap = (e.walker.moving || lift > 0) && Math.floor(now / 140) % 2 === 1;
-          drawPet(sctx, sprites, e.look, px - CELL / 2, by - CELL + 2 - hop - air - lift, { frame: lift > 0 ? 'happy' : headFrame(e, now, e.id), flip: e.walker.d === 'right', flap });
+          drawPet(sctx, e.sprites || sprites, e.look, px - CELL / 2, by - CELL + 2 - hop - air - lift, { frame: lift > 0 ? 'happy' : headFrame(e, now, e.id), flip: e.walker.d === 'right', flap });
         }
-        labels.push({ text: e.name, x: px - Math.floor(textWidth(font, e.name) / 2), y: by + 2 - lift, colour: e === me ? '#f8d040' : '#f4f6fa' });
+        labels.push({ text: e.name, x: px - Math.floor(textWidth(font, e.name) / 2), y: by + 2 - lift, colour: e === me ? '#f8d040' : e.npc ? '#a8e6cf' : '#f4f6fa' });
       }
       if (fx) drawEntranceFx(sctx, e.fx.id, fx, px, by - lift, CELL, true);
     } });
     if (e.emote && now < e.emote.until && !lift && !(fx && fx.hidden)) bubbles.push({ x: bx, y: by - CELL - hop - air, e: e.emote.e });
+    else if (e.say && !lift) bubbles.push({ x: bx, y: by - CELL - hop, text: e.say });                    // a villager's line
   }
+  if (talk) for (const t of talk) bubbles.push({ x: Math.round(t.x - cam.x), y: Math.round(t.y - cam.y), text: t.text });      // a shopkeeper's line: (x, y) in map px, just above its head
   if (chicken && areaName === 'town') {                                      // the chicken of Pillar la gallina
     const cx = Math.round(chicken.x * TILE + TILE / 2 - cam.x), cy = Math.round(chicken.y * TILE + TILE - cam.y);
     const hop = chicken.frame === 1 ? (Math.floor(now / 110) % 2) * 2 : 0;
@@ -262,15 +264,21 @@ export function createRenderer({ canvas, sprites, font, minH = MIN_VIEW_H }) {
     const a = getArea(areaName);
     const mp = state.me.walker.pos();
     cam = cameraFor(mp.x * TILE + TILE / 2, mp.y * TILE + TILE / 2, a.w * TILE, a.h * TILE, viewW, viewH);
-    const bubbles = drawScene(sctx, { area: areaName, cam, vw: viewW, vh: viewH, entities: state.others, me: state.me, now, amb: state.amb, sprites, font, marker: state.marker, fade: state.fade || 0, chicken: state.chicken || null, dark: state.dark || null, life: state.life || null, ball: state.ball || null });
+    const bubbles = drawScene(sctx, { area: areaName, cam, vw: viewW, vh: viewH, entities: state.others, me: state.me, now, amb: state.amb, sprites, font, marker: state.marker, fade: state.fade || 0, chicken: state.chicken || null, dark: state.dark || null, life: state.life || null, ball: state.ball || null, talk: state.talk || null });
     ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = '#0e101a';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(scene, 0, 0, canvas.width, canvas.height);
-    for (const b of bubbles) drawEmoteBubble(ctx, b.e, b.x * scale, b.y * scale, scale, canvas.width);
+    for (const b of bubbles) drawBubble(ctx, b, scale, canvas.width, scale);
   }
 
   return { resize, draw, pointToTile, invalidate() { laidOut = null; }, get scale() { return scale; } };
+}
+
+/** Draws a bubble from the list drawScene returns: an emote or a line. `x`, `y` are multiplied by `mul` (flat: the view's zoom; HD-2D: already final). */
+export function drawBubble(ctx, b, scale, maxW, mul = 1) {
+  if (b.text) drawTextBubble(ctx, b.text, b.x * mul, b.y * mul, scale, maxW);
+  else drawEmoteBubble(ctx, b.e, b.x * mul, b.y * mul, scale, maxW);
 }
 
 /**
@@ -279,10 +287,25 @@ export function createRenderer({ canvas, sprites, font, minH = MIN_VIEW_H }) {
  */
 export function drawEmoteBubble(ctx, e, x, y, scale, maxW) {
   const label = EMOTES[e];
+  const textual = label.length > 2 && !/\p{Extended_Pictographic}/u.test(label);
+  drawBubbleBox(ctx, [label], x, y, scale, maxW, textual ? '#181c2c' : '#000');
+}
+
+/** A villager's line in a speech bubble (same look as the emotes'): a line wider than ~ 17 characters per row is split over two rows. */
+export function drawTextBubble(ctx, text, x, y, scale, maxW) {
+  const words = text.split(' '), rows = [text];
+  if (text.length > 17) {                                  // split at the space nearest the middle
+    let best = 1;
+    for (let i = 1; i < words.length; i++) if (Math.abs(words.slice(0, i).join(' ').length - text.length / 2) < Math.abs(words.slice(0, best).join(' ').length - text.length / 2)) best = i;
+    rows.splice(0, 1, words.slice(0, best).join(' '), words.slice(best).join(' '));
+  }
+  drawBubbleBox(ctx, rows, x, y, scale, maxW, '#181c2c');
+}
+
+function drawBubbleBox(ctx, rows, x, y, scale, maxW, colour) {
   const px = 8 * scale;
   ctx.font = `${px}px system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif`;
-  const textual = label.length > 2 && !/\p{Extended_Pictographic}/u.test(label);
-  const w = Math.ceil(ctx.measureText(label).width) + 4 * scale, h = 11 * scale;
+  const w = Math.ceil(Math.max(...rows.map((r) => ctx.measureText(r).width))) + 4 * scale, rowH = 10 * scale, h = rows.length > 1 ? rows.length * rowH + scale : 11 * scale;
   const cx = Math.min(Math.max(x, w / 2 + scale), maxW - w / 2 - scale);
   const top = Math.max(scale, y - h - 2 * scale);
   ctx.fillStyle = '#f4f6fa';
@@ -292,6 +315,6 @@ export function drawEmoteBubble(ctx, e, x, y, scale, maxW) {
   ctx.fillRect(cx - w / 2 + scale, top - scale, w - 2 * scale, scale); ctx.fillRect(cx - w / 2 + scale, top + h, w - 2 * scale, scale);
   ctx.fillRect(cx - scale, top + h + scale, 2 * scale, scale);
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillStyle = textual ? '#181c2c' : '#000';
-  ctx.fillText(label, cx, top + h / 2 + scale / 2);
+  ctx.fillStyle = colour;
+  rows.forEach((r, i) => ctx.fillText(r, cx, rows.length > 1 ? top + scale + rowH * (i + 0.5) + scale / 2 : top + h / 2 + scale / 2));
 }

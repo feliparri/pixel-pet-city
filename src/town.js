@@ -14,6 +14,7 @@ import { GAME_RULES } from './games/rules.js';
 import { stumbled, paceAt, RACE } from './games/race.js';
 import { activityOf, radarPets } from './radar.js';
 import { createLife, stepLife, lifeFrame } from './life.js';
+import { createNpcs, nearShopkeeper, shopGreeting, SHOPKEEPER, SHOP_SAY_MS } from './npcs.js';
 import config from '../config.js';
 import { isConfigured } from './config-check.js';
 import { createEventsApi } from './events-client.js';
@@ -40,6 +41,9 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   const state = { me: self, others: [], marker: null, area: 'town', amb: ambientAt(hourNow(location.search)), fade: 0 };
   const life = createLife(net.code || net.id);                       // the same scene for a room, from its code; nothing of it goes over the net
   const renderer = createTownRenderer({ canvas, sprites, font, minH: pad ? MIN_VIEW_H : VIEW_H, flat: new URLSearchParams(location.search).get('flat') === '1', onNotice: (text) => games.notify(text), onMode: onHdMode });   // a phone: big pixels; a desktop: as many tiles as before
+  const npcs = createNpcs({ seed: net.code || net.id, sprites });           // the villagers: their place and lines come from (room, server time) alone, nothing of them goes over the net
+  const search = new URLSearchParams(location.search), devNpcT = search.get('dev') === '1' && Number.isFinite(Number(search.get('npct'))) && search.has('npct') ? Number(search.get('npct')) : null;      // development only: ?dev=1&npct=<ms> pins the villagers' clock
+  let shopVisits = 0, shopNear = false, shopSayUntil = 0;
   let fadeT0 = -Infinity, ambAt = -Infinity;
   const held = [];                                   // direction keys held, the latest last
   let shift = false, padRun = false;                                 // Shift is down: a held arrow key runs (outside the games)
@@ -153,6 +157,17 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       state.life = lifeFrame(life, t, state.amb);
     } else state.life = null;
     const gv = games.view();
+    if (self.area === 'town' && !vision && !(gv.game && gv.game.play)) {         // the villagers walk the north of the town; while a game is played they are not drawn at all
+      const sn = devNpcT === null ? events.serverNow() : devNpcT;
+      state.others = [...state.others, ...npcs.update(sn, { night: state.amb.night > 0.6, show: !!state.show && state.show.cut == null })];
+    }
+    state.talk = null;
+    if (self.area === 'shop') {                                    // the shopkeeper greets a pet that steps up to the counter
+      const near = nearShopkeeper(w.tileX, w.tileY);
+      if (near && !shopNear) { shopSayUntil = t + SHOP_SAY_MS; shopVisits++; }
+      shopNear = near;
+      if (t < shopSayUntil) state.talk = [{ x: SHOPKEEPER.head.x, y: SHOPKEEPER.head.y, text: shopGreeting(shopVisits - 1) }];
+    } else shopNear = false;
     self.act = activityOf({ area: self.area, game: gv.game, moving: w.busy });
     net.setActivity(self.act);
     racing = !!(gv.game && gv.game.g === 'race' && gv.game.play && gv.game.phase === 'play' && self.area === 'town');

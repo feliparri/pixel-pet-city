@@ -2,7 +2,7 @@
 // renderer in render.js ({ resize, draw, pointToTile }). createTownRenderer wraps both: the town outdoors is HD-2D, interiors (and
 // ?flat=1, and the player's "Efectos" switch) use the flat one.
 import { TILE, SIGNS, PLACES, getArea } from '../map.js';
-import { createRenderer, drawEmoteBubble, MIN_VIEW_H, VIEW_H } from '../render.js';
+import { createRenderer, drawBubble, MIN_VIEW_H, VIEW_H } from '../render.js';
 import { drawText, textWidth, textCanvas } from '../font.js';
 import { badge, bobY, BADGE } from '../art/icons.js';
 import { cameraFor, followFocus, snapFocus, sortBackToFront, screenToTile, standAt, project } from './camera.js';
@@ -209,7 +209,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
       drawText(ctx, font, l.text, -Math.floor(textWidth(font, l.text) / 2), 0, l.colour);
       ctx.restore();
     }
-    for (const bb of ov.bubbles) drawEmoteBubble(ctx, bb.e, bb.x, bb.y, ui, view.w);
+    for (const bb of ov.bubbles) drawBubble(ctx, bb, ui, view.w);
   }
 
   /** The tile under a pointer (client coordinates): a pet's own tile when its picture is hit, else the ground under it; null off the map. */

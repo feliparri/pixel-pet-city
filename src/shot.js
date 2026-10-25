@@ -2,15 +2,17 @@
 //   ?shot=town|shop|view   which picture (default town)
 //   &hour=21               the time of day (default: 13); see daynight.js
 //   &scale=2               integer zoom
+//   &talk=1                the shopkeeper greets (shop only)
 // The page sets document.title to "ready" when it has painted, so a headless browser knows when to take the screenshot.
 import { getArea, tileAt, TILES, TILE } from './map.js';
 import { seekerSees } from './games/hide.js';
-import { drawScene, cameraFor, VIEW_W, VIEW_H } from './render.js';
+import { drawScene, drawBubble, cameraFor, VIEW_W, VIEW_H } from './render.js';
 import { loadSprites } from './sprites.js';
 import { loadFont } from './font.js';
 import { ambientAt } from './daynight.js';
 import { Walker } from './walker.js';
 import { createLife, stepLife, lifeFrame } from './life.js';
+import { SHOPKEEPER, shopGreeting } from './npcs.js';
 
 const q = new URLSearchParams(location.search);
 const kind = ['town', 'shop', 'view', 'park', 'seek', 'coop', 'sprint', 'life', 'pitch', 'race'].includes(q.get('shot')) ? q.get('shot') : 'town';
@@ -56,12 +58,13 @@ async function main() {
   const scene = document.createElement('canvas');
   scene.width = vw; scene.height = vh;
   const sctx = scene.getContext('2d');
-  drawScene(sctx, { area: area.name, cam, vw, vh, entities: shown, me, now: kind === 'life' ? lifeNow : 1000, amb, sprites, font, chicken, dark, life: lifeScene, ball: kind === 'pitch' ? { x: 23.4, y: 59.2 } : null });
+  const bubbles = drawScene(sctx, { area: area.name, cam, vw, vh, entities: shown, me, now: kind === 'life' ? lifeNow : 1000, amb, sprites, font, chicken, dark, life: lifeScene, ball: kind === 'pitch' ? { x: 23.4, y: 59.2 } : null, talk: kind === 'shop' && q.get('talk') === '1' ? [{ x: SHOPKEEPER.head.x, y: SHOPKEEPER.head.y, text: shopGreeting(0) }] : null });
   const c = document.getElementById('c');
   c.width = vw * scale; c.height = vh * scale;
   const ctx = c.getContext('2d');
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(scene, 0, 0, c.width, c.height);
+  for (const b of bubbles) drawBubble(ctx, b, scale, c.width, scale);
   document.title = 'ready';
 }
 main().catch((e) => { document.title = `error: ${e.message}`; console.error(e); });

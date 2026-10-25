@@ -360,7 +360,7 @@ async function boot() {
   $('code-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') join(); });
   $('copy').addEventListener('click', copyCode);
   $('leave').addEventListener('click', leave);
-  if (new URLSearchParams(location.search).has('autoroom')) enter(generateCode());      // development only: straight into a local room (screenshots, tests by hand)
+  if (new URLSearchParams(location.search).has('autoroom')) enter(normalizeCode(new URLSearchParams(location.search).get('autoroom')) || generateCode());      // development only: straight into a local room, ?autoroom=CODE for a given one (screenshots, tests by hand)
 }
 
 boot();
