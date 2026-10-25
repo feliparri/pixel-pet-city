@@ -73,10 +73,11 @@ export const newPeerId = () => {
 };
 
 /**
- * One received message: { t: 'hello'|'pos'|'emote'|'bye', id, ... }. Returns the normalized message or null.
+ * One received message: { t: 'hello'|'pos'|'emote'|'jump'|'bye', id, ... }. Returns the normalized message or null.
  *   hello  { id, name, look, s?, a? } who is here (also the presence payload); s = the five stats 0-100 and a = the activity (ACTIVITIES), for the radar
  *   pos    { id, x, y, d, area? }  the tile the peer is walking to, its facing and its area (default the town); must be a walkable tile of that area
  *   emote  { id, e }               one of EMOTES
+ *   jump   { id }                  the peer hopped (cosmetic; the receiver draws the arc)
  *   bye    { id }
  */
 export function validateMessage(raw, catalogue) {
@@ -97,6 +98,8 @@ export function validateMessage(raw, catalogue) {
       if (!isArea(area) || !Number.isInteger(m.x) || !Number.isInteger(m.y) || !isWalkable(m.x, m.y, area) || !DIRS.includes(m.d)) return null;
       return { t: 'pos', id: m.id, x: m.x, y: m.y, d: m.d, area };
     }
+    case 'jump':
+      return { t: 'jump', id: m.id };
     case 'emote':
       return typeof m.e === 'string' && Object.hasOwn(EMOTES, m.e) ? { t: 'emote', id: m.id, e: m.e } : null;
     case 'bye':
@@ -187,6 +190,7 @@ function validateGameMessage(m) {
 export const LIMITS = {
   pos: { burst: 12, perSec: 12 },     // a walker sends at most ~7 a second; this leaves room for a burst after a lag
   emote: { burst: 3, perSec: 1 },
+  jump: { burst: 2, perSec: 2.5 },    // a pet jumps at most every 400 ms
   hello: { burst: 4, perSec: 0.5 },   // the heartbeat is every 2 s
   bye: { burst: 2, perSec: 0.2 },
   gopen: { burst: 2, perSec: 0.2 },

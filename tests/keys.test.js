@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isTyping, runs } from '../src/keys.js';
+import { isTyping, isJumpKey, runs } from '../src/keys.js';
 
 test('keys are ignored while the focus is in a text field', () => {
   for (const tagName of ['INPUT', 'TEXTAREA', 'SELECT']) assert.equal(isTyping({ target: { tagName } }), true);
@@ -15,4 +15,10 @@ test('Shift runs only in the free walk: a game keeps its own pace', () => {
   assert.equal(runs(true, { frozen: false, zone: null, closed: true }), false);          // the chicken or "Todo el pueblo": no zone, doors shut
   assert.equal(runs(true, { frozen: false, zone: { has() {} }, closed: true }), false);   // hide and seek, football, the race
   assert.equal(runs(true, { frozen: true, zone: null, closed: false }), false);
+});
+
+test('Space is the jump key', () => {
+  assert.equal(isJumpKey({ key: ' ' }), true);
+  assert.equal(isJumpKey({ key: 'x', code: 'Space' }), true);
+  assert.equal(isJumpKey({ key: 'Enter', code: 'Enter' }), false);
 });

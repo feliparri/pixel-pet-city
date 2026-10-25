@@ -3,6 +3,7 @@
 // Layers: ground (baked), animated water, props and pets sorted by their feet, the day/night tint, the night lights, labels.
 import { TILE, SIGNS, PLACES, getArea } from './map.js';
 import { drawPet, CELL } from './sprites.js';
+import { jumpLift } from './jump.js';
 import { drawText, textWidth, textCanvas } from './font.js';
 import { EMOTES } from './protocol.js';
 import { entranceState, drawEntranceFx, flickers } from './entrance.js';
@@ -40,7 +41,7 @@ const headFrame = (e, now, id) => {
 
 /**
  * Paints one frame of an area into `sctx` (1 px = 1 game pixel, view of `vw` x `vh`).
- * opts: { area (name), cam {x, y}, entities [{ id, name, look, walker, emote?, fx?, gone? }], me, now, amb {tint, night}, sprites, font, marker?, fade? }.
+ * opts: { area (name), cam {x, y}, entities [{ id, name, look, walker, emote?, jumpAt?, fx?, gone? }], me, now, amb {tint, night}, sprites, font, marker?, fade? }.
  * Returns the emote bubbles to draw at the final size: [{ x, y, e }] in view pixels.
  */
 export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now, amb = NO_LIGHT, sprites, font, marker = null, fade = 0, chicken = null, dark = null, life = null, ball = null }) {
@@ -81,6 +82,7 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
     const p = e.walker.pos();
     const k = e.walker.moving ? Math.min(1, e.walker.t / e.walker.stepMs()) : 0;
     const hop = e.walker.moving ? Math.round(Math.abs(Math.sin(k * Math.PI)) * 3) : 0;
+    const air = jumpLift(now, e.jumpAt);                                                                      // a jump (Space): the pet rises, its shadow stays
     const bx = Math.round(p.x * TILE + TILE / 2 - cam.x), by = Math.round(p.y * TILE + TILE - cam.y);       // the feet
     if (bx < -20 || bx > vw + 20 || by < 0 || by > vh + 40) continue;                                       // off screen: nothing to draw
     const fx = e.fx ? entranceState(e.fx.id, e.fx.phase, now - e.fx.t0) : null;                              // an arrival or an exit in progress
@@ -95,13 +97,13 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
         }
         if (!(fx && flickers(e.fx.id, e.fx.phase, now - e.fx.t0))) {
           const flap = (e.walker.moving || lift > 0) && Math.floor(now / 140) % 2 === 1;
-          drawPet(sctx, sprites, e.look, px - CELL / 2, by - CELL + 2 - hop - lift, { frame: lift > 0 ? 'happy' : headFrame(e, now, e.id), flip: e.walker.d === 'right', flap });
+          drawPet(sctx, sprites, e.look, px - CELL / 2, by - CELL + 2 - hop - air - lift, { frame: lift > 0 ? 'happy' : headFrame(e, now, e.id), flip: e.walker.d === 'right', flap });
         }
         labels.push({ text: e.name, x: px - Math.floor(textWidth(font, e.name) / 2), y: by + 2 - lift, colour: e === me ? '#f8d040' : '#f4f6fa' });
       }
       if (fx) drawEntranceFx(sctx, e.fx.id, fx, px, by - lift, CELL, true);
     } });
-    if (e.emote && now < e.emote.until && !lift && !(fx && fx.hidden)) bubbles.push({ x: bx, y: by - CELL - hop, e: e.emote.e });
+    if (e.emote && now < e.emote.until && !lift && !(fx && fx.hidden)) bubbles.push({ x: bx, y: by - CELL - hop - air, e: e.emote.e });
   }
   if (chicken && areaName === 'town') {                                      // the chicken of Pillar la gallina
     const cx = Math.round(chicken.x * TILE + TILE / 2 - cam.x), cy = Math.round(chicken.y * TILE + TILE - cam.y);

@@ -66,6 +66,13 @@ test('validateMessage: emotes are presets only', () => {
   for (const e of ['hola mundo', '__proto__', 'constructor', '', 5, null, '<script>']) assert.equal(validateMessage({ t: 'emote', id, e }), null);
 });
 
+test('validateMessage: a jump carries nothing but who jumped', () => {
+  assert.deepEqual(validateMessage({ t: 'jump', id, h: 99, x: 3 }), { t: 'jump', id });
+  assert.deepEqual(validateMessage(JSON.stringify({ t: 'jump', id })), { t: 'jump', id });
+  for (const bad of [{ t: 'jump' }, { t: 'jump', id: 'A B' }, { t: 'jump', id: 'ab' }, { t: 'jump', id, pad: 'x'.repeat(600) }, 'x'.repeat(600)]) assert.equal(validateMessage(bad), null, JSON.stringify(bad).slice(0, 40));
+  assert.equal(validateMessage(JSON.stringify({ t: 'jump', id, pad: 'x'.repeat(600) })), null);        // over MAX_PAYLOAD_BYTES as a string
+});
+
 test('validateMessage: shape, ids, types and size', () => {
   assert.deepEqual(validateMessage({ t: 'bye', id, extra: 'ignored' }), { t: 'bye', id });
   assert.deepEqual(validateMessage(JSON.stringify({ t: 'bye', id })), { t: 'bye', id });
@@ -93,6 +100,8 @@ test('rate limiter: burst, refill, per peer and per kind', () => {
   assert.equal(rl.allow('a', 'emote'), false);
   t += 1000;
   assert.ok(rl.allow('a', 'emote'));
+  assert.ok(rl.allow('a', 'jump') && rl.allow('a', 'jump'));              // a jump: two at once, then one every 400 ms
+  assert.equal(rl.allow('a', 'jump'), false);
   assert.equal(rl.allow('a', 'unknown'), false);
   rl.forget('a');
   assert.ok(rl.allow('a', 'emote'));

@@ -2,7 +2,8 @@
 import { findPath, dirVector } from './path.js';
 import { isWalkable, doorAt, spotAt, tileAt, TILES, GAME_PLACES, SPAWNS } from './map.js';
 import { Walker, REMOTE_SNAP } from './walker.js';
-import { isTyping, runs } from './keys.js';
+import { isTyping, isJumpKey, runs } from './keys.js';
+import { JUMP_MS } from './jump.js';
 import { createRenderer, EMOTE_MS } from './render.js';
 import { ambientAt, hourNow } from './daynight.js';
 import { entranceState } from './entrance.js';
@@ -26,7 +27,7 @@ function spawnFor(id) {
  * Returns { onNetEvent, emote, playExit, games: { play, join, seek, leave, dismiss }, destroy }. */
 export function startTown({ canvas, stage, sprites, font, net, me, entrance = null, stars = { add() {} }, onHud = () => {} }) {
   const [sx, sy] = spawnFor(net.id);
-  const self = { id: net.id, name: me.name, look: me.look, stats: me.stats || null, act: 'idle', walker: new Walker(sx, sy), emote: null, area: 'town' };
+  const self = { id: net.id, name: me.name, look: me.look, stats: me.stats || null, act: 'idle', walker: new Walker(sx, sy), emote: null, jumpAt: null, area: 'town' };
   if (entrance) self.fx = { id: entrance, phase: 'arrive', t0: performance.now(), resolve: null };
   const others = new Map();
   const state = { me: self, others: [], marker: null, area: 'town', amb: ambientAt(hourNow(location.search)), fade: 0 };
@@ -50,7 +51,7 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
 
   const addPeer = (p) => {
     const w = new Walker(p.x ?? 0, p.y ?? 0, p.d || 'down');
-    others.set(p.id, { id: p.id, name: p.name, look: p.look, walker: w, emote: null, placed: p.x != null, area: p.area || 'town' });
+    others.set(p.id, { id: p.id, name: p.name, look: p.look, walker: w, emote: null, jumpAt: null, placed: p.x != null, area: p.area || 'town' });
   };
   for (const p of net.peers()) addPeer(p);
 
@@ -67,6 +68,9 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
     } else if (ev.type === 'emote') {
       const o = others.get(ev.id);
       if (o) o.emote = { e: ev.e, until: performance.now() + EMOTE_MS };
+    } else if (ev.type === 'jump') {
+      const o = others.get(ev.id);
+      if (o) o.jumpAt = performance.now();
     }
   }
 
@@ -179,6 +183,12 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
   function onKeyDown(ev) {
     if (isTyping(ev)) return;
     shift = ev.shiftKey;
+    if (isJumpKey(ev)) {                                                // Space: a hop, also in a game (it changes no rule); never scrolls the page
+      ev.preventDefault();
+      const t = performance.now();
+      if (!ev.repeat && !self.fx && !self.gone && (self.jumpAt == null || t - self.jumpAt >= JUMP_MS)) { self.jumpAt = t; net.sendJump(); }
+      return;
+    }
     const d = KEY_DIRS[ev.key];
     if (!d || self.fx) return;
     ev.preventDefault();

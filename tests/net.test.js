@@ -5,6 +5,7 @@ import { createLocalWire } from '../src/transport-local.js';
 import { createSupabaseWire } from '../src/transport-supabase.js';
 import { checkConfig } from '../src/config-check.js';
 import { MAX_PEERS } from '../src/protocol.js';
+import { JUMP_MS } from '../src/jump.js';
 
 const CAT = { tophat: { slot: 'head' } };
 const look = { species: 'frog', stage: 1, items: ['tophat', '', '', ''] };
@@ -108,6 +109,20 @@ test('emotes are rate limited locally and must be presets', async () => {
   assert.equal(a.net.sendEmote('heart'), false);
   advance(900);
   assert.equal(a.net.sendEmote('heart'), true);
+  a.net.leave(); b.net.leave();
+});
+
+test('a jump reaches the others, at most one every JUMP_MS, and only from a joined pet', async () => {
+  const { a, b, advance } = pair();
+  assert.equal(a.net.sendJump(), false);                          // not in a room
+  await a.net.join(CODE, { name: 'Ana', look });
+  await b.net.join(CODE, { name: 'Beto', look });
+  assert.equal(a.net.sendJump(), true);
+  assert.ok(b.events.some((e) => e.type === 'jump' && e.id === a.net.id));
+  assert.equal(a.net.sendJump(), false);                          // still in the air
+  advance(JUMP_MS);
+  assert.equal(a.net.sendJump(), true);
+  assert.equal(b.events.filter((e) => e.type === 'jump').length, 2);
   a.net.leave(); b.net.leave();
 });
 

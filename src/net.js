@@ -1,6 +1,7 @@
-// The room session, the same for every transport: join/leave, who is here, positions (at most 10 a second, only on change) and emotes.
+// The room session, the same for every transport: join/leave, who is here, positions (at most 10 a second, only on change), emotes and jumps.
 // A transport ("wire") only moves JSON; everything that comes in is validated and rate-limited here (protocol.js) before the app sees it.
 import { validateMessage, validateLook, validateStats, sanitizeName, createRateLimiter, newPeerId, MAX_PEERS, EMOTES, GAME_TYPES, ACTIVITIES } from './protocol.js';
+import { JUMP_MS } from './jump.js';
 import { isValidCode } from './code.js';
 import { isConfigured } from './config-check.js';
 import { createLocalWire } from './transport-local.js';
@@ -20,14 +21,14 @@ const browserTimers = {
  * Events handed to `onEvent`:
  *   { type: 'status', status: 'connecting'|'connected'|'error'|'closed' }
  *   { type: 'join', peer: { id, name, look, stats, act, x, y, d } }   { type: 'leave', id }
- *   { type: 'pos', id, x, y, d, area }                        { type: 'emote', id, e }
+ *   { type: 'pos', id, x, y, d, area }                        { type: 'emote', id, e }        { type: 'jump', id }
  *   { type: 'game', m }                                       a game message (protocol.js, gopen ... gend), from a known peer, in `m` with its `id`
  */
 export function createNet({ wire, catalogue, onEvent = () => {}, now = () => Date.now(), timers = browserTimers, id = newPeerId() }) {
   const peers = new Map();                 // id -> { name, look, x, y, d, seen }
   let limiter = createRateLimiter(now);
   let conn = null, code = null, hello = null, heartbeat = null, posTimer = null;
-  let lastPos = null, sentPos = null, sentAt = -Infinity, lastEmoteAt = -Infinity;
+  let lastPos = null, sentPos = null, sentAt = -Infinity, lastEmoteAt = -Infinity, lastJumpAt = -Infinity;
   let lastHelloReply = -Infinity;
   let opening = false, early = [];           // messages that arrive while the wire is still opening wait for it (the replies need it)
 
@@ -73,6 +74,7 @@ export function createNet({ wire, catalogue, onEvent = () => {}, now = () => Dat
     p.seen = t;
     if (m.t === 'bye') { dropPeer(m.id); return; }
     if (m.t === 'pos') { p.x = m.x; p.y = m.y; p.d = m.d; p.area = m.area; onEvent({ type: 'pos', id: m.id, x: m.x, y: m.y, d: m.d, area: m.area }); } else if (m.t === 'emote') onEvent({ type: 'emote', id: m.id, e: m.e });
+    else if (m.t === 'jump') onEvent({ type: 'jump', id: m.id });
     else if (GAME_TYPES.has(m.t)) onEvent({ type: 'game', m });
   }
 
@@ -134,6 +136,14 @@ export function createNet({ wire, catalogue, onEvent = () => {}, now = () => Dat
       if (!conn || !Object.hasOwn(EMOTES, e) || now() - lastEmoteAt < 800) return false;
       lastEmoteAt = now();
       send({ t: 'emote', id, e });
+      return true;
+    },
+
+    /** This pet hopped. Returns false when it cannot be sent (not in a room, or still in the air of the last jump). */
+    sendJump() {
+      if (!conn || now() - lastJumpAt < JUMP_MS) return false;
+      lastJumpAt = now();
+      send({ t: 'jump', id });
       return true;
     },
 
