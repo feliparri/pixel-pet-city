@@ -8,6 +8,7 @@ import { createTownNet } from './net.js';
 import { loadSprites, drawPet } from './sprites.js';
 import { loadFont } from './font.js';
 import { startTown } from './town.js';
+import { isTouchDevice } from './keys.js';
 import { createTripClient, tripCodeFromSearch, tripErrorText, entryMode } from './trip.js';
 import { normalizeTripCode } from './trip-code.js';
 import { devEntrance } from './entrance.js';
@@ -18,6 +19,8 @@ import { createRadarSaver, radarOf, stateWithRadar } from './radar.js';
 import { createStars, createStarSaver, starsFromState, stateWithStars } from './stars.js';
 
 const $ = (id) => document.getElementById(id);
+const touch = isTouchDevice(window);                          // a phone or tablet: the town shows its on-screen controls
+document.documentElement.classList.toggle('touch', touch);
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode */ } },
@@ -156,7 +159,7 @@ async function enter(code, { transport = mode, arrival = null, solo = false } = 
   showStars();
   const counter = { add(n) { stars.add(n); showStars(); } };
   window.cityDebug = () => ({ town, net });                    // handy in the console when testing with two tabs
-  town = startTown({ canvas: $('view'), stage: $('stage'), sprites, font, net, me, entrance: arrival, stars: counter, onHud: (info) => hud && hud.update(info) });
+  town = startTown({ canvas: $('view'), stage: $('stage'), pad: touch ? { dpad: $('dpad'), a: $('pad-a'), b: $('pad-b') } : null, sprites, font, net, me, entrance: arrival, stars: counter, onHud: (info) => hud && hud.update(info) });
   setStatus('connected');
   if (visit) visit.radar.now();                                 // the room changed: tell the phone's radar now
   return true;

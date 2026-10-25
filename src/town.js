@@ -3,6 +3,7 @@ import { findPath, dirVector } from './path.js';
 import { isWalkable, doorAt, spotAt, tileAt, TILES, GAME_PLACES, SPAWNS } from './map.js';
 import { Walker, REMOTE_SNAP } from './walker.js';
 import { isTyping, isJumpKey, runs } from './keys.js';
+import { createTouchpad } from './touchpad.js';
 import { JUMP_MS } from './jump.js';
 import { createRenderer, EMOTE_MS } from './render.js';
 import { ambientAt, hourNow } from './daynight.js';
@@ -22,10 +23,11 @@ function spawnFor(id) {
   return SPAWNS[h % SPAWNS.length];
 }
 
-/** me: { name, look }; net: a createNet() session already joined; entrance: an entrance id to play on arrival (a visiting pet), or null;
+/** pad: { dpad, a, b } (the phone's on-screen controls) or null;
+ * me: { name, look }; net: a createNet() session already joined; entrance: an entrance id to play on arrival (a visiting pet), or null;
  * stars: the pet's star counter ({ add(n) }); onHud(info): called a few times a second with what the game buttons and panels need.
  * Returns { onNetEvent, emote, playExit, games: { play, join, seek, leave, dismiss }, destroy }. */
-export function startTown({ canvas, stage, sprites, font, net, me, entrance = null, stars = { add() {} }, onHud = () => {} }) {
+export function startTown({ canvas, stage, pad = null, sprites, font, net, me, entrance = null, stars = { add() {} }, onHud = () => {} }) {
   const [sx, sy] = spawnFor(net.id);
   const self = { id: net.id, name: me.name, look: me.look, stats: me.stats || null, act: 'idle', walker: new Walker(sx, sy), emote: null, jumpAt: null, area: 'town' };
   if (entrance) self.fx = { id: entrance, phase: 'arrive', t0: performance.now(), resolve: null };
@@ -35,7 +37,7 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
   const renderer = createRenderer({ canvas, sprites, font });
   let fadeT0 = -Infinity, ambAt = -Infinity;
   const held = [];                                   // direction keys held, the latest last
-  let shift = false;                                 // Shift is down: a held arrow key runs (outside the games)
+  let shift = false, padRun = false;                                 // Shift is down: a held arrow key runs (outside the games)
   let raf = 0, last = performance.now(), alive = true;
 
   const names = (pid) => (pid === self.id ? self.name : (others.get(pid) || {}).name || 'Mascota');
@@ -113,7 +115,7 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
     }
     if (!w.busy) w.run = false;
     if (!w.busy && held.length && !self.fx) {                    // a held arrow key keeps walking
-      w.run = runs(shift, mv);
+      w.run = runs(shift || padRun, mv);
       const d = held[held.length - 1];
       const [dx, dy] = dirVector(d);
       const nx = w.tileX + dx, ny = w.tileY + dy;
@@ -185,25 +187,40 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
     shift = ev.shiftKey;
     if (isJumpKey(ev)) {                                                // Space: a hop, also in a game (it changes no rule); never scrolls the page
       ev.preventDefault();
-      const t = performance.now();
-      if (!ev.repeat && !self.fx && !self.gone && (self.jumpAt == null || t - self.jumpAt >= JUMP_MS)) { self.jumpAt = t; net.sendJump(); }
+      if (!ev.repeat) jump();
       return;
     }
     const d = KEY_DIRS[ev.key];
     if (!d || self.fx) return;
     ev.preventDefault();
-    if (!held.includes(d)) { held.push(d); self.walker.queue = []; }   // a key cancels a tapped route
+    press(d);
   }
   function onKeyUp(ev) {
     shift = ev.shiftKey;
-    const d = KEY_DIRS[ev.key];
+    if (isJumpKey(ev) && !isTyping(ev)) ev.preventDefault();          // a focused button must not click on Space's release
+    release(KEY_DIRS[ev.key]);
+  }
+  // keys and the phone's controls share these: a direction held, a hop
+  function press(d) { if (!held.includes(d)) { held.push(d); self.walker.queue = []; } }   // a key cancels a tapped route
+  function release(d) {
     const i = held.indexOf(d);
     if (i >= 0) held.splice(i, 1);
   }
+  function jump() {
+    const t = performance.now();
+    if (!self.fx && !self.gone && (self.jumpAt == null || t - self.jumpAt >= JUMP_MS)) { self.jumpAt = t; net.sendJump(); }
+  }
+  let padDir = null;
+  const touchpad = pad && createTouchpad({
+    ...pad,
+    onDir(d) { if (padDir) release(padDir); padDir = d; if (d && !self.fx) press(d); },
+    onJump: jump,
+    onRun(on) { padRun = on; },
+  });
   canvas.addEventListener('pointerdown', onPointer);
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
-  window.addEventListener('blur', () => { held.length = 0; shift = false; });
+  window.addEventListener('blur', () => { held.length = 0; shift = false; padRun = false; });
   const onVisibility = () => net.resync();                    // timers sleep in a hidden tab: say where we are going in and coming out
   document.addEventListener('visibilitychange', onVisibility);
 
@@ -244,6 +261,7 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
       if (self.fx && self.fx.resolve) self.fx.resolve();
       cancelAnimationFrame(raf);
       ro.disconnect();
+      if (touchpad) touchpad.destroy();
       canvas.removeEventListener('pointerdown', onPointer);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
