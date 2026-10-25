@@ -64,9 +64,18 @@ test('goTo walks a remote pet along the map and snaps when it is too far or unre
 
 test('a pet that is behind hurries: queued steps take half as long', () => {
   const w = new Walker(17, 24);
+  w.hurry = true;                            // what a remote pet is
   w.goTo(27, 24, 'right', 'town');           // 10 steps queued
   w.update(STEP_MS * 3);
   assert.ok(w.pos().x >= 17 + 3 + 1 - 1e-9, String(w.pos().x));
+});
+
+test('a tapped route of the local pet is walked at the normal pace, however long it is (it used to double past 3 queued steps)', () => {
+  const w = new Walker(17, 24);
+  w.setPath(findPath(17, 24, 27, 24));       // 10 steps queued, hurry off
+  assert.equal(w.stepMs(), STEP_MS);
+  w.update(STEP_MS * 3);
+  assert.deepEqual(w.pos(), { x: 20, y: 24 });
 });
 
 test('a running walker takes STEP_MS / RUN_FACTOR a step, unless something sets its own pace', () => {
@@ -82,6 +91,7 @@ test('a running walker takes STEP_MS / RUN_FACTOR a step, unless something sets 
 
 test('a remote pet follows a running one through the 10 a second position sync without ever jumping', () => {
   const runner = new Walker(17, 24), remote = new Walker(17, 24);
+  remote.hurry = true;
   runner.run = true;
   runner.setPath(findPath(17, 24, 27, 24));
   let sent = null, maxLag = 0;

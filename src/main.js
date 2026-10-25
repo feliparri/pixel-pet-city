@@ -162,7 +162,7 @@ async function enter(code, { transport = mode, arrival = null, solo = false } = 
   showStars();
   const counter = { add(n) { stars.add(n); showStars(); } };
   window.cityDebug = () => ({ town, net });                    // handy in the console when testing with two tabs
-  town = startTown({ canvas: $('view'), stage: $('stage'), pad: touch ? { dpad: $('dpad'), a: $('pad-a'), b: $('pad-b') } : null, sprites, font, net, me, entrance: arrival, stars: counter, onHud: (info) => hud && hud.update(info), onHdMode: () => paintFx(), onShow: (on) => { $('show-back').hidden = !on; }, onShop: () => shopUi && shopUi.openShop() });
+  town = startTown({ canvas: $('view'), stage: $('stage'), pad: touch ? { stick: $('stick'), a: $('pad-a'), b: $('pad-b') } : null, sprites, font, net, me, entrance: arrival, stars: counter, onHud: (info) => hud && hud.update(info), onHdMode: () => paintFx(), onShow: (on) => { $('show-back').hidden = !on; }, onShop: () => shopUi && shopUi.openShop() });
   if (!town.hd.locked) town.hd.set(hdPref);
   paintFx();
   setStatus('connected');

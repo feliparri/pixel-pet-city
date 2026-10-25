@@ -18,6 +18,7 @@ export class Walker {
     this.onStep = null;                 // (x, y, d) when a step starts
     this.stepOverride = null;           // ms per step when something (the chicken sprinting) goes at its own pace
     this.run = false;                   // the local pet runs: set between steps, so a step never changes pace half way
+    this.hurry = false;                 // a remote or referee-driven walker that fell behind catches up at double pace; the local pet never does
   }
 
   get tileX() { return this.tx; }
@@ -31,7 +32,7 @@ export class Walker {
     return { x: this.fx + (this.tx - this.fx) * k, y: this.fy + (this.ty - this.fy) * k };
   }
 
-  stepMs() { return this.stepOverride || (this.queue.length > 3 ? STEP_MS / 2 : this.run ? STEP_MS / RUN_FACTOR : STEP_MS); }   // a pet that fell behind hurries
+  stepMs() { return this.stepOverride || (this.hurry && this.queue.length > 3 ? STEP_MS / 2 : this.run ? STEP_MS / RUN_FACTOR : STEP_MS); }   // a remote pet that fell behind hurries (a tapped route of the local pet does not)
 
   /** Replace what is left to walk (the step in progress finishes first). */
   setPath(tiles) {

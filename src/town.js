@@ -2,7 +2,7 @@
 import { findPath, dirVector } from './path.js';
 import { isWalkable, doorAt, spotAt, tileAt, TILES, GAME_PLACES, SPAWNS } from './map.js';
 import { Walker, REMOTE_SNAP } from './walker.js';
-import { isTyping, isJumpKey, runs } from './keys.js';
+import { isTyping, isJumpKey, runs, tapWalks } from './keys.js';
 import { createTouchpad } from './touchpad.js';
 import { JUMP_MS } from './jump.js';
 import { EMOTE_MS, MIN_VIEW_H, VIEW_H } from './render.js';
@@ -30,7 +30,7 @@ function spawnFor(id) {
   return SPAWNS[h % SPAWNS.length];
 }
 
-/** pad: { dpad, a, b } (the phone's on-screen controls) or null;
+/** pad: { stick, a, b } (the phone's on-screen controls) or null;
  * me: { name, look }; net: a createNet() session already joined; entrance: an entrance id to play on arrival (a visiting pet), or null;
  * stars: the pet's star counter ({ add(n) }); onHud(info): called a few times a second with what the game buttons and panels need.
  * Returns { onNetEvent, emote, playExit, games: { play, join, seek, leave, dismiss }, destroy }. */
@@ -47,7 +47,8 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   let shopVisits = 0, shopNear = false, shopSayUntil = 0, modal = false, thankLine = null;      // modal: a panel is open (shop, backpack): the pet stands still
   let fadeT0 = -Infinity, ambAt = -Infinity;
   const held = [];                                   // direction keys held, the latest last
-  let shift = false, padRun = false;                                 // Shift is down: a held arrow key runs (outside the games)
+  let shift = false, padRun = false, stickRun = false;               // Shift (or B, or the stick pushed far) is down: a held direction runs (outside the games)
+  let stickDirs = [], flip = 0;                                       // the stick's held directions: a diagonal alternates its two axes step by step
   let raf = 0, last = performance.now(), alive = true;
 
   const names = (pid) => (pid === self.id ? self.name : (others.get(pid) || {}).name || 'Mascota');
@@ -59,6 +60,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   const events = createTownEvents({ api: createEventsApi({ base: `${config.supabaseUrl}/functions/v1/trip` }), devEvents: dev.length ? dev : null, notify: (text) => games.notify(text), onShow });
   if (dev.length || isConfigured(config)) events.start();            // the scheduled sky shows (src/town-events.js)
   const chickWalker = new Walker(30, 40);
+  chickWalker.hurry = true;
   let chickSeq = 0, hudAt = -Infinity, wasLobby = null;
   let racing = false, slowUntil = 0, lastTile = null;          // the obstacle race: a pet that steps onto an obstacle walks slower for RACE.slowMs
   self.walker.onStep = (x, y, d) => net.sendPos(x, y, d, self.area);
@@ -66,6 +68,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
 
   const addPeer = (p) => {
     const w = new Walker(p.x ?? 0, p.y ?? 0, p.d || 'down');
+    w.hurry = true;
     others.set(p.id, { id: p.id, name: p.name, look: p.look, walker: w, emote: null, jumpAt: null, placed: p.x != null, area: p.area || 'town' });
   };
   for (const p of net.peers()) addPeer(p);
@@ -128,11 +131,13 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     }
     if (!w.busy) w.run = false;
     if (!w.busy && held.length && !self.fx) {                    // a held arrow key keeps walking
-      w.run = runs(shift || padRun, mv);
+      w.run = runs(shift || padRun || stickRun, mv);
       const d = held[held.length - 1];
-      const [dx, dy] = dirVector(d);
-      const nx = w.tileX + dx, ny = w.tileY + dy;
-      if (isWalkable(nx, ny, self.area) && canEnter(nx, ny, mv.zone, mv.closed)) w.stepToward(nx, ny); else w.face(d);
+      const diag = stickDirs.length === 2 && stickDirs.includes(d);
+      const order = diag ? (flip ^= 1, flip ? stickDirs : [stickDirs[1], stickDirs[0]]) : [d];      // a diagonal tries its other axis when one is blocked: the pet slides along walls
+      const can = (dir) => { const [dx, dy] = dirVector(dir); return isWalkable(w.tileX + dx, w.tileY + dy, self.area) && canEnter(w.tileX + dx, w.tileY + dy, mv.zone, mv.closed); };
+      const go = order.find(can);
+      if (go) { const [dx, dy] = dirVector(go); w.stepToward(w.tileX + dx, w.tileY + dy); } else w.face(order[0]);
     }
     if (racing) {
       const cur = { x: w.tileX, y: w.tileY };
@@ -195,7 +200,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   raf = requestAnimationFrame(frame);
 
   function onPointer(ev) {
-    if (ev.button > 0 || self.fx || self.gone || modal) return;
+    if (ev.button > 0 || self.fx || self.gone || modal || !tapWalks(ev.pointerType, !!pad)) return;      // with the stick on screen a finger on the map does not walk the pet
     const tile = renderer.pointToTile(ev.clientX, ev.clientY);
     if (!tile) return;
     ev.preventDefault();
@@ -238,17 +243,16 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     const t = performance.now();
     if (!self.fx && !self.gone && (self.jumpAt == null || t - self.jumpAt >= JUMP_MS)) { self.jumpAt = t; net.sendJump(); }
   }
-  let padDir = null;
   const touchpad = pad && createTouchpad({
     ...pad,
-    onDir(d) { if (padDir) release(padDir); padDir = d; if (d && !self.fx) press(d); },
+    onStick({ dirs, run }) { for (const d of stickDirs) release(d); stickDirs = dirs; stickRun = run; if (!self.fx) for (const d of dirs) press(d); },
     onJump: jump,
     onRun(on) { padRun = on; },
   });
   canvas.addEventListener('pointerdown', onPointer);
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
-  window.addEventListener('blur', () => { held.length = 0; shift = false; padRun = false; });
+  window.addEventListener('blur', () => { held.length = 0; shift = false; padRun = false; stickRun = false; stickDirs = []; });
   const onVisibility = () => net.resync();                    // timers sleep in a hidden tab: say where we are going in and coming out
   document.addEventListener('visibilitychange', onVisibility);
 
@@ -285,7 +289,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       dismiss: () => games.dismiss(),
     },
     /** A panel opened or closed over the town: the pet stops while it is open. */
-    setModal(on) { modal = on; if (on) { held.length = 0; self.walker.queue = []; } },
+    setModal(on) { modal = on; if (on) { held.length = 0; self.walker.queue = []; if (touchpad) touchpad.reset(); } },
     /** The pet shows an item it just bought (this screen only: the look the others see does not change), and the shopkeeper says thanks. */
     wear(key) {
       const slot = sprites.catalogue[key] && SLOTS.indexOf(sprites.catalogue[key].slot);
