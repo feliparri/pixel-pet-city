@@ -10,6 +10,7 @@ import { groundMult } from './light.js';
 import { buildWorld, bakeGround, drawGround, standingItems, drawGlows, fountainItem } from './scene.js';
 import { createFx } from './fx.js';
 import { createPetPainter } from './pets.js';
+import { createThings } from './things.js';
 
 const TOWN = getArea('town');
 const MAP_W = TOWN.w * TILE, MAP_H = TOWN.h * TILE;
@@ -20,6 +21,8 @@ export function createHdRenderer({ canvas, sprites, font, compact = false }) {
   const ctx = canvas.getContext('2d');
   const ref = compact ? 170 : 230;
   const painter = createPetPainter(sprites);
+  const things = createThings();
+  let darkCanvas = null;
   let world = null, ground = null, fx = null, box = null;
   let view = { w: 0, h: 0 }, cam = null, focus = null, last = null, ui = 2, hits = [];
   let groundKey = '', waterFrame = -1;
@@ -68,20 +71,40 @@ export function createHdRenderer({ canvas, sprites, font, compact = false }) {
     ctx.fillStyle = `rgb(${Math.round(30 - 20 * n)},${Math.round(48 - 34 * n)},${Math.round(44 - 20 * n)})`;
     ctx.fillRect(0, 0, view.w, view.h);
     drawGround(ctx, ground, cam, view.w, view.h);
+    things.rings(ctx, state, cam);
     if (state.marker && now < state.marker.until) drawMarker(state.marker);
 
     const items = standingItems(world, cam, n, view);
     const jet = fountainItem(cam, n, now, view);
     if (jet) items.push(jet);
     const ent = { cam, n, now, world, me: state.me, view };
+    items.push(...things.items(state, ent, now));
     for (const e of [state.me, ...state.others]) { const it = painter.item(e, ent); if (it) items.push(it); }
     const ov = { labels: [], bubbles: [], hits: [] };
     for (const it of sortBackToFront(items)) it.draw(ctx, ov);
+    things.air(ctx, state, cam, now, view);
     drawGlows(ctx, world, cam, n, now, view);
     fx.apply(ctx, 1, n);
     drawOverlay(ov, now);
     hits = ov.hits;
+    if (state.dark) drawDark(state.dark, mp);
     if (state.fade > 0) { ctx.fillStyle = `rgba(14,16,26,${Math.min(1, state.fade)})`; ctx.fillRect(0, 0, view.w, view.h); }
+  }
+
+  /** The seeker's darkness: the whole view nearly black but a soft circle of light on the ground around the seeker (an ellipse once tilted). r = 0 or full: all dark. */
+  function drawDark(dk, mp) {
+    if (!darkCanvas || darkCanvas.width !== view.w || darkCanvas.height !== view.h) darkCanvas = Object.assign(document.createElement('canvas'), { width: view.w, height: view.h });
+    const d = darkCanvas.getContext('2d');
+    d.globalCompositeOperation = 'source-over'; d.fillStyle = 'rgba(8,10,20,0.975)'; d.clearRect(0, 0, view.w, view.h); d.fillRect(0, 0, view.w, view.h);
+    const p = !dk.full && dk.r > 0 ? project(cam, mp.x * TILE + TILE / 2, mp.y * TILE + TILE / 2) : null;
+    if (p) {
+      const R = dk.r * 1.15 * p.scale;
+      d.globalCompositeOperation = 'destination-out'; d.save(); d.translate(p.x, p.y); d.scale(1, Math.max(0.35, cam.sin));
+      const g = d.createRadialGradient(0, 0, 0, 0, 0, R);
+      g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(0.6, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+      d.fillStyle = g; d.fillRect(-R, -R, R * 2, R * 2); d.restore();
+    }
+    ctx.drawImage(darkCanvas, 0, 0);
   }
 
   /** Where a tap sent the pet: the corners of the tile, on the ground. */
@@ -89,7 +112,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false }) {
     ctx.fillStyle = '#f8d040';
     for (const [dx, dy] of [[2, 2], [14, 2], [2, 14], [14, 14]]) {
       const p = project(cam, m.x * TILE + dx, m.y * TILE + dy);
-      if (p) { const r = Math.max(2, Math.round(p.scale * 1.5)); ctx.fillRect(Math.round(p.x - r / 2), Math.round(p.y - r / 2), r, r); }
+      if (p) { const r = Math.max(3, Math.round(p.scale * 2.5)); ctx.fillRect(Math.round(p.x - r / 2), Math.round(p.y - r / 2), r, r); }
     }
   }
 
