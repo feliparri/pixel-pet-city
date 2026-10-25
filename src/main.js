@@ -200,7 +200,14 @@ async function copyCode() {
   setTimeout(() => { btn.textContent = 'Copiar código'; }, 1500);
 }
 
+/** On a landscape phone the emotes hide behind the bar's 💬 button and open as a row over the stage (style.css); elsewhere the row is always there. */
+function setEmotesOpen(open) {
+  $('emotes').classList.toggle('open', open);
+  $('emotes-toggle').setAttribute('aria-expanded', String(open));
+}
+
 function buildEmotes() {
+  $('emotes-toggle').addEventListener('click', () => setEmotesOpen(!$('emotes').classList.contains('open')));
   const nav = $('emotes');
   for (const [id, label] of Object.entries(EMOTES)) {
     const b = document.createElement('button');
@@ -208,7 +215,7 @@ function buildEmotes() {
     b.className = label.length > 2 && !/\p{Extended_Pictographic}/u.test(label) ? 'btn text' : 'btn';
     b.textContent = label;
     b.setAttribute('aria-label', label);
-    b.addEventListener('click', () => town && town.emote(id));
+    b.addEventListener('click', () => { if (town) town.emote(id); setEmotesOpen(false); });
     nav.append(b);
   }
 }

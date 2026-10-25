@@ -1,4 +1,4 @@
-// Draws the world: a fixed 224 x 288 px view (portrait) scaled up by a whole number with nearest-neighbour, centred and letterboxed.
+// Draws the world: a view that fits the box it is given (see viewFor), scaled up by a whole number with nearest-neighbour, centred.
 // The scene is drawn at 1 px = 1 game pixel on a small canvas and enlarged; only the emote bubbles are drawn at the final size (emoji).
 // Layers: ground (baked), animated water, props and pets sorted by their feet, the day/night tint, the night lights, labels.
 import { TILE, SIGNS, PLACES, getArea } from './map.js';
@@ -16,14 +16,25 @@ import { drawChicken, CHICKEN_SIZE } from './art/chicken.js';
 import { ball as drawBall } from './art/places.js';
 import { drawBird, drawButterfly, drawFirefly, drawDuck, drawRing, drawSpray } from './art/life.js';
 
-export const VIEW_W = 224;
+export const VIEW_W = 224;              // the portrait reference view; a box taller than wide is fitted to it (and the dev previews use it)
 export const VIEW_H = 288;
+export const MIN_VIEW_H = 176;          // a wide box (a landscape phone) always shows at least 11 tiles from top to bottom
 const HAPPY_EMOTES = new Set(['heart', 'smile', 'party', 'hola', 'wave']);
 export const EMOTE_MS = 2600;
 const NO_LIGHT = { tint: [255, 255, 255], night: 0 };
 
-/** Integer scale that fits the view in a box of device pixels (at least 1). */
+/** Integer scale that fits the portrait reference view in a box of device pixels (at least 1). */
 export const fitScale = (devW, devH) => Math.max(1, Math.floor(Math.min(devW / VIEW_W, devH / VIEW_H)));
+
+/**
+ * The view for a box of device pixels: { scale, w, h } with w x h in game pixels. A box wider than tall takes the scale from its height
+ * (a view of at least MIN_VIEW_H, so the pixels stay as big as they can); a taller one keeps the portrait scale. The view fills the box,
+ * but never beyond the area (areaW x areaH px): a small interior is shown whole and the rest of the box stays empty around it.
+ */
+export function viewFor(devW, devH, areaW = Infinity, areaH = Infinity) {
+  const scale = devW > devH ? Math.max(1, Math.floor(devH / MIN_VIEW_H)) : fitScale(devW, devH);
+  return { scale, w: Math.max(1, Math.min(Math.floor(devW / scale), areaW)), h: Math.max(1, Math.min(Math.floor(devH / scale), areaH)) };
+}
 
 /** The camera's top left in map pixels: centred on the player, never showing outside the map; a map smaller than the view is centred. */
 export function cameraFor(px, py, mapW, mapH, viewW = VIEW_W, viewH = VIEW_H) {
@@ -209,24 +220,32 @@ function drawGlows(sctx, glows, cam, night, now, vw, vh) {
 export function createRenderer({ canvas, sprites, font }) {
   const ctx = canvas.getContext('2d');
   const scene = document.createElement('canvas');
-  scene.width = VIEW_W; scene.height = VIEW_H;
   const sctx = scene.getContext('2d');
-  let scale = 1;
+  let scale = 1, viewW = VIEW_W, viewH = VIEW_H;
   let cam = { x: 0, y: 0 };
   let areaName = 'town';
+  let box = null, laidOut = null;                   // the last box (css size and pixel ratio) and the area the view was fitted to
+
+  function layout() {
+    const a = getArea(areaName);
+    const v = viewFor(box.w * box.dpr, box.h * box.dpr, a.w * TILE, a.h * TILE);
+    scale = v.scale; viewW = v.w; viewH = v.h; laidOut = areaName;
+    scene.width = viewW; scene.height = viewH;
+    canvas.width = viewW * scale; canvas.height = viewH * scale;
+    canvas.style.width = `${(viewW * scale) / box.dpr}px`;
+    canvas.style.height = `${(viewH * scale) / box.dpr}px`;
+  }
 
   function resize(cssW, cssH, dpr = 1) {
-    scale = fitScale(cssW * dpr, cssH * dpr);
-    canvas.width = VIEW_W * scale; canvas.height = VIEW_H * scale;
-    canvas.style.width = `${(VIEW_W * scale) / dpr}px`;
-    canvas.style.height = `${(VIEW_H * scale) / dpr}px`;
+    box = { w: cssW, h: cssH, dpr };
+    layout();
   }
 
   /** The tile under a pointer (client coordinates), or null outside the area. */
   function pointToTile(clientX, clientY) {
     const rect = canvas.getBoundingClientRect();
-    const lx = ((clientX - rect.left) / rect.width) * VIEW_W + cam.x;
-    const ly = ((clientY - rect.top) / rect.height) * VIEW_H + cam.y;
+    const lx = ((clientX - rect.left) / rect.width) * viewW + cam.x;
+    const ly = ((clientY - rect.top) / rect.height) * viewH + cam.y;
     const a = getArea(areaName);
     const tx = Math.floor(lx / TILE), ty = Math.floor(ly / TILE);
     return tx >= 0 && ty >= 0 && tx < a.w && ty < a.h ? [tx, ty] : null;
@@ -238,10 +257,11 @@ export function createRenderer({ canvas, sprites, font }) {
    */
   function draw(state, now) {
     areaName = state.area || 'town';
+    if (box && laidOut !== areaName) layout();      // another area (a small interior): the view is fitted to it
     const a = getArea(areaName);
     const mp = state.me.walker.pos();
-    cam = cameraFor(mp.x * TILE + TILE / 2, mp.y * TILE + TILE / 2, a.w * TILE, a.h * TILE);
-    const bubbles = drawScene(sctx, { area: areaName, cam, vw: VIEW_W, vh: VIEW_H, entities: state.others, me: state.me, now, amb: state.amb, sprites, font, marker: state.marker, fade: state.fade || 0, chicken: state.chicken || null, dark: state.dark || null, life: state.life || null, ball: state.ball || null });
+    cam = cameraFor(mp.x * TILE + TILE / 2, mp.y * TILE + TILE / 2, a.w * TILE, a.h * TILE, viewW, viewH);
+    const bubbles = drawScene(sctx, { area: areaName, cam, vw: viewW, vh: viewH, entities: state.others, me: state.me, now, amb: state.amb, sprites, font, marker: state.marker, fade: state.fade || 0, chicken: state.chicken || null, dark: state.dark || null, life: state.life || null, ball: state.ball || null });
     ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = '#0e101a';
     ctx.fillRect(0, 0, canvas.width, canvas.height);

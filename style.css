@@ -78,7 +78,7 @@ a.btn { display: inline-block; text-decoration: none; }
 #results-stars { font-size: 1.3rem; font-weight: 800; color: var(--gold); margin: 0 0 .6rem; }
 
 /* the phone's controls: a Game Boy in landscape (D-pad left, B and A right), a hint to turn the phone in portrait; never on a desktop */
-.pad, .rotate-hint { display: none; }
+.pad, .rotate-hint, .emotes-toggle { display: none; }
 .pad { flex: none; align-items: center; justify-content: center; gap: 1rem; padding: .5rem; background: var(--down); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: none; }
 .dpad { position: relative; width: 11rem; height: 11rem; touch-action: none; }
 .dpad .arrow, .round { pointer-events: none; font: inherit; color: var(--text); background: rgba(58,68,102,.6); border: 2px solid rgba(244,246,250,.35); }
@@ -95,6 +95,14 @@ a.btn { display: inline-block; text-decoration: none; }
   .touch .pad { display: flex; }
   .touch .pad#pad-right { flex-direction: column-reverse; gap: .75rem; }
   .touch #status { display: none; }
+  /* the stage gets the height: a thin bar, and the emotes behind the 💬 button, as a row over the stage */
+  .touch .bar { flex-wrap: nowrap; gap: .3rem; padding: max(.15rem, env(safe-area-inset-top)) max(.4rem, env(safe-area-inset-right)) .15rem max(.4rem, env(safe-area-inset-left)); border-bottom-width: 1px; }
+  .touch .bar .btn.small { min-height: 1.75rem; padding: .1rem .5rem; font-size: .75rem; border-bottom-width: 3px; }
+  .touch .bar .label, .touch .badge { font-size: .7rem; }
+  .touch .bar .stars { font-size: .85rem; }
+  .touch .emotes-toggle { display: inline-block; }
+  .touch .emotes { display: none; }
+  .touch .emotes.open { display: flex; position: fixed; z-index: 5; top: 2.4rem; left: 50%; transform: translateX(-50%); max-width: 92%; padding: .3rem; border: 2px solid var(--edge); }
   .touch .dpad { width: 9.75rem; height: 9.75rem; }
   .touch .dpad .arrow { width: 3.5rem; height: 3.5rem; }
   .touch .dpad .up, .touch .dpad .down { left: 3.125rem; }
