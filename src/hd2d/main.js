@@ -3,11 +3,11 @@
 //   &still=1          one deterministic frame, then stop (document.title becomes "ready")        &bench=1   time 120 frames, print the result
 //   &res=0.75         scales the internal resolution
 import { TILE } from '../map.js';
-import { drawPet, CELL, loadSprites } from '../sprites.js';
-import { cameraFor, project, sortBackToFront, snapScale, snapFocus, visibleTiles } from './camera.js';
-import { approach } from './light.js';
-import { lightAt } from './light.js';
-import { buildWorld, bakeGround, drawGround, standingItems, drawGlows, fountainItem, grade } from './scene.js';
+import { loadSprites } from '../sprites.js';
+import { cameraFor, sortBackToFront, snapFocus, visibleTiles } from './camera.js';
+import { approach, nightMultiply } from './light.js';
+import { buildWorld, bakeGround, drawGround, standingItems, drawGlows, fountainItem } from './scene.js';
+import { createPetPainter } from './pets.js';
 import { createFx } from './fx.js';
 import { Wanderer, rng } from './wander.js';
 
@@ -22,7 +22,7 @@ const BOX = { x0: 14, y0: 13, x1: 33, y1: 29 };
 const FOLLOW_BOX = { x0: 20, y0: 20, x1: 28, y1: 24 };                 // the camera's focus stays here so the view never leaves the baked region
 
 let sprites, world, ground, fx, view = { w: 0, h: 0 }, groundKey = '', pets = [], focus = { x: 24 * TILE, y: 21.5 * TILE };
-const tmp = Object.assign(document.createElement('canvas'), { width: 48, height: 48 }), tctx = tmp.getContext('2d');
+let painter = null;
 const stat = { ema: 0, frames: 0, last: 0 };
 
 function resize() {
@@ -32,32 +32,6 @@ function resize() {
   view = { w, h };
   canvas.width = w; canvas.height = h;
   fx = createFx(w, h);
-}
-
-const headFrame = (e, now) => {
-  if (e.walker.moving && (e.walker.d === 'left' || e.walker.d === 'right')) return 'look';
-  return ((now + e.id.charCodeAt(0) * 397) % 3400) < 130 ? 'blink' : 'idle';
-};
-
-function petItem(e, cam, n, now) {
-  const p = e.walker.pos();
-  const wx = p.x * TILE + TILE / 2, wy = p.y * TILE + TILE;
-  const g = project(cam, wx, wy);
-  if (!g) return null;
-  const k = e.walker.moving ? Math.min(1, e.walker.t / e.walker.stepMs()) : 0;
-  const hop = e.walker.moving ? Math.round(Math.abs(Math.sin(k * Math.PI)) * 3) : 0;
-  return { depth: g.depth, order: 1, draw: (c) => {
-    const s = snapScale(g.scale), cx = Math.round(g.x), cy = Math.round(g.y);                // whole-number scale: even art pixels
-    const sh = c.globalAlpha;                                           // the soft ground shadow: flattened by the tilt, fading as the pet hops
-    c.save(); c.translate(cx, cy - s); c.scale(1, Math.max(0.3, cam.sin) * 0.5);
-    for (const [r, a] of [[11, 0.16], [8.5, 0.2], [6, 0.24]]) { c.fillStyle = `rgba(8,10,30,${a * (1 - hop * 0.1)})`; c.beginPath(); c.arc(0, 0, r * s, 0, 6.2832); c.fill(); }
-    c.restore(); c.globalAlpha = sh;
-    tctx.clearRect(0, 0, 48, 48);
-    const flap = e.walker.moving && Math.floor(now / 140) % 2 === 1;
-    drawPet(tctx, sprites, e.look, 8, 12 - hop, { frame: headFrame(e, now), flip: e.walker.d === 'right', flap });
-    if (n > 0.02) grade(tctx, tmp, n, lightAt(world.lights, wx, wy));        // night: the veil, and the warm wash where a lamp reaches
-    c.drawImage(tmp, 0, 0, 48, 48, cx - 24 * s, cy - 42 * s, 48 * s, 48 * s);
-  } };
 }
 
 /** The camera glides towards the first pet, pulled halfway towards the middle of the group so the others stay in frame. */
@@ -93,7 +67,7 @@ function frame(now, dt) {
   const cam = currentCam();
 
   const nq = Math.round(n * 16), wf = Math.floor(now / 320) % 3, key = `${nq}:${wf}`;
-  if (key !== groundKey) { bakeGround(world, nq / 16, wf, ground); groundKey = key; }
+  if (key !== groundKey) { bakeGround(world, nq / 16, nightMultiply(nq / 16), wf, ground); groundKey = key; }
   ctx.imageSmoothingEnabled = false;
   const bg = [Math.round(30 - 20 * n), Math.round(48 - 34 * n), Math.round(44 - 20 * n)];
   ctx.fillStyle = `rgb(${bg})`; ctx.fillRect(0, 0, view.w, view.h);
@@ -102,8 +76,9 @@ function frame(now, dt) {
   const items = standingItems(world, cam, n, view);
   const jet = fountainItem(cam, n, now, view);
   if (jet) items.push(jet);
-  for (const e of pets) { const it = petItem(e, cam, n, now); if (it) items.push(it); }
-  for (const it of sortBackToFront(items)) it.draw(ctx);
+  const ov = { labels: [], bubbles: [], hits: [] };
+  for (const e of pets) { const it = painter.item(e, { cam, n, now, world, me: null, view }); if (it) items.push(it); }
+  for (const it of sortBackToFront(items)) it.draw(ctx, ov);
   drawGlows(ctx, world, cam, n, now);
   fx.apply(ctx, t, n);
 }
@@ -114,6 +89,7 @@ function setUi() {
 
 async function main() {
   sprites = await loadSprites();
+  painter = createPetPainter(sprites);
   world = buildWorld();
   ground = Object.assign(document.createElement('canvas'), { width: world.tex.width, height: world.tex.height });
   const rand = rng(still || bench ? 7 : (Date.now() & 0xffff) + 1);

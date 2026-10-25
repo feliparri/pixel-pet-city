@@ -160,9 +160,20 @@ async function enter(code, { transport = mode, arrival = null, solo = false } = 
   const counter = { add(n) { stars.add(n); showStars(); } };
   window.cityDebug = () => ({ town, net });                    // handy in the console when testing with two tabs
   town = startTown({ canvas: $('view'), stage: $('stage'), pad: touch ? { dpad: $('dpad'), a: $('pad-a'), b: $('pad-b') } : null, sprites, font, net, me, entrance: arrival, stars: counter, onHud: (info) => hud && hud.update(info) });
+  paintFx();
   setStatus('connected');
   if (visit) visit.radar.now();                                 // the room changed: tell the phone's radar now
   return true;
+}
+
+/** The "Efectos" switch (the HD-2D view): the choice is remembered in this browser; ?flat=1 locks it off. */
+let hdPref = store.get('city.hd2d') !== '0';
+function paintFx() {
+  const btn = $('fx-toggle');
+  if (!town) return;
+  if (!town.hd.locked) town.hd.set(hdPref);
+  btn.disabled = town.hd.locked;
+  btn.setAttribute('aria-pressed', String(town.hd.on));
 }
 
 function setStatus(status) {
@@ -320,6 +331,7 @@ async function boot() {
   }
   fillItemSelects();
   buildEmotes();
+  $('fx-toggle').addEventListener('click', () => { if (!town || town.hd.locked) return; hdPref = !town.hd.on; store.set('city.hd2d', hdPref ? '1' : '0'); paintFx(); });
   hud = createHud($, { onPlay: () => town && town.games.play(), onJoin: () => town && town.games.join(), onSeek: () => town && town.games.seek(), onZone: (z) => town && town.games.zone(z), onTeam: (t) => town && town.games.team(t), onLeave: () => town && town.games.leave(), onDismiss: () => town && town.games.dismiss() });
   if (entry === 'trip') {
     $('copy').addEventListener('click', copyCode);
@@ -346,6 +358,7 @@ async function boot() {
   $('code-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') join(); });
   $('copy').addEventListener('click', copyCode);
   $('leave').addEventListener('click', leave);
+  if (new URLSearchParams(location.search).has('autoroom')) enter(generateCode());      // development only: straight into a local room (screenshots, tests by hand)
 }
 
 boot();

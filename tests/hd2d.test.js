@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { makeCamera, cameraFor, MAX_REACH, snapScale, snapFocus, visibleTiles, project, unproject, groundRow, depthOf, billboardScale, standAt, tileToScreen, screenToTile, sortBackToFront, TILE } from '../src/hd2d/camera.js';
-import { falloff, lightAt, nightMultiply, spriteGrade, approach, LAMP_RADIUS } from '../src/hd2d/light.js';
+import { makeCamera, cameraFor, MAX_REACH, focusBounds, snapScale, snapFocus, visibleTiles, project, unproject, groundRow, depthOf, billboardScale, standAt, tileToScreen, screenToTile, sortBackToFront, TILE } from '../src/hd2d/camera.js';
+import { groundMult, NIGHT_TINT, falloff, lightAt, nightMultiply, spriteGrade, approach, LAMP_RADIUS } from '../src/hd2d/light.js';
 import { Wanderer, rng } from '../src/hd2d/wander.js';
 import { isWalkable } from '../src/map.js';
 
@@ -165,4 +165,27 @@ test('the seeded generator is repeatable and in [0, 1)', () => {
   assert.deepEqual(xs, ys);
   assert.notDeepEqual(xs, Array.from({ length: 50 }, c));
   assert.ok(xs.every((v) => v >= 0 && v < 1));
+});
+
+test('focusBounds keeps the whole view on the map, and a map smaller than the view gives its middle', () => {
+  const W = 768, H = 1184;
+  for (const [vw, vh, ref] of [[1280, 720, 230], [1266, 585, 170], [750, 1136, 230]]) {
+    const probe = cameraFor(vw, vh, W / 2, H / 2, 1, { ref }), b = focusBounds(probe, vw, vh, W, H);
+    assert.ok(b.x0 <= b.x1 && b.y0 <= b.y1);
+    for (const [fx, fy] of [[b.x0, b.y0], [b.x1, b.y0], [b.x0, b.y1], [b.x1, b.y1]]) {
+      const c = cameraFor(vw, vh, fx, fy, 1, { ref });
+      const left = unproject(c, 0, vh * 0.2), right = unproject(c, vw, vh * 0.2), bottom = unproject(c, vw / 2, vh - 1);
+      assert.ok(left.x >= -1e-6 && right.x <= W + 1e-6 && bottom.y <= H + 1e-6, `${vw}x${vh} at ${fx},${fy}`);
+    }
+  }
+  const tiny = focusBounds(cameraFor(1280, 720, 100, 100, 1), 1280, 720, 100, 100);
+  assert.deepEqual([tiny.x0, tiny.x1, tiny.y0, tiny.y1], [50, 50, 50, 50]);
+});
+
+test('the ground colour follows the town clock: untouched by day, the clock\'s warm tint at dusk, this view\'s deep blue at night', () => {
+  assert.deepEqual(groundMult({ tint: [255, 255, 255], night: 0 }), [255, 255, 255]);
+  assert.deepEqual(groundMult({ tint: [104, 112, 190], night: 1 }), NIGHT_TINT);
+  const dusk = groundMult({ tint: [255, 214, 168], night: 0.2 });
+  assert.ok(dusk[0] > dusk[2] && dusk[0] < 255);
+  assert.deepEqual(groundMult({ tint: [255, 255, 255], night: 5 }), NIGHT_TINT);
 });

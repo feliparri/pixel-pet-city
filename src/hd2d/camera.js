@@ -95,11 +95,11 @@ export const MAX_REACH = 680;      // the furthest north (world px beyond the fo
 /**
  * The camera for a view: a zoom that frames about 20 tiles across (more on a tall phone screen: it zooms in until the top row no longer
  * reaches past MAX_REACH, so a portrait view does not stretch towards the horizon), the focus point a little below the middle.
- * `tilt` 0..1 blends the flat view (0) into the tilted one (1).
+ * `tilt` 0..1 blends the flat view (0) into the tilted one (1). `ref` is how many world px tall the view frames at the focus (smaller = bigger pets).
  */
-export function cameraFor(viewW, viewH, focusX, focusY, tilt = 1, { pitch = 40, dist = 330 } = {}) {
+export function cameraFor(viewW, viewH, focusX, focusY, tilt = 1, { pitch = 40, dist = 330, ref = 230 } = {}) {
   const p = 90 + (pitch - 90) * tilt;
-  let zoom = Math.max(Math.min(viewW / 340, viewH / 230), viewH / 460);
+  let zoom = Math.max(Math.min(viewW / 340, viewH / ref), viewH / 460);
   for (let i = 0; i < 16; i++) {
     const cam = makeCamera({ focusX, focusY, pitch: p, dist, focal: zoom * dist, cx: viewW / 2, cy: viewH * (0.5 + 0.06 * tilt) });
     const top = groundRow(cam, 0);
@@ -107,4 +107,18 @@ export function cameraFor(viewW, viewH, focusX, focusY, tilt = 1, { pitch = 40, 
     zoom *= 1.06;
   }
   return makeCamera({ focusX, focusY, pitch: p, dist, focal: zoom * dist, cx: viewW / 2, cy: viewH * (0.5 + 0.06 * tilt) });
+}
+
+/**
+ * Where the focus may be so the view stays on a map of mapW x mapH world px: { x0, x1, y0, y1 } (a map smaller than the view gives its
+ * middle). The camera only translates, so the extents of the view around the focus are taken from `cam` as it is: the sides at the row
+ * 20% down (the top rows are far and fogged, a little past the edge there does no harm) and the north and south from the first and last rows.
+ */
+export function focusBounds(cam, viewW, viewH, mapW, mapH, northSlack = 48) {
+  const tl = unproject(cam, 0, viewH * 0.2), tr = unproject(cam, viewW, viewH * 0.2), top = groundRow(cam, 0), bottom = groundRow(cam, viewH - 1);
+  const left = tl ? cam.focusX - tl.x : 0, right = tr ? tr.x - cam.focusX : 0;
+  const north = top ? Math.max(0, cam.focusY - top.y - northSlack) : MAX_REACH, south = bottom ? Math.max(0, bottom.y - cam.focusY) : 0;
+  const span = (lo, hi, size) => (lo > size - hi ? [size / 2, size / 2] : [lo, size - hi]);
+  const [x0, x1] = span(left, right, mapW), [y0, y1] = span(north, south, mapH);
+  return { x0, x1, y0, y1 };
 }

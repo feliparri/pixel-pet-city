@@ -31,3 +31,9 @@ export function approach(value, target, dtMs, rate = 1.1) {
   const step = (rate * dtMs) / 1000;
   return value < target ? Math.min(target, value + step) : Math.max(target, value - step);
 }
+
+/** The colour multiplied over the ground for the town's clock (`amb`: { tint, night }, see daynight.js): the clock's own tint (warm at dusk and dawn), sliding to this view's deeper blue as the night comes in. */
+export function groundMult(amb) {
+  const n = Math.min(1, Math.max(0, amb.night));
+  return amb.tint.map((c, i) => Math.round(c + (NIGHT_TINT[i] - c) * n));
+}

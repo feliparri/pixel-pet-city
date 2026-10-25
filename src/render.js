@@ -43,7 +43,7 @@ export function cameraFor(px, py, mapW, mapH, viewW = VIEW_W, viewH = VIEW_H) {
   return { x: axis(px, mapW, viewW), y: axis(py, mapH, viewH) };
 }
 
-const headFrame = (e, now, id) => {
+export const headFrame = (e, now, id) => {
   const emote = e.emote && now < e.emote.until && HAPPY_EMOTES.has(e.emote.e);
   if (emote) return 'happy';
   const blink = ((now + id.charCodeAt(0) * 397) % 3400) < 130;
@@ -267,27 +267,31 @@ export function createRenderer({ canvas, sprites, font, minH = MIN_VIEW_H }) {
     ctx.fillStyle = '#0e101a';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(scene, 0, 0, canvas.width, canvas.height);
-    for (const b of bubbles) drawBubble(b);
+    for (const b of bubbles) drawEmoteBubble(ctx, b.e, b.x * scale, b.y * scale, scale, canvas.width);
   }
 
-  function drawBubble({ x, y, e }) {
-    const label = EMOTES[e];
-    const px = 8 * scale;
-    ctx.font = `${px}px system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif`;
-    const textual = label.length > 2 && !/\p{Extended_Pictographic}/u.test(label);
-    const w = Math.ceil(ctx.measureText(label).width) + 4 * scale, h = 11 * scale;
-    const cx = Math.min(Math.max(x * scale, w / 2 + scale), canvas.width - w / 2 - scale);
-    const top = Math.max(scale, y * scale - h - 2 * scale);
-    ctx.fillStyle = '#f4f6fa';
-    ctx.fillRect(cx - w / 2, top, w, h);
-    ctx.fillStyle = '#181c2c';
-    ctx.fillRect(cx - w / 2 - scale, top + scale, scale, h - 2 * scale); ctx.fillRect(cx + w / 2, top + scale, scale, h - 2 * scale);
-    ctx.fillRect(cx - w / 2 + scale, top - scale, w - 2 * scale, scale); ctx.fillRect(cx - w / 2 + scale, top + h, w - 2 * scale, scale);
-    ctx.fillRect(cx - scale, top + h + scale, 2 * scale, scale);
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillStyle = textual ? '#181c2c' : '#000';
-    ctx.fillText(label, cx, top + h / 2 + scale / 2);
-  }
+  return { resize, draw, pointToTile, invalidate() { laidOut = null; }, get scale() { return scale; } };
+}
 
-  return { resize, draw, pointToTile, get scale() { return scale; } };
+/**
+ * An emote's speech bubble on a 2D context, at final size: `x` is the middle and `y` the point just above the head, in canvas px; `scale` is
+ * the pixel size of the bubble's border (and the font is 8 of those); the bubble stays inside `maxW`.
+ */
+export function drawEmoteBubble(ctx, e, x, y, scale, maxW) {
+  const label = EMOTES[e];
+  const px = 8 * scale;
+  ctx.font = `${px}px system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif`;
+  const textual = label.length > 2 && !/\p{Extended_Pictographic}/u.test(label);
+  const w = Math.ceil(ctx.measureText(label).width) + 4 * scale, h = 11 * scale;
+  const cx = Math.min(Math.max(x, w / 2 + scale), maxW - w / 2 - scale);
+  const top = Math.max(scale, y - h - 2 * scale);
+  ctx.fillStyle = '#f4f6fa';
+  ctx.fillRect(cx - w / 2, top, w, h);
+  ctx.fillStyle = '#181c2c';
+  ctx.fillRect(cx - w / 2 - scale, top + scale, scale, h - 2 * scale); ctx.fillRect(cx + w / 2, top + scale, scale, h - 2 * scale);
+  ctx.fillRect(cx - w / 2 + scale, top - scale, w - 2 * scale, scale); ctx.fillRect(cx - w / 2 + scale, top + h, w - 2 * scale, scale);
+  ctx.fillRect(cx - scale, top + h + scale, 2 * scale, scale);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = textual ? '#181c2c' : '#000';
+  ctx.fillText(label, cx, top + h / 2 + scale / 2);
 }

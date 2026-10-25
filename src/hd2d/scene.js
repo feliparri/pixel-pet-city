@@ -2,16 +2,17 @@
 // a foot point, the lights. Everything is built from the town's own art (src/art/*): nothing is redrawn or forked here.
 import { TILE, HOUSES, getArea, inPlaza } from '../map.js';
 import * as G from '../art/ground.js';
-import { shadow } from '../art/palette.js';
 import { bakeArea } from '../art/bake.js';
 import { drawHouse, windowsOf, litWindow } from '../art/buildings.js';
+import { rippleSpots } from '../art/ground.js';
+import { P, shadow } from '../art/palette.js';
 import { fountainFrame, drawFountain } from '../art/props.js';
 import { PIECE_KINDS, hedgePiece, fencePiece, benchPiece, bedPiece, fountainWall } from './pieces.js';
 import { groundRow, project, standAt } from './camera.js';
 import { LAMP_RADIUS, lightAt, nightMultiply, spriteGrade } from './light.js';
 
-/** The part of the town this prototype shows, in tiles (the plaza, its roads, hedges and the houses along the north road). */
-export const REGION = { x: 0, y: 0, w: 48, h: 36 };
+/** The part of the town that is baked, in tiles: all of it. */
+export const REGION = { x: 0, y: 0, w: 48, h: 74 };
 export const FOUNTAIN_AT = { x: 22 * TILE, y: 20 * TILE };           // top left of the fountain, world px
 const HOUSE_PAD = 12;                                                // transparent rows above a house sprite (the chimney)
 const LAMP_TOP = 25;                                                 // the lantern's height above a lamp's foot
@@ -53,7 +54,11 @@ export function buildWorld() {
   for (const w of windows) pools.push({ x: w.x, y: Math.round(w.y + 28), r: 30, k: 0.4 });          // the light of a window spills on the road
   const lights = pools.map((p) => ({ ...p, r: p.r * 1.5, k: p.k * 0.9 }));                       // what lights a standing thing reaches further than the floor pool
   for (const p of props) p.light = lightAt(lights, p.x, p.y);
-  return { tex, props, houses, lamps, windows, pools, lights, cache: new Map() };
+  const water = baked.water.map(([x, y, tx, ty]) => ({ x, y, tx, ty }));
+  const pond = water.length ? [Math.min(...water.map((q) => q.x)), Math.min(...water.map((q) => q.y)), 0, 0] : null;
+  if (pond) { pond[2] = Math.max(...water.map((q) => q.x)) + TILE - pond[0]; pond[3] = Math.max(...water.map((q) => q.y)) + TILE - pond[1]; }
+  const waterRects = [...(pond ? [pond] : []), [FOUNTAIN_AT.x, FOUNTAIN_AT.y, 64, 48]];       // what moves with the water frame (the pond and the fountain's basin)
+  return { tex, props, houses, lamps, windows, pools, lights, water, waterRects, cache: new Map(), cacheN: -1 };
 }
 
 /**
@@ -88,35 +93,56 @@ function standUp(tex, area) {
 
 const glowStops = (g, rgb, a) => { for (const [t, k] of [[0, 1], [0.25, 0.56], [0.5, 0.25], [0.75, 0.06], [1, 0]]) g.addColorStop(t, `rgba(${rgb},${a * k})`); };
 
+/** The static light masks of a world (white where a pool of light reaches, and the same in warm orange), built once. */
+function masks(world) {
+  if (world._mask) return world;
+  const w = world.tex.width, h = world.tex.height;
+  const mask = canvasOf(w, h), warm = canvasOf(w, h), m = mask.getContext('2d');
+  m.globalCompositeOperation = 'lighter';
+  for (const p of world.pools) {
+    const g = m.createRadialGradient(p.x - OX, p.y - OY, 0, p.x - OX, p.y - OY, p.r);
+    glowStops(g, '255,255,255', p.k);
+    m.fillStyle = g; m.fillRect(p.x - OX - p.r, p.y - OY - p.r, p.r * 2, p.r * 2);
+  }
+  const c = warm.getContext('2d');
+  c.drawImage(mask, 0, 0); c.globalCompositeOperation = 'source-in'; c.fillStyle = 'rgb(255,150,60)'; c.fillRect(0, 0, w, h);
+  world._mask = mask; world._warm = warm; world._day = canvasOf(w, h);
+  return world;
+}
+
+const intersects = (r, q) => r[0] < q[0] + q[2] && r[0] + r[2] > q[0] && r[1] < q[1] + q[3] && r[1] + r[3] > q[1];
+
 /**
- * The ground texture for a night amount `n` (0 = day) and water frame: the day art multiplied by the night's blue, then the day art
- * shown again (a little warmer) inside every pool of lamp, door and window light, so the light really lights the floor.
+ * The ground texture (`out`) for a night amount `n` (0 = day), the colour `mult` multiplied over the world and a water frame: the day art
+ * times `mult`, then the day art shown again (a little warmer) inside every pool of lamp, door and window light, so the light really lights
+ * the floor. `rects` ([[x, y, w, h], ...] in world px, default all of it) limits the work to what changed, e.g. the water's frame.
  */
-export function bakeGround(world, n, frame, out = null) {
+export function bakeGround(world, n, mult, frame, out = null, rects = null) {
   const w = world.tex.width, h = world.tex.height;
   const lit = out || canvasOf(w, h), ctx = lit.getContext('2d');
-  ctx.globalCompositeOperation = 'source-over';
-  ctx.drawImage(world.tex, 0, 0);
-  for (const [c, dx, dy, rw, rh] of fountainFrame(frame)) { ctx.fillStyle = c; ctx.fillRect(FOUNTAIN_AT.x - OX + dx, FOUNTAIN_AT.y - OY + dy, rw, rh); }
-  if (n <= 0) return lit;
-  const day = world._day || (world._day = canvasOf(w, h)), dctx = day.getContext('2d');
-  dctx.globalCompositeOperation = 'source-over'; dctx.drawImage(lit, 0, 0);                  // the day ground with the water frame
-  ctx.globalCompositeOperation = 'multiply';
-  const m = nightMultiply(n);
-  ctx.fillStyle = `rgb(${m[0]},${m[1]},${m[2]})`; ctx.fillRect(0, 0, w, h);
-  const mask = world._mask || (world._mask = canvasOf(w, h)), mctx = mask.getContext('2d');
-  mctx.globalCompositeOperation = 'source-over'; mctx.clearRect(0, 0, w, h);
-  mctx.globalCompositeOperation = 'lighter';
-  for (const p of world.pools) {
-    const g = mctx.createRadialGradient(p.x - OX, p.y - OY, 0, p.x - OX, p.y - OY, p.r);
-    glowStops(g, '255,255,255', p.k);
-    mctx.fillStyle = g; mctx.fillRect(p.x - OX - p.r, p.y - OY - p.r, p.r * 2, p.r * 2);
+  const day = n > 0 ? masks(world)._day : null, dctx = day && day.getContext('2d'), tinted = mult.some((c) => c < 255);
+  for (const r of rects || [[OX, OY, w, h]]) {
+    const [rx, ry, rw, rh] = [r[0] - OX, r[1] - OY, r[2], r[3]];
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.drawImage(world.tex, rx, ry, rw, rh, rx, ry, rw, rh);
+    ctx.save(); ctx.beginPath(); ctx.rect(rx, ry, rw, rh); ctx.clip();
+    if (world.water.length && intersects(r, world.waterRects[0])) {                              // the pond's ripples
+      ctx.fillStyle = P.a3;
+      for (const q of world.water) for (const [dx, dy, ww] of rippleSpots(q.tx, q.ty, frame)) ctx.fillRect(q.x - OX + dx, q.y - OY + dy, ww, 1);
+    }
+    if (intersects(r, [FOUNTAIN_AT.x, FOUNTAIN_AT.y, 64, 48])) for (const [c, dx, dy, fw, fh] of fountainFrame(frame)) { ctx.fillStyle = c; ctx.fillRect(FOUNTAIN_AT.x - OX + dx, FOUNTAIN_AT.y - OY + dy, fw, fh); }
+    ctx.restore();
+    if (!tinted && n <= 0) continue;
+    if (n <= 0) { ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = `rgb(${mult[0]},${mult[1]},${mult[2]})`; ctx.fillRect(rx, ry, rw, rh); ctx.globalCompositeOperation = 'source-over'; continue; }
+    dctx.globalCompositeOperation = 'source-over'; dctx.clearRect(rx, ry, rw, rh); dctx.drawImage(lit, rx, ry, rw, rh, rx, ry, rw, rh);   // the day ground with the water frame
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.fillStyle = `rgb(${mult[0]},${mult[1]},${mult[2]})`; ctx.fillRect(rx, ry, rw, rh);
+    dctx.globalCompositeOperation = 'destination-in'; dctx.drawImage(world._mask, rx, ry, rw, rh, rx, ry, rw, rh);      // the day ground, only where there is light
+    dctx.globalCompositeOperation = 'source-over';
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 0.8 * n; ctx.drawImage(day, rx, ry, rw, rh, rx, ry, rw, rh); ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.22 * n; ctx.drawImage(world._warm, rx, ry, rw, rh, rx, ry, rw, rh); ctx.globalAlpha = 1;   // and a warm wash
+    ctx.globalCompositeOperation = 'source-over';
   }
-  dctx.globalCompositeOperation = 'destination-in'; dctx.drawImage(mask, 0, 0);               // the day ground, only where there is light
-  ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 0.8 * n; ctx.drawImage(day, 0, 0); ctx.globalAlpha = 1;
-  mctx.globalCompositeOperation = 'source-in'; mctx.fillStyle = 'rgb(255,150,60)'; mctx.fillRect(0, 0, w, h);   // and a warm wash in the same pools
-  ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.22 * n; ctx.drawImage(mask, 0, 0); ctx.globalAlpha = 1;
-  ctx.globalCompositeOperation = 'source-over';
   return lit;
 }
 
@@ -136,7 +162,8 @@ export function drawGround(ctx, ground, cam, viewW, viewH, rowStep = 1) {
 
 /** A sprite graded for night amount `n` and light `l`, cached by quantised amounts. `after(ctx)` paints what stays bright (lit windows). */
 export function nightSprite(world, key, src, n, l, after = null) {
-  const nq = Math.round(n * 12), lq = Math.round(l * 8), id = `${key}|${nq}|${lq}`;
+  const nq = Math.round(n * 12), lq = Math.round(l * 8), id = `${key}|${lq}`;
+  if (world.cacheN !== nq) { world.cache.clear(); world.cacheN = nq; }                      // the night moved on: the old grades are stale
   let c = world.cache.get(id);
   if (!c) { c = canvasOf(src.width, src.height); grade(c.getContext('2d'), src, nq / 12, lq / 8); if (after) after(c.getContext('2d'), nq / 12); world.cache.set(id, c); }
   return c;
@@ -173,11 +200,12 @@ export function standingItems(world, cam, n, view) {
 }
 
 /** Additive glow of the lamps and lit windows on screen (the ground's own light is in the ground texture). */
-export function drawGlows(ctx, world, cam, n, now) {
+export function drawGlows(ctx, world, cam, n, now, view = { w: ctx.canvas.width, h: ctx.canvas.height }) {
   if (n <= 0) return;
   ctx.globalCompositeOperation = 'lighter';
   const flick = 1 + Math.sin(now / 900) * 0.05 + Math.sin(now / 230) * 0.02;
   const halo = (p, r, rgb, a) => {
+    if (p.x + r < 0 || p.x - r > view.w || p.y + r < 0 || p.y - r > view.h) return;
     const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
     glowStops(g, rgb, a);
     ctx.fillStyle = g; ctx.fillRect(p.x - r, p.y - r, r * 2, r * 2);
