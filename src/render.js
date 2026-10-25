@@ -28,11 +28,12 @@ export const fitScale = (devW, devH) => Math.max(1, Math.floor(Math.min(devW / V
 
 /**
  * The view for a box of device pixels: { scale, w, h } with w x h in game pixels. A box wider than tall takes the scale from its height
- * (a view of at least MIN_VIEW_H, so the pixels stay as big as they can); a taller one keeps the portrait scale. The view fills the box,
- * but never beyond the area (areaW x areaH px): a small interior is shown whole and the rest of the box stays empty around it.
+ * (a view of at least minH: MIN_VIEW_H on a phone, so the pixels stay as big as they can; VIEW_H on a desktop, as tall as before); a taller
+ * one keeps the portrait scale. The view fills the box, but never beyond the area (areaW x areaH px): a small interior is shown whole
+ * and the rest of the box stays empty around it.
  */
-export function viewFor(devW, devH, areaW = Infinity, areaH = Infinity) {
-  const scale = devW > devH ? Math.max(1, Math.floor(devH / MIN_VIEW_H)) : fitScale(devW, devH);
+export function viewFor(devW, devH, areaW = Infinity, areaH = Infinity, minH = MIN_VIEW_H) {
+  const scale = devW > devH ? Math.max(1, Math.floor(devH / minH)) : fitScale(devW, devH);
   return { scale, w: Math.max(1, Math.min(Math.floor(devW / scale), areaW)), h: Math.max(1, Math.min(Math.floor(devH / scale), areaH)) };
 }
 
@@ -217,7 +218,7 @@ function drawGlows(sctx, glows, cam, night, now, vw, vh) {
   sctx.globalCompositeOperation = 'source-over';
 }
 
-export function createRenderer({ canvas, sprites, font }) {
+export function createRenderer({ canvas, sprites, font, minH = MIN_VIEW_H }) {
   const ctx = canvas.getContext('2d');
   const scene = document.createElement('canvas');
   const sctx = scene.getContext('2d');
@@ -228,7 +229,7 @@ export function createRenderer({ canvas, sprites, font }) {
 
   function layout() {
     const a = getArea(areaName);
-    const v = viewFor(box.w * box.dpr, box.h * box.dpr, a.w * TILE, a.h * TILE);
+    const v = viewFor(box.w * box.dpr, box.h * box.dpr, a.w * TILE, a.h * TILE, minH);
     scale = v.scale; viewW = v.w; viewH = v.h; laidOut = areaName;
     scene.width = viewW; scene.height = viewH;
     canvas.width = viewW * scale; canvas.height = viewH * scale;

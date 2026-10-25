@@ -39,3 +39,9 @@ test('the camera uses the view it is given: centred on the player, clamped to th
   assert.deepEqual(cameraFor(96, 80, 192, 160, 400, 180), { x: -104, y: -10 });
   assert.deepEqual(cameraFor(96, 80, 192, 160, 192, 160), { x: 0, y: 0 });
 });
+
+test('a wide desktop window keeps the old pixel size: the minimum height is the portrait view, not the phone one', () => {
+  const v = viewFor(1920, 1000, Infinity, Infinity, VIEW_H);
+  assert.equal(v.scale, Math.floor(1000 / VIEW_H));
+  assert.ok(v.h >= VIEW_H && v.w > VIEW_W, `${v.w}x${v.h}`);
+});

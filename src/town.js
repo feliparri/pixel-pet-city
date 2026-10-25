@@ -5,7 +5,7 @@ import { Walker, REMOTE_SNAP } from './walker.js';
 import { isTyping, isJumpKey, runs } from './keys.js';
 import { createTouchpad } from './touchpad.js';
 import { JUMP_MS } from './jump.js';
-import { createRenderer, EMOTE_MS } from './render.js';
+import { createRenderer, EMOTE_MS, MIN_VIEW_H, VIEW_H } from './render.js';
 import { ambientAt, hourNow } from './daynight.js';
 import { entranceState } from './entrance.js';
 import { createGames } from './games/manager.js';
@@ -34,7 +34,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   const others = new Map();
   const state = { me: self, others: [], marker: null, area: 'town', amb: ambientAt(hourNow(location.search)), fade: 0 };
   const life = createLife(net.code || net.id);                       // the same scene for a room, from its code; nothing of it goes over the net
-  const renderer = createRenderer({ canvas, sprites, font });
+  const renderer = createRenderer({ canvas, sprites, font, minH: pad ? MIN_VIEW_H : VIEW_H });   // a phone: big pixels; a desktop: as many tiles as before
   let fadeT0 = -Infinity, ambAt = -Infinity;
   const held = [];                                   // direction keys held, the latest last
   let shift = false, padRun = false;                                 // Shift is down: a held arrow key runs (outside the games)
