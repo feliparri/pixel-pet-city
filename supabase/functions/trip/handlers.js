@@ -1,9 +1,10 @@
 // The trip API (docs/trip-api.md) as pure functions: a request in, a { status, body } out. The database, the clock and the random source are
 // injected (`deps`), so the same code runs in the Edge Functions and under `node --test` with an in-memory database.
-import { parsePackage, buildReturn, petView, fromBase64, toBase64 } from './travel-package.js';
+import { parsePackage, buildReturn, petView, fromBase64, toBase64, GIFT_MAX, BYTES_MAX } from './travel-package.js';
 import { sha256Hex, fromHex, verifyRequest, randomHex, safeEqual } from './crypto.js';
 import { newCode, normalizeCode, isEntrance, DEFAULT_ENTRANCE } from './trip-code.js';
 import { cleanRadar } from './radar.js';
+import { SHOP, isForSale } from './shop.js';
 import { events, eventSave, eventCancel } from './events.js';
 
 export const BODY_MAX = 12288;                 // a 6144-byte package is 8192 base64 characters, plus the JSON around it
@@ -54,9 +55,15 @@ async function webTrip(req, body, deps) {
   return { trip };
 }
 
+/** what the shop has left to spend: the pet's gold at the start minus the ledger (null for a trip that started before gold was read) */
+const shopView = (trip) => ({
+  can_spend: !!trip.can_spend, gold_left: trip.can_spend && trip.pet_view?.gold !== undefined ? Math.max(0, trip.pet_view.gold - (trip.spent ?? 0)) : null,
+  bought: trip.bought ?? [],
+});
+
 const view = (trip) => ({
   trip: trip.id, status: trip.status, entrance: trip.entrance, pet: trip.pet_view,
-  state: { version: trip.state_version, data: trip.state },
+  state: { version: trip.state_version, data: trip.state }, ...shopView(trip),
 });
 
 // ---- device-register ----------------------------------------------------------------------------------------------------------
@@ -102,6 +109,7 @@ async function tripStart(req, deps, device) {
       id: deps.uuid(), device_id: device.id, trip_id: pkg.tripId, code: newCode(deps.randomBytes), status: 'waiting',
       package_b64: p.v.package, package_sha256: sha, package_bytes: bytes.length, seq: pkg.seq,
       pet_view: petView(pkg), entrance, state: {}, state_version: 0, session_hash: null, session_seen_at: null,
+      can_spend: p.v.spend === 1, spent: 0, bought: [],
       created_at: iso(now), expires_at: iso(now + CLAIM_TTL_S), claimed_at: null, recalled_at: null, returned_at: null, closed_at: null,
     };
     const r = await deps.db.insertTrip(row);
@@ -170,6 +178,32 @@ async function tripSave(req, deps) {
   return reply(200, { version: row.state_version, entrance: row.entrance });
 }
 
+// ---- trip-buy -----------------------------------------------------------------------------------------------------------------
+// The shop (docs/trip-api.md): the pet's gold buys a core WEAR item that comes home as a gift. The ledger (spent, bought) is written only here.
+async function tripBuy(req, deps) {
+  const p = parseJson(req.body);
+  if (p.fail) return p.fail;
+  const s = await webTrip(req, p.v, deps);
+  if (s.fail) return s.fail;
+  const { trip } = s;
+  if (trip.status !== 'active') return err(409, 'trip_over', { status: trip.status });
+  if (!trip.can_spend) return err(403, 'shop_closed');
+  const key = p.v.item;
+  if (!isForSale(key)) return err(400, 'not_for_sale');
+  const bytes = trip.package_b64 ? fromBase64(trip.package_b64) : null;
+  const parsed = bytes && parsePackage(bytes);
+  if (!parsed || !parsed.ok) return err(500, 'internal');
+  const { pkg } = parsed;
+  const spent = trip.spent ?? 0, bought = trip.bought ?? [];
+  const item = SHOP[key];
+  if (pkg.petInfo.core.includes(key) || bought.includes(key)) return err(409, 'owned');
+  if (pkg.gifts.length + bought.length >= GIFT_MAX || bytes.length + 5 * (bought.length + 1) > BYTES_MAX) return err(409, 'bag_full');
+  if (item.price > pkg.petInfo.gold - spent) return err(409, 'no_gold', { gold_left: Math.max(0, pkg.petInfo.gold - spent), price: item.price });
+  const row = await deps.db.updateTrip(trip.id, { status: ['active'], spent: [spent] }, { spent: spent + item.price, bought: [...bought, key], session_seen_at: iso(deps.nowS()) });
+  if (!row) return err(409, 'conflict');                                       // another buy or the recall got in first: the client asks again
+  return reply(200, { gold_left: pkg.petInfo.gold - row.spent, bought: row.bought });
+}
+
 // ---- trip-recall --------------------------------------------------------------------------------------------------------------
 async function tripRecall(req, deps, device) {
   const p = parseJson(req.body);
@@ -205,7 +239,8 @@ async function tripStatus(req, deps) {
   }
   return reply(200, {
     status: trip.status, recalled: ['recalled', 'returned', 'closed'].includes(trip.status), claimed: !!trip.claimed_at,
-    entrance: trip.entrance, version: trip.state_version, ...(device ? { trip_id: trip.trip_id, radar: cleanRadar(trip.state?.radar, deps.nowS()) } : {}),
+    entrance: trip.entrance, version: trip.state_version,
+    ...(device ? { trip_id: trip.trip_id, radar: cleanRadar(trip.state?.radar, deps.nowS()) } : shopView(trip)),
   });
 }
 
@@ -225,7 +260,7 @@ async function tripReturn(req, deps, device) {
   }
   if (!trip || trip.status !== 'returned' || !trip.package_b64) return err(409, 'trip_closed', { status: trip?.status });
   const seq = (trip.seq + 1) >>> 0;
-  const pkg = buildReturn(fromBase64(trip.package_b64), seq);
+  const pkg = buildReturn(fromBase64(trip.package_b64), seq, { spent: trip.spent ?? 0, bought: trip.bought ?? [] });
   return reply(200, { trip_id: trip.trip_id, seq, size: pkg.length, package: toBase64(pkg) });   // asking again returns the same bytes until the ack
 }
 
@@ -245,7 +280,7 @@ async function tripAck(req, deps, device) {
   return now && now.status === 'closed' ? reply(200, { trip_id: trip.trip_id, status: 'closed', replayed: true }) : err(409, 'not_returned', { status: now?.status });
 }
 
-const ROUTES = { 'device-register': deviceRegister, 'trip-claim': tripClaim, 'trip-save': tripSave, 'trip-status': tripStatus,
+const ROUTES = { 'device-register': deviceRegister, 'trip-claim': tripClaim, 'trip-save': tripSave, 'trip-buy': tripBuy, 'trip-status': tripStatus,
   'trip-start': tripStart, 'trip-recall': tripRecall, 'trip-return': tripReturn, 'trip-ack': tripAck,
   'events': events, 'event-save': eventSave, 'event-cancel': eventCancel };
 const GET_OK = new Set(['events']);                // the public list can also be read with GET

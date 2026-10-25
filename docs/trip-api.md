@@ -54,6 +54,9 @@ Request `{ "device_id": "<32 hex>", "secret": "<64 hex>" }`.
 ### `trip-start`
 Request `{ "package": "<base64 of the outbound package, <= 6144 bytes>", "entrance": "parachute" }` (`entrance` optional, default
 `parachute`; known ids: `parachute`, `blue_bolt`).
+The body may also carry `"spend": 1` (optional; it is signed with the rest of the body, so a browser cannot add it): the firmware that sends it applies a gold
+**decrease** on return (board gold += returned pet gold - the gold it left with, never below 0, on top of what the board earned meanwhile). Only such a trip may
+spend its pet's gold in the shop; without it a lower returned gold is ignored by the board.
 The server validates the package as `travel_parse` does (magic, version 1, length, CRC-32, direction OUT, trip id, counts, items, records,
 pet record size and schema 14, species, stage, name, worn ids) and reads the pet view from it.
 `201 { "trip_id": <u32 of the package>, "trip": "<uuid ref>", "code": "K7M2QX", "url": "https://feliparri.github.io/pixel-pet-city/?trip=K7M2QX",
@@ -80,8 +83,10 @@ clock when it saved: the phone treats a radar older than 60 s as stale. Nothing 
 `claimed` is true once the browser claimed it. Polling every 5-10 s is enough (`recalled` is true for recalled, returned, closed).
 
 ### `trip-return` (after the recall)
-Request `{ "trip_id": <u32> }`. `200 { "trip_id", "seq": <outbound seq + 1>, "size", "package": "<base64>" }`: the same pet (phase 1 changes
-nothing), direction BACK, sequence + 1, valid CRC, parsed by `travel_parse`. Asking again before the ack gives the same bytes.
+Request `{ "trip_id": <u32> }`. `200 { "trip_id", "seq": <outbound seq + 1>, "size", "package": "<base64>" }`: the same pet, direction BACK,
+sequence + 1, valid CRC, parsed by `travel_parse`. Shop purchases (`trip-buy`) patch it: the pet record's gold (u32 at offset 103) becomes the
+outbound gold - `spent` (never below 0) and each bought item is appended to the gifts list as a WEAR gift (the gifts sit before the records, so the later
+bytes shift; the total length and the CRC are recomputed). Nothing else changes; with nothing bought the bytes are the plain return's. Asking again before the ack gives the same bytes.
 `409 not_recalled` (still `waiting|active|expired`), `409 trip_closed`, `409 trip_cancelled`, `404 unknown_trip`.
 
 ### `trip-ack` (closes the trip)
@@ -117,8 +122,16 @@ The page's saves are queued so the stars and the radar never undo each other. `b
 version (optimistic concurrency). `200 { "version": base + 1, "entrance" }`. Errors: `401 bad_session`, `400 bad_version | bad_state | bad_entrance`,
 `409 version_conflict` (with the current `version`), `409 trip_recalled`, `409 trip_over`.
 
+### `trip-buy`
+Request `{ "trip": "<ref>", "item": "<key>" }` with the token: buys one core WEAR item with the pet's gold (prices in `shop.js`, mirrored from the game's `store.c`
+and kept equal by a test; the free top hat and the witch hat are not for sale). It comes home as a gift; at most 3 gifts per trip, counting any already in the package.
+`200 { "gold_left", "bought": [keys] }`. The ledger (`spent`, `bought`) lives in trip columns only the function writes; the update is conditional on the trip
+being `active` and `spent` unchanged, so two buys cannot overspend. Errors: `401 bad_session`, `403 shop_closed` (the trip did not start with `"spend": 1`),
+`400 not_for_sale`, `409 owned` (the pet has it, or it was bought already), `409 bag_full`, `409 no_gold` (with `gold_left`, `price`), `409 trip_over`,
+`409 conflict` (another buy got in first: read the state and ask again).
+
 ### `trip-status`
-Request `{ "trip": "<ref>" }` with the token. `200 { "status", "recalled", "claimed", "entrance", "version" }`; it also refreshes the session's
+Request `{ "trip": "<ref>" }` with the token. `200 { "status", "recalled", "claimed", "entrance", "version", "can_spend", "gold_left", "bought" }`; it also refreshes the session's
 idle clock, so the page polls it every 5 s while open. `recalled: true` means: play the departure, leave the room, show "Volvió a su casa".
 
 ## Entrada (arrival and exit pair)
@@ -154,7 +167,8 @@ on `trip-claim` yet (add one at the gateway if abused).
 1. `supabase db push` / apply `supabase/migrations/20261023120000_trips.sql` (tables `devices`, `trips`, enum `trip_status`, RLS on with no policy,
    `cleanup_trips()`, and an hourly pg_cron job when the extension is enabled).
 1b. Apply `supabase/migrations/20261025120000_town_events.sql` (table `town_events`, RLS on with no policy, `cleanup_town_events()`).
+1c. Apply `supabase/migrations/20261025140000_trip_shop.sql` (trips gain `can_spend`, `spent`, `bought`; apply it before deploying the function).
 2. Deploy the single function `trip` with `--no-verify-jwt` (or via `supabase/config.toml`). Entrypoint `index.ts`; files (relative to
-   `supabase/functions/trip/`): `index.ts serve.ts db.ts handlers.js events.js crypto.js radar.js travel-package.js trip-code.js`. Secret `ADMIN_KEY` (the owner's, for the admin actions). Optional secret `TOWN_URL` (default `https://feliparri.github.io/pixel-pet-city/`);
+   `supabase/functions/trip/`): `index.ts serve.ts db.ts handlers.js events.js crypto.js radar.js shop.js travel-package.js trip-code.js`. Secret `ADMIN_KEY` (the owner's, for the admin actions). Optional secret `TOWN_URL` (default `https://feliparri.github.io/pixel-pet-city/`);
    `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are provided by Supabase to every function.
 3. End-to-end test: `node tools/fake-board.mjs run` (see the README's "Web trip" section).

@@ -32,7 +32,7 @@ export const ITEM_KEYS = [null, 'tophat', 'bow', 'beanie', 'crown', 'hood', 'jam
 export const SPECIES = [null, 'frog', 'seal', 'cat'];
 
 // offsets inside the pet record (schema 14, save.c save_payload_encode)
-const P = { stage: 8, species: 9, stats: 52, equipped: 111, nameLen: 116, name: 117, nameBytes: 24, seasonN: 592, owned: 593, worn: 689 };
+const P = { stage: 8, species: 9, stats: 52, gold: 103, ownedMask: 107, equipped: 111, nameLen: 116, name: 117, nameBytes: 24, seasonN: 592, owned: 593, worn: 689 };
 
 const u16 = (b, o) => b[o] | (b[o + 1] << 8);
 const u32 = (b, o) => (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0;
@@ -186,7 +186,10 @@ export function readPet(p) {
     if (g && !owned.includes(g)) return null;               // a worn seasonal item must be owned
     worn.push(g);
   }
-  return { stage, species, name, stats, equipped, worn };
+  const gold = u32(p, P.gold), mask = u32(p, P.ownedMask);
+  const core = [];                                           // the core items owned (ITEM_KEYS ids), by key
+  for (let id = 1; id < ITEM_COUNT; id++) if (mask >>> id & 1) core.push(ITEM_KEYS[id]);
+  return { stage, species, name, stats, equipped, worn, gold, core };
 }
 
 /** The town stage index (0 baby .. 3 elder) of a pet stage byte (0 arriving, 1 baby .. 4 elder). */
@@ -222,14 +225,43 @@ export function petView(pkg) {
     }
     return ITEM_KEYS[id] || '';
   });
-  return { name: info.name, species: SPECIES[info.species], stage: townStage(info.stage), stats: info.stats.slice(), items, keepsakes };
+  const bag = pkg.bag.map((it) => {                          // what the pet carries (X.0): wear by key, season by gid + name, toy by id
+    if (it.kind === KIND.WEAR) return { kind: 'wear', key: ITEM_KEYS[it.id] };
+    if (it.kind === KIND.SEASON) return { kind: 'season', gid: it.id, name: pkg.records.find((r) => r.gid === it.id).item.name };
+    return { kind: 'toy', id: it.id };
+  });
+  return { name: info.name, species: SPECIES[info.species], stage: townStage(info.stage), stats: info.stats.slice(), items, keepsakes,
+    gold: info.gold, owned: info.core, bag };
 }
 
-/** The return package of an outbound one: the same bytes with the direction BACK and the sequence +1 (phase 1 changes nothing else). */
-export function buildReturn(out, seq) {
-  const b = new Uint8Array(out);
+/**
+ * The return package of an outbound one: the same bytes with the direction BACK and the sequence +1. A purchase (the shop, docs/trip-api.md)
+ * also lowers the pet record's gold by `spent` (never below 0) and appends the `bought` core items (ITEM_KEYS keys) to the gifts list as
+ * WEAR gifts; the gifts sit before the records, so the later bytes shift, and the length and the CRC are recomputed. With nothing spent
+ * or bought the bytes are the outbound ones, direction and sequence aside.
+ */
+export function buildReturn(out, seq, { spent = 0, bought = [] } = {}) {
+  let b = new Uint8Array(out);
   b[6] = DIR_BACK;
   put32(b, 16, seq >>> 0);
+  if (spent > 0 || bought.length) {
+    const petAt = b.length - 4 - u16(b, 22);
+    if (spent > 0) put32(b, petAt + P.gold, Math.max(0, u32(b, petAt + P.gold) - spent));
+    if (bought.length) {
+      let at = HEADER_BYTES + 1 + b[HEADER_BYTES] * ITEM_BYTES;           // the gifts count byte, after the backpack
+      const gifts = b[at], end = at + 1 + gifts * ITEM_BYTES;
+      const have = new Set();
+      for (let i = 0; i < gifts; i++) if (b[at + 1 + i * ITEM_BYTES] === KIND.WEAR) have.add(u32(b, at + 2 + i * ITEM_BYTES));
+      const ids = [...new Set(bought.map((k) => ITEM_KEYS.indexOf(k)))].filter((id) => id > 0 && !have.has(id)).slice(0, GIFT_MAX - gifts);
+      const nb = new Uint8Array(b.length + ids.length * ITEM_BYTES);
+      nb.set(b.subarray(0, end));
+      ids.forEach((id, i) => { nb[end + i * ITEM_BYTES] = KIND.WEAR; put32(nb, end + i * ITEM_BYTES + 1, id); });
+      nb.set(b.subarray(end), end + ids.length * ITEM_BYTES);
+      nb[at] = gifts + ids.length;
+      put32(nb, 8, nb.length);
+      b = nb;
+    }
+  }
   put32(b, b.length - 4, crc32(b, b.length - 4));
   return b;
 }

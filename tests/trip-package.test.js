@@ -12,11 +12,14 @@ test('the real packages built by the game parse, and the pet view shows what the
   assert.equal(a.ok, true);
   assert.equal(a.pkg.tripId, 0xA1B2C3D4);
   assert.equal(a.pkg.bag.length, 2);
-  assert.deepEqual(petView(a.pkg), { name: 'Mochi', species: 'cat', stage: 2, stats: [80, 80, 100, 100, 100], items: ['bow', 'sunglasses', '', ''], keepsakes: [] });
+  assert.deepEqual(petView(a.pkg), { name: 'Mochi', species: 'cat', stage: 2, stats: [80, 80, 100, 100, 100], items: ['bow', 'sunglasses', '', ''], keepsakes: [],
+    gold: 5000, owned: ['tophat', 'bow', 'sunglasses'], bag: [{ kind: 'wear', key: 'tophat' }, { kind: 'toy', id: 1 }] });
   const b = parsePackage(kept);
   assert.equal(b.ok, true);
   const v = petView(b.pkg);
   assert.equal(v.name, 'Mochi');
+  assert.deepEqual(v.bag, [{ kind: 'season', gid: 258, name: v.bag[0].name }]);
+  assert.ok(v.bag[0].name.length > 0);
   assert.equal(v.keepsakes.length, 2);                      // the cape and the ears: worn, with their art
   assert.deepEqual(v.keepsakes.map((k) => k.slot).sort(), [0, 3]);
   for (const k of v.keepsakes) {
