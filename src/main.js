@@ -13,6 +13,7 @@ import { normalizeTripCode } from './trip-code.js';
 import { devEntrance } from './entrance.js';
 import { drawKeepsake } from './keepsake.js';
 import { createHud } from './hud.js';
+import { createBridge } from './usb-bridge.js';
 import { createStars, createStarSaver, starsFromState, stateWithStars } from './stars.js';
 
 const $ = (id) => document.getElementById(id);
@@ -26,6 +27,32 @@ let visit = null;                                 // a real pet visiting (trip):
 let hud = null, stars = null;                    // the games' overlay and this pet's star counter (kept in the trip's server state)
 let me = null;                                   // { name, look }
 let fixedPet = false;                            // the pet is a real one (a trip): no chooser
+
+// The board's USB cable (src/usb-bridge.js): the bridge lives as long as the page, so it keeps serving the board while the town is open.
+const CABLE_TEXT = { waiting: 'Esperando a la placa…', connected: 'Conectada', disconnected: 'Desconectada', failed: 'No se pudo abrir la placa' };
+let bridge = null, townOpened = false;
+
+function paintCable(state) {
+  const text = CABLE_TEXT[state];
+  if (!text) return;
+  $('cable-status').textContent = text; $('cable-status').hidden = false;
+  $('cable-state').textContent = `Placa: ${text}`; $('cable-state').hidden = false;
+  $('cable-connect').textContent = state === 'waiting' || state === 'connected' ? 'Desconectar placa' : 'Conectar placa';
+}
+
+function openTown(code) {                         // the board started a trip: the same as typing its code, without leaving the page (a reload would drop the cable)
+  if (townOpened) return;
+  townOpened = true;
+  history.pushState(null, '', `${location.pathname}?trip=${encodeURIComponent(code)}`);
+  boot();
+}
+
+function setupCable() {
+  if (!('serial' in navigator) || !isConfigured(config)) return;     // Web Serial: desktop Chrome and Edge only
+  bridge = createBridge({ base: `${config.supabaseUrl}/functions/v1/trip`, onState: paintCable, onTripCode: openTown });
+  $('cable').hidden = false;
+  $('cable-connect').addEventListener('click', () => { if (bridge.open) bridge.disconnect(); else bridge.connect(navigator.serial); });
+}
 
 function say(text) { $('error').textContent = text || ''; }
 
@@ -230,6 +257,7 @@ async function bootTrip(code) {
 
 function bootLanding() {
   show('landing');
+  setupCable();
   $('config-note').hidden = isConfigured(config);
   const p = new URLSearchParams(location.search);
   $('landing-note').hidden = !(location.hash.length > 1 || p.has('trip'));     // an old #n=..&s=.. link, or a ?trip= that is not a code: nothing to enter with

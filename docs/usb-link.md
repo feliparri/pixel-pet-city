@@ -29,6 +29,10 @@ The page sends `POST <trip API base>/<action>` with exactly the headers the boar
 
 The board uses the page's time (the last `H`/`K`, plus the time since) when its own clock is not set.
 
+## The trip function and CORS
+
+The page calls the trip API from `https://feliparri.github.io`, so every action answers CORS for that origin (`supabase/functions/trip/serve.ts`, `docs/trip-api.md`), the board's included. The function has to be deployed with that change before the page can forward anything.
+
 ## Opening the port without resetting the board
 
 The ESP32-S3's USB-Serial-JTAG treats the serial control lines like a download-mode circuit: RTS toggled while DTR is set resets the chip, and certain DTR/RTS sequences enter the ROM bootloader. The page therefore calls `port.setSignals({ dataTerminalReady: false, requestToSend: false })` right after `open()`. Whether this is enough on real hardware is checked on the board (see the task document).
