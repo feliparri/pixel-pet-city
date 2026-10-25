@@ -113,6 +113,17 @@ export function createBridge({ base, fetch: fetchFn = (...a) => fetch(...a), now
       }
       return bridge.attach(p, serial);
     },
+    /** The board was plugged in again: reopen a board port this page was already allowed to use (no picker). False when one is open already or none is granted. */
+    async resume(serial) {
+      if (port || typeof serial?.getPorts !== 'function') return false;
+      let ports = [];
+      try { ports = await serial.getPorts(); } catch { return false; }
+      const p = ports.find((x) => {
+        const i = x.getInfo?.() ?? {};
+        return i.usbVendorId === USB_FILTER.usbVendorId && i.usbProductId === USB_FILTER.usbProductId;
+      });
+      return p && !port ? bridge.attach(p, serial) : false;
+    },
     /** Open a port the user chose and start. */
     async attach(p, serial) {
       try {

@@ -126,3 +126,25 @@ test('a cancelled port picker is not an error state', async () => {
   assert.equal(await bridge.connect(serial), false);
   assert.equal(states.at(-1)?.[0] ?? 'idle', 'idle');
 });
+
+test('replugged: resume() reopens the board the user already chose, without the picker, and only while closed', async () => {
+  const { board, serial, bridge, states } = setup();
+  await bridge.connect(serial);
+  board.end();
+  await tick();
+  assert.equal(states.at(-1)[0], 'disconnected');
+  const again = fakePort();
+  const granted = { getPorts: async () => [{ getInfo: () => ({ usbVendorId: 0x1a86, usbProductId: 0x7523 }) }, Object.assign(again.port, { getInfo: () => ({ ...USB_FILTER }) })],
+    requestPort: async () => { throw new Error('no picker on resume'); }, addEventListener() {} };
+  assert.equal(await bridge.resume(granted), true);
+  assert.deepEqual(again.log.slice(0, 2), [['open', { baudRate: BAUD }], ['signals', { dataTerminalReady: false, requestToSend: false }]]);
+  assert.equal(states.at(-1)[0], 'waiting');
+  assert.equal(await bridge.resume(granted), false);
+});
+
+test('resume() with no granted board is a quiet no', async () => {
+  const { bridge, states } = setup();
+  assert.equal(await bridge.resume({ getPorts: async () => [], addEventListener() {} }), false);
+  assert.equal(await bridge.resume({}), false);
+  assert.equal(states.length, 0);
+});

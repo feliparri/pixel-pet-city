@@ -36,7 +36,8 @@ function paintCable(state) {
   const text = CABLE_TEXT[state];
   if (!text) return;
   $('cable-status').textContent = text; $('cable-status').hidden = false;
-  $('cable-state').textContent = `Placa: ${text}`; $('cable-state').hidden = false;
+  $('cable-state').textContent = state === 'connected' || state === 'waiting' ? `Placa: ${text}` : `Placa: ${text} · Reconectar`; $('cable-state').hidden = false;
+  $('cable-state').disabled = state === 'connected' || state === 'waiting';
   $('cable-connect').textContent = state === 'waiting' || state === 'connected' ? 'Desconectar placa' : 'Conectar placa';
 }
 
@@ -47,11 +48,26 @@ function openTown(code) {                         // the board started a trip: t
   boot();
 }
 
+// Plugged in again: the page reopens the board by itself (only a board this page was already allowed to use, and only while the owner wants the cable).
+// The board takes a moment to show up after a replug, so a failed reopen is tried again a little later.
+let cableWanted = false;
+function resumeCable() {
+  if (!cableWanted || bridge.open) return;
+  for (const ms of [0, 1000, 3000]) setTimeout(() => { if (cableWanted && !bridge.open) bridge.resume(navigator.serial); }, ms);
+}
+async function connectCable() {
+  if (await bridge.resume(navigator.serial) || await bridge.connect(navigator.serial)) cableWanted = true;
+}
+
 function setupCable() {
   if (!('serial' in navigator) || !isConfigured(config)) return;     // Web Serial: desktop Chrome and Edge only
   bridge = createBridge({ base: `${config.supabaseUrl}/functions/v1/trip`, onState: paintCable, onTripCode: openTown });
   $('cable').hidden = false;
-  $('cable-connect').addEventListener('click', () => { if (bridge.open) bridge.disconnect(); else bridge.connect(navigator.serial); });
+  $('cable-connect').addEventListener('click', () => {
+    if (bridge.open) { cableWanted = false; bridge.disconnect(); } else connectCable();
+  });
+  $('cable-state').addEventListener('click', () => { if (!bridge.open) connectCable(); });   // in the town: reconnect the board from the bar
+  navigator.serial.addEventListener('connect', resumeCable);
 }
 
 function say(text) { $('error').textContent = text || ''; }
