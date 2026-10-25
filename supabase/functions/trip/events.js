@@ -6,6 +6,7 @@ import { sha256Hex, safeEqual } from './crypto.js';
 export const SHOW_SECONDS = { fireworks: 38, meteors: 28, drones: 40 };
 export const LIST_AHEAD_S = 7 * 86400;        // the list shows what starts within a week
 export const SCHEDULE_AHEAD_S = 60 * 86400;   // an event can be scheduled up to 60 days ahead
+export const LIST_DEFAULT = 20, LIST_MAX = 50;  // how many a list holds by default and at most (the admin page asks for all it can)
 export const MAX_UPCOMING = 50;               // and the owner cannot pile up more than this many
 export const SEED_MAX = 2147483647;
 export const ATTEMPT_WINDOW_S = 600;
@@ -44,10 +45,14 @@ async function adminCheck(req, deps) {
 
 /** Upcoming and running shows plus the server's clock (ms), so every player can line up with the same moment. */
 export async function events(req, deps) {
+  const p = parseJson(req.body);                                              // optional: { ahead_days: 1..60, limit: 1..50 } (a GET has no body)
+  if (p.fail) return p.fail;
+  const ahead = Number.isInteger(p.v.ahead_days) && p.v.ahead_days >= 1 && p.v.ahead_days <= SCHEDULE_AHEAD_S / 86400 ? p.v.ahead_days * 86400 : LIST_AHEAD_S;
+  const limit = Number.isInteger(p.v.limit) && p.v.limit >= 1 && p.v.limit <= LIST_MAX ? p.v.limit : LIST_DEFAULT;
   const t = nowMs(deps);
   const longest = Math.max(...Object.values(SHOW_SECONDS)) * 1000;
-  const rows = await deps.db.listEvents(iso(t - longest), iso(t + LIST_AHEAD_S * 1000));
-  const list = rows.map(publicEvent).filter((e) => e.start_ms + e.duration_ms > t).sort((x, y) => x.start_ms - y.start_ms).slice(0, 20);
+  const rows = await deps.db.listEvents(iso(t - longest), iso(t + ahead * 1000));
+  const list = rows.map(publicEvent).filter((e) => e.start_ms + e.duration_ms > t).sort((x, y) => x.start_ms - y.start_ms).slice(0, limit);
   return reply(200, { now: t, events: list });
 }
 

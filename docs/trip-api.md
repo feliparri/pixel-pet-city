@@ -134,7 +134,7 @@ The owner schedules a show (kind `fireworks`, `meteors` or `drones`, a seed and 
 (table `town_events`, migration `20261025120000_town_events.sql`, RLS on and no policy: only these actions touch it).
 
 * `events` (GET or POST, no key): `{ now, events: [{ id, kind, seed, start_at, start_ms, duration_ms }] }`, `now` being the server's clock in ms
-  (the town keeps the offset). It lists what is running and what starts within 7 days, up to 20, earliest first. Cancelled ones are not listed.
+  (the town keeps the offset). It lists what is running and what starts within 7 days, up to 20, earliest first; a POST body `{ ahead_days (1..60), limit (1..50) }` widens that. Cancelled ones are not listed.
 * `event-save` (POST, header `x-admin-key`): body `{ kind, seed?, start_at }`; `start_at` is ISO 8601 with a time zone (`Z` or `-03:00`), in the future
   and at most 60 days ahead; `seed` is an integer 0..2^31-1 (random when left out); `201 { event }`. At most 50 upcoming shows (`429 too_many_events`).
 * `event-cancel` (POST, header `x-admin-key`): body `{ id }`; `200 { id, cancelled, replayed }`, `404 unknown_event`.

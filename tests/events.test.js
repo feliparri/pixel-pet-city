@@ -124,6 +124,20 @@ test('events lists what runs now and what starts within a week, in order, and dr
   assert.deepEqual((await w.web().call('events', {})).body.events.map((e) => e.seed), [2, 1]);
 });
 
+test('events: ahead_days and limit widen or narrow the list, within bounds, and bad values fall back to the defaults', async () => {
+  const w = world({ adminKey: KEY });
+  await save(w, { seed: 1, start_at: at(w, 20 * 86400) });
+  await save(w, { seed: 2, start_at: at(w, 3600) });
+  await save(w, { seed: 3, start_at: at(w, 7200) });
+  const seeds = async (body) => (await w.web().call('events', body)).body.events.map((e) => e.seed);
+  assert.deepEqual(await seeds({}), [2, 3]);
+  assert.deepEqual(await seeds({ ahead_days: 30 }), [2, 3, 1]);
+  assert.deepEqual(await seeds({ ahead_days: 30, limit: 1 }), [2]);
+  assert.deepEqual(await seeds({ ahead_days: 61 }), [2, 3]);
+  assert.deepEqual(await seeds({ ahead_days: 'x', limit: 0 }), [2, 3]);
+  assert.equal((await w.raw('events', new TextEncoder().encode('{bad'))).body.error, 'bad_json');
+});
+
 test('the admin key is never stored or echoed', async () => {
   const w = world({ adminKey: KEY });
   const out = [await save(w), await save(w, {}, 'wrong'), await w.web().call('events', {})];
