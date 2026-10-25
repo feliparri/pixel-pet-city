@@ -14,6 +14,7 @@ import { devEntrance } from './entrance.js';
 import { drawKeepsake } from './keepsake.js';
 import { createHud } from './hud.js';
 import { createBridge } from './usb-bridge.js';
+import { createRadarSaver, radarOf, stateWithRadar } from './radar.js';
 import { createStars, createStarSaver, starsFromState, stateWithStars } from './stars.js';
 
 const $ = (id) => document.getElementById(id);
@@ -23,9 +24,9 @@ const store = {
 };
 
 let sprites, font, net = null, town = null, mode = null, netMode = null;
-let visit = null;                                 // a real pet visiting (trip): { client, entrance, stop, solo, stars, saver }
+let visit = null;                                 // a real pet visiting (trip): { client, entrance, stop, solo, stars, saver, radar }
 let hud = null, stars = null;                    // the games' overlay and this pet's star counter (kept in the trip's server state)
-let me = null;                                   // { name, look }
+let me = null;                                   // { name, look, stats }
 let fixedPet = false;                            // the pet is a real one (a trip): no chooser
 
 // The board's USB cable (src/usb-bridge.js): the bridge lives as long as the page, so it keeps serving the board while the town is open.
@@ -157,6 +158,7 @@ async function enter(code, { transport = mode, arrival = null, solo = false } = 
   window.cityDebug = () => ({ town, net });                    // handy in the console when testing with two tabs
   town = startTown({ canvas: $('view'), stage: $('stage'), sprites, font, net, me, entrance: arrival, stars: counter, onHud: (info) => hud && hud.update(info) });
   setStatus('connected');
+  if (visit) visit.radar.now();                                 // the room changed: tell the phone's radar now
   return true;
 }
 
@@ -169,6 +171,7 @@ function closeRoom() {
   if (hud) hud.update({ lobby: null, game: null, results: null, notices: [], spot: null });
   if (town) { town.destroy(); town = null; }
   if (net) { net.leave(); net = null; }
+  if (visit) visit.radar.now();                                 // not in a room until the next one opens
 }
 
 function leave() {
@@ -236,6 +239,7 @@ function showGone(text, canGoToLobby = false) {
 
 async function recalled(kind) {
   if (!visit) return;
+  visit.radar.stop();
   visit.saver.flush();                                          // the stars of the last seconds (the server may refuse after a recall)
   if (kind === 'recalled' && town) await town.playExit(visit.entrance);
   closeRoom();
@@ -252,12 +256,21 @@ async function bootTrip(code) {
   const client = createTripClient({ base: `${config.supabaseUrl}/functions/v1/trip`, storage: (() => { try { return localStorage; } catch { return null; } })() });
   const r = await client.claim(code, sprites.catalogue);
   if (!r.ok) { showGone(tripErrorText(r.error), true); return; }
-  fixedPet = true; me = { name: r.pet.name, look: r.pet.look };
+  fixedPet = true; me = { name: r.pet.name, look: r.pet.look, stats: r.pet.stats };
   $('chooser').hidden = true; $('pet-fixed').hidden = false; $('pet-name').textContent = me.name;
   const dev = devEntrance(location.search);
   if (dev && dev !== r.entrance && !r.resumed) { await client.save({ entrance: dev }); }
-  const saver = createStarSaver((n) => client.save({ state: stateWithStars(client.state, n), keepalive: true }));
-  visit = { client, entrance: client.session.entrance, stop: null, solo: true, saver, stars: createStars({ initial: starsFromState(r.state), persist: (n) => saver.save(n) }) };
+  const saver = createStarSaver((n) => client.save({ state: (d) => stateWithStars(d, n), keepalive: true }));
+  // the radar: the pets of the shared room this pet is in (nothing in its private corner), saved every 10 s and when the room changes
+  const radar = createRadarSaver({
+    build: () => {
+      const inRoom = !!(net && town && visit && !visit.solo);
+      return radarOf(inRoom ? net.code : '', inRoom ? town.radarPets() : [], Date.now());
+    },
+    send: (rd) => client.save({ state: (d) => stateWithRadar(d, rd), keepalive: true }),
+  });
+  radar.start();
+  visit = { client, entrance: client.session.entrance, stop: null, solo: true, saver, radar, stars: createStars({ initial: starsFromState(r.state), persist: (n) => saver.save(n) }) };
   const box = $('keepsakes');
   box.replaceChildren();
   for (const k of r.pet.keepsakes) {

@@ -49,6 +49,11 @@ small top-down town, walk around and greet each other with presets. Plain HTML, 
     finisher, or at 60 s. Stars by place: 5, 3, 2, then 1 for any other finisher; nothing for those who did not arrive or when racing alone.
   - Stars show in the HUD (`⭐ 12`) and belong to the real pet: they are kept in the trip's server state (`trip-save`, `{ v: 1, stars }`,
     saved a moment after each change); the shop that spends them is a later stage.
+  - Radar (for the phone app): every pet's presence (`hello`, also repeated on the 2 s heartbeat) carries its five stats (`s`: hunger, fun,
+    energy, clean, health, 0-100, from the trip's pet view) and what it is doing (`a`: `idle`, `walk`, `hide`, `chicken`, `football`, `race`,
+    `shop`; a game counts only for its players). The browser of a visiting pet saves the room's pets (itself first, at most 8) as
+    `state.radar` through `trip-save` every 10 s and when the room changes, and an empty one (`room: ""`) when the pet is not in a shared
+    room (its private corner counts as none). The board's phone reads it from the device `trip-status` (docs/trip-api.md). `src/radar.js`.
   - No host: one browser among the players is the invisible *referee* (the lowest peer id among the players) that simulates the shared
     things and broadcasts them; if it leaves, the next lowest id carries on. Shared state is only believed from the referee.
     One lobby or game at a time per room. See `src/games/`.
@@ -117,7 +122,7 @@ authorization policy); see `docs/room-access.md`.
 | `src/render.js`, `src/sprites.js`, `src/font.js`, `src/daynight.js` | drawing: integer scale, camera, props sorted with pets, day/night tint and lights |
 | `tools/stamp.mjs` | cache-busting: run `node tools/stamp.mjs` before committing changes to `src/`, `style.css` or `config.js` |
 | `shot.html`, `tools/shots.mjs` | the preview (below) |
-| `src/games/*.js` (`soccer.js`: ball physics, teams, stars; `race.js`: places, stars, slowdown), `src/hud.js`, `src/stars.js` | game rules (pure), the per-browser game manager, the overlay and the star counter |
+| `src/games/*.js` (`soccer.js`: ball physics, teams, stars; `race.js`: places, stars, slowdown), `src/hud.js`, `src/stars.js`, `src/radar.js` | game rules (pure), the per-browser game manager, the overlay, the star counter and the radar saver |
 | `src/town.js`, `src/main.js` | input and the game loop; the lobby and town screens |
 
 ## Previews

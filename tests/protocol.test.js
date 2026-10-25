@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sanitizeName, validateLook, validateMessage, createRateLimiter, EMOTES, MAX_NAME, newPeerId } from '../src/protocol.js';
+import { sanitizeName, validateLook, validateMessage, createRateLimiter, EMOTES, MAX_NAME, newPeerId, ACTIVITIES } from '../src/protocol.js';
 
 const CAT = { tophat: { slot: 'head' }, sunglasses: { slot: 'face' }, scarf: { slot: 'neck' }, cape: { slot: 'back' } };
 const look = { species: 'cat', stage: 2, items: ['tophat', '', '', ''] };
@@ -30,8 +30,19 @@ const id = 'abcdef1';
 
 test('validateMessage: hello', () => {
   const m = validateMessage({ t: 'hello', id, name: 'Pepe<>', look }, CAT);
-  assert.deepEqual(m, { t: 'hello', id, name: 'Pepe', look });
+  assert.deepEqual(m, { t: 'hello', id, name: 'Pepe', look, stats: null, act: 'idle' });
   assert.equal(validateMessage({ t: 'hello', id, name: 'x', look: { species: 'dog', stage: 0 } }, CAT), null);
+});
+
+test('validateMessage: hello carries the stats and the activity for the radar, only when they are valid, and stays small', () => {
+  const full = { t: 'hello', id, name: 'Mochi', look, s: [80, 70, 60, 50, 100], a: 'football' };
+  assert.deepEqual(validateMessage(full, CAT), { t: 'hello', id, name: 'Mochi', look, stats: [80, 70, 60, 50, 100], act: 'football' });
+  for (const s of [[1, 2, 3, 4], [1, 2, 3, 4, 101], [1, 2, 3, 4, -1], [1, 2, 3, 4, 1.5], [1, 2, 3, 4, '5'], 'x', null, {}]) assert.equal(validateMessage({ ...full, s }, CAT).stats, null, JSON.stringify(s));
+  for (const a of ['fly', 5, null, {}, '__proto__']) assert.equal(validateMessage({ ...full, a }, CAT).act, 'idle', String(a));
+  assert.deepEqual(ACTIVITIES, ['idle', 'walk', 'hide', 'chicken', 'football', 'race', 'shop']);
+  const heartbeat = { ...full, name: 'Mochi Largo12', look: { species: 'seal', stage: 3, items: ['tophat', 'tophat', 'tophat', 'tophat'] }, s: [100, 100, 100, 100, 100], a: 'football', x: 19, y: 18, d: 'left', area: 'town' };
+  assert.ok(JSON.stringify(heartbeat).length < 300, 'a heartbeat with stats stays well under the 512 B limit');
+  assert.ok(validateMessage(heartbeat, CAT));
 });
 
 test('validateMessage: pos must be an integer walkable tile with a known direction', () => {

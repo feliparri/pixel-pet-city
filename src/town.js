@@ -8,6 +8,7 @@ import { entranceState } from './entrance.js';
 import { createGames } from './games/manager.js';
 import { GAME_RULES } from './games/rules.js';
 import { stumbled, paceAt, RACE } from './games/race.js';
+import { activityOf, radarPets } from './radar.js';
 import { createLife, stepLife, lifeFrame } from './life.js';
 
 const FADE_MS = 240;                                  // the fade-in after a door
@@ -24,7 +25,7 @@ function spawnFor(id) {
  * Returns { onNetEvent, emote, playExit, games: { play, join, seek, leave, dismiss }, destroy }. */
 export function startTown({ canvas, stage, sprites, font, net, me, entrance = null, stars = { add() {} }, onHud = () => {} }) {
   const [sx, sy] = spawnFor(net.id);
-  const self = { id: net.id, name: me.name, look: me.look, walker: new Walker(sx, sy), emote: null, area: 'town' };
+  const self = { id: net.id, name: me.name, look: me.look, stats: me.stats || null, act: 'idle', walker: new Walker(sx, sy), emote: null, area: 'town' };
   if (entrance) self.fx = { id: entrance, phase: 'arrive', t0: performance.now(), resolve: null };
   const others = new Map();
   const state = { me: self, others: [], marker: null, area: 'town', amb: ambientAt(hourNow(location.search)), fade: 0 };
@@ -134,6 +135,8 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
       state.life = lifeFrame(life, t, state.amb);
     } else state.life = null;
     const gv = games.view();
+    self.act = activityOf({ area: self.area, game: gv.game, moving: w.busy });
+    net.setActivity(self.act);
     racing = !!(gv.game && gv.game.g === 'race' && gv.game.play && gv.game.phase === 'play' && self.area === 'town');
     const ck = gv.game && gv.game.chick;
     if (ck && ck.seq !== chickSeq) {                                                       // a new motion: continue along its route, correct only what differs
@@ -190,6 +193,8 @@ export function startTown({ canvas, stage, sprites, font, net, me, entrance = nu
 
   return {
     onNetEvent,
+    /** The pets of this room for the radar (this pet first): [{ n, sp, st, s, a }]. */
+    radarPets: () => radarPets(self, net.peers()),
     /** Plays the exit of an entrance id and resolves when the pet is gone (the caller then leaves the room). */
     playExit(id) {
       held.length = 0; self.walker.queue = [];

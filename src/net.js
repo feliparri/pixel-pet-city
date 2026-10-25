@@ -1,6 +1,6 @@
 // The room session, the same for every transport: join/leave, who is here, positions (at most 10 a second, only on change) and emotes.
 // A transport ("wire") only moves JSON; everything that comes in is validated and rate-limited here (protocol.js) before the app sees it.
-import { validateMessage, validateLook, sanitizeName, createRateLimiter, newPeerId, MAX_PEERS, EMOTES, GAME_TYPES } from './protocol.js';
+import { validateMessage, validateLook, validateStats, sanitizeName, createRateLimiter, newPeerId, MAX_PEERS, EMOTES, GAME_TYPES, ACTIVITIES } from './protocol.js';
 import { isValidCode } from './code.js';
 import { isConfigured } from './config-check.js';
 import { createLocalWire } from './transport-local.js';
@@ -19,7 +19,7 @@ const browserTimers = {
 /**
  * Events handed to `onEvent`:
  *   { type: 'status', status: 'connecting'|'connected'|'error'|'closed' }
- *   { type: 'join', peer: { id, name, look, x, y, d } }   { type: 'leave', id }
+ *   { type: 'join', peer: { id, name, look, stats, act, x, y, d } }   { type: 'leave', id }
  *   { type: 'pos', id, x, y, d, area }                        { type: 'emote', id, e }
  *   { type: 'game', m }                                       a game message (protocol.js, gopen ... gend), from a known peer, in `m` with its `id`
  */
@@ -56,7 +56,7 @@ export function createNet({ wire, catalogue, onEvent = () => {}, now = () => Dat
         p = { x: null, y: null, d: 'down', area: 'town' };
         peers.set(m.id, p);
       }
-      p.name = m.name; p.look = m.look; p.seen = t;
+      p.name = m.name; p.look = m.look; p.stats = m.stats; p.act = m.act; p.seen = t;
       if (m.pos) { p.x = m.pos.x; p.y = m.pos.y; p.d = m.pos.d; p.area = m.pos.area; }        // a heartbeat carries the position: it reinstates a dropped peer where it is
       if (fresh) {
         onEvent({ type: 'join', peer: { id: m.id, ...p } });
@@ -95,7 +95,8 @@ export function createNet({ wire, catalogue, onEvent = () => {}, now = () => Dat
       const look = validateLook(me && me.look, catalogue);
       if (!look) throw new Error('invalid pet');
       code = roomCode;
-      hello = { t: 'hello', id, name: sanitizeName(me.name), look };
+      const stats = validateStats(me.stats);
+      hello = { t: 'hello', id, name: sanitizeName(me.name), look, ...(stats ? { s: stats } : {}), a: 'idle' };
       limiter = createRateLimiter(now);
       onEvent({ type: 'status', status: 'connecting' });
       opening = true;
@@ -117,6 +118,9 @@ export function createNet({ wire, catalogue, onEvent = () => {}, now = () => Dat
         for (const [pid, p] of peers) if (t - p.seen > PEER_TIMEOUT_MS) dropPeer(pid);
       }, HEARTBEAT_MS);
     },
+
+    /** What this pet is doing now (protocol.js ACTIVITIES). It rides on the next heartbeat's hello: no extra messages. */
+    setActivity(a) { if (hello && ACTIVITIES.includes(a)) hello.a = a; },
 
     /** The tile this pet is walking to, in `area`. Sent at most every POS_INTERVAL_MS and only when it changed. */
     sendPos(x, y, d, area = 'town') {

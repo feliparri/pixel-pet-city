@@ -2,7 +2,7 @@
 // `fetch` and the timers are injected so the flow is tested in Node; nothing here touches the DOM.
 import { normalizeTripCode } from './trip-code.js';
 import { parseKeepsake } from './keepsake.js';
-import { validateLook, sanitizeName } from './protocol.js';
+import { validateLook, validateStats, sanitizeName } from './protocol.js';
 import { entranceId } from './entrance.js';
 
 export const POLL_MS = 5000;
@@ -36,13 +36,13 @@ export function tripErrorText(error) {
   }
 }
 
-/** A claim's pet, as the town's own { name, look, keepsakes }; null when it is not something the town can draw. */
+/** A claim's pet, as the town's own { name, look, stats (five 0-100 or null: a trip started before the server sent them), keepsakes }; null when it is not something the town can draw. */
 export function petFromClaim(pet, catalogue) {
   if (!pet || typeof pet !== 'object') return null;
   const look = validateLook(pet, catalogue);
   if (!look) return null;
   const keepsakes = (Array.isArray(pet.keepsakes) ? pet.keepsakes : []).slice(0, 4).map(parseKeepsake).filter(Boolean);
-  return { name: sanitizeName(pet.name), look, keepsakes };
+  return { name: sanitizeName(pet.name), look, stats: validateStats(pet.stats), keepsakes };
 }
 
 export function createTripClient({ base, fetch: fetcher = globalThis.fetch, storage = null, setInterval: setI = globalThis.setInterval, clearInterval: clearI = globalThis.clearInterval }) {
@@ -61,6 +61,17 @@ export function createTripClient({ base, fetch: fetcher = globalThis.fetch, stor
     return res.status >= 200 && res.status < 300 && json ? { ok: true, status: res.status, body: json } : { ok: false, status: res.status, error: json?.error || 'unknown', body: json };
   }
 
+  let queue = Promise.resolve();
+
+  async function saveNow({ entrance, state: want, keepalive = false }) {
+    if (!session) return false;
+    const state = typeof want === 'function' ? want({ ...session.data }) : want;
+    const r = await post('trip-save', { trip: session.trip, base_version: session.version, ...(state ? { state } : {}), ...(entrance ? { entrance } : {}) }, session.token, keepalive);
+    if (r.ok) { session.version = r.body.version; session.entrance = entranceId(r.body.entrance); if (state) session.data = state; return true; }
+    if (r.error === 'version_conflict' && Number.isInteger(r.body?.version)) session.version = r.body.version;
+    return false;
+  }
+
   return {
     get session() { return session; },
 
@@ -77,13 +88,14 @@ export function createTripClient({ base, fetch: fetcher = globalThis.fetch, stor
       return { ok: true, resumed: token !== undefined && token === r.body.token, entrance: session.entrance, pet, state: session.data };
     },
 
-    /** Stores the entrance (the dev flag) and the state blob of the pet (the stars). Returns false when the server refused. */
-    async save({ entrance, state, keepalive = false } = {}) {
-      if (!session) return false;
-      const r = await post('trip-save', { trip: session.trip, base_version: session.version, ...(state ? { state } : {}), ...(entrance ? { entrance } : {}) }, session.token, keepalive);
-      if (r.ok) { session.version = r.body.version; session.entrance = entranceId(r.body.entrance); if (state) session.data = state; return true; }
-      if (r.error === 'version_conflict' && Number.isInteger(r.body?.version)) session.version = r.body.version;
-      return false;
+    /** Stores the entrance (the dev flag) and the state blob of the pet (the stars, the radar). `state` is an object, or a function of the
+     *  state saved so far that returns the one to save: it runs when the request goes out, so two writers (stars, radar) never undo each other.
+     *  Saves go one at a time, each with the version the one before it got. Returns false when the server refused. */
+    save(args = {}) {
+      const run = () => saveNow(args);
+      const p = queue.then(run, run);
+      queue = p.catch(() => {});
+      return p;
     },
 
     /** Polls the trip every POLL_MS; `onChange(kind)` is called once with 'recalled' (play the departure) or 'over' (the session ended

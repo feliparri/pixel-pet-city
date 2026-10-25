@@ -69,7 +69,14 @@ Request `{ "trip_id": <u32> }`. `200 { "trip_id", "status": "recalled", "replaye
 `409 trip_cancelled`, `404 unknown_trip`, `400 bad_trip_id`.
 
 ### `trip-status` (the board may also call it)
-Request `{ "trip_id": <u32> }`, device-signed. `200 { "status", "recalled", "claimed", "entrance", "version", "trip_id" }`.
+Request `{ "trip_id": <u32> }`, device-signed. `200 { "status", "recalled", "claimed", "entrance", "version", "trip_id", "radar" }`.
+`radar` is `null` or `{ "room": "<code or ''>", "at": <unix seconds>, "pets": [ { "n": "<name, at most 24 chars>", "sp": "frog|seal|cat",
+"st": 0..3, "s": [hunger, fun, energy, clean, health] (each 0..100), "a": "idle|walk|hide|chicken|football|race|shop" } ] }`: the pets of the
+room the trip's pet is in, as the town's browser last saved them in `state.radar` (see `trip-save`). The browser wrote it, so the server
+re-reads it with fixed shapes: a missing or malformed radar, a room that is not a room code (or `''`), an `at` that is not an integer or is
+more than 300 s ahead of the server clock answer `null`; a bad pet entry is dropped; at most 8 pets are kept; control characters are removed
+from names; unknown keys are not passed on. `room: ""` means the pet is not in a shared room (`pets` is then empty). `at` is the browser's
+clock when it saved: the phone treats a radar older than 60 s as stale. Nothing else of the state is returned.
 `claimed` is true once the browser claimed it. Polling every 5-10 s is enough (`recalled` is true for recalled, returned, closed).
 
 ### `trip-return` (after the recall)
@@ -94,6 +101,8 @@ Request `{ "code": "k7m-2qx" }` (any case; spaces and dashes ignored) and option
 `200 { "trip", "status": "active", "token", "entrance", "pet", "state": { "version", "data" } }` where
 `pet = { "name", "species": "frog|seal|cat", "stage": 0..3 (baby..elder), "items": [head, face, neck, back] (catalogue keys of the town's
 sprites.json, "" for none), "keepsakes": [ { "slot": 0..3, "name", "w", "h", "pal": ["#rrggbb" x15], "px": "<base64, 4 bits per pixel, row padded to a byte, high nibble first, 0 = transparent>" } ] }`.
+`pet` also carries `"stats": [hunger, fun, energy, clean, health]` (0..100 each, read from bytes 52..56 of the schema-14 pet record, clamped; they are
+those of the moment the trip started), which the town shows in the pet's presence. A trip started before this field existed has none.
 A worn keepsake (a seasonal item whose art travels in the package) appears in `keepsakes` (its first sprite) and its slot is `""` in `items`.
 One active web session per trip: a second claim answers `409 already_claimed` unless it resumes with the token, or the session was silent
 for 600 s (then it takes over and the old token stops working: `401 bad_session`). Errors: `400 bad_code`, `404 unknown_code`,
@@ -101,8 +110,10 @@ for 600 s (then it takes over and the old token stops working: `401 bad_session`
 
 ### `trip-save`
 Request `{ "trip": "<ref>", "base_version": <int>, "state": { ... } , "entrance": "<id>" }` (`state` and `entrance` optional). `state` is a
-small JSON object (at most 2048 characters serialized). The town keeps the pet's stars in it: `{ "v": 1, "stars": <int>, ...other keys kept }`
-(saved a moment after each change, one request at a time, retried after a failure). `base_version` must equal the stored
+small JSON object (at most 2048 characters serialized). The town keeps the pet's stars in it, `{ "v": 1, "stars": <int>, ...other keys kept }`
+(saved a moment after each change, one request at a time, retried after a failure), and the radar, `"radar": { "room", "at", "pets": [...] }`
+(every 10 s and when the room changes; at most 8 pets, about 700 characters with the stars, trimmed to fewer pets if the state would pass 2048).
+The page's saves are queued so the stars and the radar never undo each other. `base_version` must equal the stored
 version (optimistic concurrency). `200 { "version": base + 1, "entrance" }`. Errors: `401 bad_session`, `400 bad_version | bad_state | bad_entrance`,
 `409 version_conflict` (with the current `version`), `409 trip_recalled`, `409 trip_over`.
 

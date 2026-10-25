@@ -44,6 +44,15 @@ export function validateLook(look, catalogue) {
   return { species: look.species, stage, items };
 }
 
+/** What a pet is doing, as the radar names it. Only these travel; anything else counts as idle. */
+export const ACTIVITIES = ['idle', 'walk', 'hide', 'chicken', 'football', 'race', 'shop'];
+export const STAT_COUNT = 5;                      // hunger, fun, energy, clean, health
+
+/** A pet's five stats as clean integers 0-100, or null when it is not exactly that (a pet from an older page simply has none). */
+export function validateStats(s) {
+  return Array.isArray(s) && s.length === STAT_COUNT && s.every((v) => Number.isInteger(v) && v >= 0 && v <= 100) ? s.slice() : null;
+}
+
 function parse(raw) {
   if (typeof raw === 'string') {
     if (raw.length > MAX_PAYLOAD_BYTES) return null;
@@ -65,7 +74,7 @@ export const newPeerId = () => {
 
 /**
  * One received message: { t: 'hello'|'pos'|'emote'|'bye', id, ... }. Returns the normalized message or null.
- *   hello  { id, name, look }      who is here (also the presence payload)
+ *   hello  { id, name, look, s?, a? } who is here (also the presence payload); s = the five stats 0-100 and a = the activity (ACTIVITIES), for the radar
  *   pos    { id, x, y, d, area? }  the tile the peer is walking to, its facing and its area (default the town); must be a walkable tile of that area
  *   emote  { id, e }               one of EMOTES
  *   bye    { id }
@@ -77,7 +86,7 @@ export function validateMessage(raw, catalogue) {
     case 'hello': {
       const look = validateLook(m.look, catalogue);
       if (!look) return null;
-      const out = { t: 'hello', id: m.id, name: sanitizeName(m.name), look };
+      const out = { t: 'hello', id: m.id, name: sanitizeName(m.name), look, stats: validateStats(m.s), act: ACTIVITIES.includes(m.a) ? m.a : 'idle' };
       const area = m.area === undefined ? DEFAULT_AREA : m.area;                  // a heartbeat may carry the position: kept only when it is a real tile
       if (m.x !== undefined && isArea(area) && Number.isInteger(m.x) && Number.isInteger(m.y) && isWalkable(m.x, m.y, area) && DIRS.includes(m.d)) out.pos = { x: m.x, y: m.y, d: m.d, area };
       return out;
