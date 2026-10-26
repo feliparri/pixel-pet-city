@@ -34,6 +34,24 @@ export const partAt = (item, part, now) => {
   return set ? set[Math.floor(now / a.modeMs) % set.length][a.seq[Math.floor(now / a.tickMs) % a.seq.length]] : part;
 };
 
+/** How far any worn part reaches beyond the pet's CELL x CELL square, in px: { top, left, right } (0 when nothing does). A painter that draws a pet on a scratch
+ * canvas needs this much room around the cell, or a tall hat (the Jamiro Crown's fins) is cut off. Animated items have one size per width, so the placed art stands for all frames. */
+export const wornReach = (data) => {
+  const r = { top: 0, left: 0, right: 0 };
+  for (const item of Object.values(data.items)) for (const worn of Object.values(item.worn)) for (const [part, px, py] of [...worn.rest, ...(worn.flap || [])]) {
+    const w = data.partSizes[part][0];
+    r.top = Math.max(r.top, -py); r.left = Math.max(r.left, -px); r.right = Math.max(r.right, px + w - CELL);
+  }
+  return r;
+};
+
+const MARGIN = { top: 12, side: 8, below: 4 };                              // the scratch canvas keeps at least this much around the 32 px cell (the feet are 30 rows down)
+/** The scratch canvas for a sprite set: the cell plus the room its tallest / widest worn part needs, so no hat is cut off (the flat view has no such canvas). */
+export function petLayout(data) {
+  const r = wornReach(data), top = Math.max(MARGIN.top, r.top + 1), left = Math.max(MARGIN.side, r.left + 1), right = Math.max(MARGIN.side, r.right + 1);
+  return { w: left + CELL + right, h: top + CELL + MARGIN.below, origin: { x: left, y: top }, feetX: left + CELL / 2, feetY: top + 30 };
+}
+
 /** Does the item move (its art changes over time)? The shop redraws such icons while it is open. */
 export const isAnimated = (sp, key) => !!(sp.data.items[key] && sp.data.items[key].anim);
 

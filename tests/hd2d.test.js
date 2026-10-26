@@ -265,3 +265,20 @@ test('away from the edges the focus is the player itself, and it never leaves th
   const corner = followFocus(1280, 720, 8, 8, W, H, opts), b = focusBounds(cameraFor(1280, 720, W / 2, H / 2, 1, opts), 1280, 720, W, H);
   assert.ok(corner.x < b.x0 && corner.x >= 8 && corner.y < b.y0 && corner.y >= 8);
 });
+
+// A pet is drawn on a scratch canvas in the HD-2D view: it must have room for the tallest / widest hat, or the hat is cut off (the flat view draws straight to the screen).
+import { readFileSync } from 'node:fs';
+import { petLayout, wornReach, CELL } from '../src/sprites.js';
+test('the HD-2D pet canvas has room around the cell for every worn part, so a tall hat (the Jamiro Crown\'s fins) is not clipped', () => {
+  const data = JSON.parse(readFileSync(new URL('../assets/sprites.json', import.meta.url), 'utf8'));
+  const reach = wornReach(data), lay = petLayout(data);
+  assert.ok(reach.top > 12);                                                              // the crown reaches higher than the old fixed 12 px of headroom
+  for (const item of Object.values(data.items)) for (const worn of Object.values(item.worn)) for (const [part, px, py] of [...worn.rest, ...(worn.flap || [])]) {
+    const [w, h] = data.partSizes[part];
+    assert.ok(lay.origin.x + px >= 0 && lay.origin.y + py >= 0, 'left / top edge inside the canvas');
+    assert.ok(lay.origin.x + px + w <= lay.w && lay.origin.y + py + h <= lay.h, 'right / bottom edge inside the canvas');
+  }
+  assert.equal(lay.feetX, lay.origin.x + CELL / 2);
+  assert.equal(lay.feetY, lay.origin.y + 30);                                             // the feet keep their row in the cell
+  assert.deepEqual(petLayout({ items: {}, partSizes: [] }), { w: 48, h: 48, origin: { x: 8, y: 12 }, feetX: 24, feetY: 42 });   // no hats: the old canvas
+});

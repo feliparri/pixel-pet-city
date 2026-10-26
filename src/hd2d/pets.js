@@ -1,7 +1,7 @@
 // A pet as an upright item of the HD-2D view: its sprite (graded for the night and for the lamps that reach it), a flat ground shadow that
 // stays on the ground when the pet jumps, and what goes in screen space afterwards (its name and its emote bubble). Used by the town
 // and by the demo page. An entity is { id, name, look, walker, emote?, jumpAt?, fx?, gone? } as in render.js.
-import { drawPet, CELL } from '../sprites.js';
+import { drawPet, petLayout, CELL } from '../sprites.js';
 import { jumpLift } from '../jump.js';
 import { entranceState, drawEntranceFx, flickers } from '../entrance.js';
 import { headFrame } from '../render.js';
@@ -10,10 +10,13 @@ import { project, snapScale } from './camera.js';
 import { lightAt } from './light.js';
 import { grade } from './scene.js';
 
-const SIZE = 48, FEET_X = 24, FEET_Y = 42, ORIGIN = { x: 8, y: 12 };      // the scratch canvas: the 32 px cell sits at (8, 12), its feet 30 rows below
-
 export function createPetPainter(sprites) {
-  const tmp = Object.assign(document.createElement('canvas'), { width: SIZE, height: SIZE }), tctx = tmp.getContext('2d');
+  const tmp = document.createElement('canvas'), tctx = tmp.getContext('2d');
+  let laid = null, lay = null;                                                                 // the layout of the sprite set last drawn (resizing clears the canvas)
+  const layoutFor = (sp) => {
+    if (laid !== sp.data) { laid = sp.data; lay = petLayout(sp.data); tmp.width = lay.w; tmp.height = lay.h; }
+    return lay;
+  };
 
   /** The depth-sortable item for an entity, or null when it is off screen / gone. `ctx.me` marks the local pet (its name is gold). */
   function item(e, { cam, n, now, world, me, view, wash = null }) {
@@ -24,6 +27,7 @@ export function createPetPainter(sprites) {
     const g = project(cam, wx, wy);
     if (!g) return null;
     const s = snapScale(g.scale), cx = Math.round(g.x), cy = Math.round(g.y);
+    const { w: SIZE, feetY: FEET_Y } = layoutFor(e.sprites || sprites);
     if (cx < -SIZE * s || cx > view.w + SIZE * s || cy < 0 || cy > view.h + FEET_Y * s) return null;
     const k = e.walker.moving ? Math.min(1, e.walker.t / e.walker.stepMs()) : 0;
     const hop = e.walker.moving ? Math.round(Math.abs(Math.sin(k * Math.PI)) * 3) : 0;
@@ -42,12 +46,13 @@ export function createPetPainter(sprites) {
         }
         if (!(fx && flickers(e.fx.id, e.fx.phase, now - e.fx.t0))) {
           const flap = (e.walker.moving || lift > 0) && Math.floor(now / 140) % 2 === 1;
-          tctx.clearRect(0, 0, SIZE, SIZE);
-          drawPet(tctx, e.sprites || sprites, e.look, ORIGIN.x, ORIGIN.y - hop, { frame: lift > 0 ? 'happy' : headFrame(e, now, e.id), flip: e.walker.d === 'right', flap, now });
+          const L = layoutFor(e.sprites || sprites);
+          tctx.clearRect(0, 0, L.w, L.h);
+          drawPet(tctx, e.sprites || sprites, e.look, L.origin.x, L.origin.y - hop, { frame: lift > 0 ? 'happy' : headFrame(e, now, e.id), flip: e.walker.d === 'right', flap, now });
           if (n > 0.02) grade(tctx, tmp, n, lightAt(world.lights, wx, wy));                      // night: the veil, and the warm wash where a lamp reaches
           const tint = wash ? wash(wx) : null;                                                    // a burst of the sky show washes its colour over the pet
-          if (tint) { tctx.globalCompositeOperation = 'source-atop'; tctx.fillStyle = `rgba(${tint.r | 0},${tint.g | 0},${tint.b | 0},${tint.a})`; tctx.fillRect(0, 0, SIZE, SIZE); tctx.globalCompositeOperation = 'source-over'; }
-          c.drawImage(tmp, 0, 0, SIZE, SIZE, cx - FEET_X * s + sway * s, cy - (FEET_Y + air + lift) * s, SIZE * s, SIZE * s);
+          if (tint) { tctx.globalCompositeOperation = 'source-atop'; tctx.fillStyle = `rgba(${tint.r | 0},${tint.g | 0},${tint.b | 0},${tint.a})`; tctx.fillRect(0, 0, L.w, L.h); tctx.globalCompositeOperation = 'source-over'; }
+          c.drawImage(tmp, 0, 0, L.w, L.h, cx - L.feetX * s + sway * s, cy - (L.feetY + air + lift) * s, L.w * s, L.h * s);
         }
         ov.labels.push({ text: e.name, x: cx + sway * s, y: cy + (2 - lift) * s, colour: e === me ? '#f8d040' : e.npc ? '#a8e6cf' : '#f4f6fa' });
       }
