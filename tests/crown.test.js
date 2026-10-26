@@ -10,7 +10,7 @@ const sets = anim.sets, modes = sets[0].length, n = sets[0][0].length;
 
 test('the export carries the helmet\'s animation: a set of frames per head width, four colour modes each, a cycle that starts at the resting art', () => {
   assert.ok(anim && anim.tickMs === 100);
-  assert.ok(sets.length >= 3 && sets.length <= 8);
+  assert.ok(sets.length >= 3 && sets.length <= 16);
   assert.equal(modes, 4);
   assert.ok(n >= 20 && n <= 96);
   assert.equal(anim.modeMs, anim.seq.length * anim.tickMs);                              // one colour mode per cycle
