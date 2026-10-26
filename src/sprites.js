@@ -22,14 +22,16 @@ export const CELL = 32;
 
 /**
  * The part to draw for a placed part at time `now` (ms). An animated item (the Jamiro Crown, the "Automaton" helmet: sprites.json items.*.anim { tickMs, modeMs,
- * frames, seq }) is placed with its resting art, frames[0][0]. The game shows the frame the tick names (seq) in the colour mode the cycle falls in (one mode per
- * modeMs: white with mixed LEDs, pink, icy blue, red and amber), so the LEDs blink, the visor pulses, the spikes step in and out and the colours change, as on the
- * board. `now` undefined (a still picture) or any other part: the part as placed.
+ * seq, sets }) is drawn for the width of the pet's head, so it has one set of frames per width: [[frame per tick-index] per colour mode]. A look is placed with the
+ * resting art of its width's set, sets[v][0][0]. The game shows the frame the tick names (seq) in the colour mode the cycle falls in (one mode per modeMs: white with
+ * mixed LEDs, pink, icy blue, red and amber), so the LEDs blink, the visor pulses, the fins step in and out and the colours change, as on the board. `now` undefined
+ * (a still picture) or any other part: the part as placed.
  */
 export const partAt = (item, part, now) => {
   const a = item && item.anim;
-  if (!a || part !== a.frames[0][0] || !Number.isFinite(now)) return part;
-  return a.frames[Math.floor(now / a.modeMs) % a.frames.length][a.seq[Math.floor(now / a.tickMs) % a.seq.length]];
+  if (!a || !Number.isFinite(now)) return part;
+  const set = a.sets.find((s) => s[0][0] === part);
+  return set ? set[Math.floor(now / a.modeMs) % set.length][a.seq[Math.floor(now / a.tickMs) % a.seq.length]] : part;
 };
 
 /** Does the item move (its art changes over time)? The shop redraws such icons while it is open. */

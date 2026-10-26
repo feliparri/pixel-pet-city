@@ -6,44 +6,65 @@ import { partAt, isAnimated } from '../src/sprites.js';
 
 const data = JSON.parse(readFileSync(new URL('../assets/sprites.json', import.meta.url), 'utf8'));
 const crown = data.items.jamiro, anim = crown.anim;
-const modes = anim.frames.length, n = anim.frames[0].length;
+const sets = anim.sets, modes = sets[0].length, n = sets[0][0].length;
 
-test('the export carries the helmet\'s animation: frames of one size in four colour modes, a cycle that starts at the resting art', () => {
+test('the export carries the helmet\'s animation: a set of frames per head width, four colour modes each, a cycle that starts at the resting art', () => {
   assert.ok(anim && anim.tickMs === 100);
+  assert.ok(sets.length >= 3 && sets.length <= 8);
   assert.equal(modes, 4);
   assert.ok(n >= 20 && n <= 96);
   assert.equal(anim.modeMs, anim.seq.length * anim.tickMs);                              // one colour mode per cycle
-  const [w, h] = data.partSizes[anim.frames[0][0]];
-  assert.deepEqual([w, h], [40, 21]);
-  for (const m of anim.frames) { assert.equal(m.length, n); for (const f of m) assert.deepEqual(data.partSizes[f], [w, h]); }
-  assert.equal(new Set(anim.frames.flat()).size, modes * n);                              // every frame of every mode is a part of its own
+  const widths = new Set();
+  for (const set of sets) {
+    assert.equal(set.length, modes);
+    const [w, h] = data.partSizes[set[0][0]];
+    assert.ok(w <= data.partCell && h <= data.partCell);
+    widths.add(w);
+    for (const m of set) { assert.equal(m.length, n); for (const f of m) assert.deepEqual(data.partSizes[f], [w, h]); }
+  }
+  assert.ok(widths.size >= 3);                                                           // the art is drawn per head width
+  assert.equal(new Set(sets.flat(2)).size, sets.length * modes * n);                      // every frame of every mode of every width is a part of its own
   assert.ok(anim.seq.every((i) => Number.isInteger(i) && i >= 0 && i < n));
   assert.equal(anim.seq[0], 0);
   assert.ok(anim.seq.length * anim.tickMs >= 3000 && anim.seq.length * anim.tickMs <= 8000);
-  assert.equal(data.items.jamiro.worn['cat-adult'].rest[0][0], anim.frames[0][0]);        // placed with its resting art
+  const firsts = new Set(sets.map((s) => s[0][0]));
+  for (const [key, worn] of Object.entries(crown.worn)) assert.ok(firsts.has(worn.rest[0][0]), key);   // every look is placed with the resting art of one width
+  assert.equal(new Set(Object.values(crown.worn).map((w) => w.rest[0][0])).size, sets.length);       // and every width is worn by some look
+});
+
+test('the helmet is as wide as the head it sits on: its visor starts at the head\'s first column and the pets\' heads are the widths the sets are drawn for', () => {
+  for (const sp of ['frog', 'seal', 'cat']) for (const st of ['baby', 'child', 'adult', 'elder']) {
+    const placed = crown.worn[`${sp}-${st}`].rest[0];
+    assert.equal(placed.length, 5);
+    assert.ok(placed[1] < 0 && placed[1] + data.partSizes[placed[0]][0] > 32);                // the fins stick out beyond the pet's 32 px cell on both sides
+  }
+  const sizes = [...new Set(Object.values(crown.worn).map((w) => data.partSizes[w.rest[0][0]][0]))];
+  assert.ok(sizes.length >= 3);
 });
 
 test('partAt: the frame of the tick and the colour mode `now` falls in, both cycle, a still picture or another part is as placed', () => {
-  const base = anim.frames[0][0], tick = anim.tickMs, cycle = anim.seq.length;
+  const tick = anim.tickMs, cycle = anim.seq.length;
   const moving = anim.seq.findIndex((i) => i !== 0);
   assert.ok(moving > 0);
-  assert.equal(partAt(crown, base, 0), base);
-  assert.equal(partAt(crown, base, undefined), base);                                    // no clock: the helmet rests, in its first mode
-  assert.equal(partAt(crown, base, moving * tick), anim.frames[0][anim.seq[moving]]);
-  assert.equal(partAt(crown, base, moving * tick + tick - 1), anim.frames[0][anim.seq[moving]]);
-  for (let m = 0; m < modes; m++) {                                                      // each cycle is the next colour mode
-    assert.equal(partAt(crown, base, m * anim.modeMs), anim.frames[m][0]);
-    assert.equal(partAt(crown, base, m * anim.modeMs + moving * tick + 7), anim.frames[m][anim.seq[moving]]);
+  for (const set of sets) {
+    const base = set[0][0];
+    assert.equal(partAt(crown, base, 0), base);
+    assert.equal(partAt(crown, base, undefined), base);                                  // no clock: the helmet rests, in its first mode
+    assert.equal(partAt(crown, base, moving * tick), set[0][anim.seq[moving]]);
+    assert.equal(partAt(crown, base, moving * tick + tick - 1), set[0][anim.seq[moving]]);
+    for (let m = 0; m < modes; m++) {                                                    // each cycle is the next colour mode
+      assert.equal(partAt(crown, base, m * anim.modeMs), set[m][0]);
+      assert.equal(partAt(crown, base, m * anim.modeMs + moving * tick + 7), set[m][anim.seq[moving]]);
+    }
+    assert.equal(partAt(crown, base, modes * anim.modeMs), base);                        // a round of the modes on: back at the start
+    assert.equal(partAt(crown, base, (9 * modes) * anim.modeMs + moving * tick), set[0][anim.seq[moving]]);
+    assert.equal(partAt(crown, set[0][1], moving * tick), set[0][1]);                    // only the resting art is swapped
+    const seen = new Set();
+    for (let t = 0; t < cycle * modes; t++) seen.add(partAt(crown, base, t * tick));
+    assert.equal(seen.size, modes * n);                                                  // over a round every frame is shown in every mode
   }
-  assert.equal(partAt(crown, base, modes * anim.modeMs), base);                          // a round of the modes on: back at the start
-  assert.equal(partAt(crown, base, (9 * modes) * anim.modeMs + moving * tick), anim.frames[0][anim.seq[moving]]);
-  const other = anim.frames[0][1];
-  assert.equal(partAt(crown, other, moving * tick), other);                              // only the first part is swapped
   assert.equal(partAt(data.items.cape, 3, 12345), 3);                                    // an item without animation
   assert.equal(partAt(undefined, 3, 12345), 3);
-  const seen = new Set();
-  for (let t = 0; t < cycle * modes; t++) seen.add(partAt(crown, base, t * tick));
-  assert.equal(seen.size, modes * n);                                                    // over a round every frame is shown in every mode
   assert.equal(isAnimated({ data }, 'jamiro'), true);
   assert.equal(isAnimated({ data }, 'cape'), false);
   assert.equal(isAnimated({ data }, 'nope'), false);
