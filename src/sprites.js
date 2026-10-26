@@ -21,14 +21,15 @@ export async function loadSprites(base = 'assets/') {
 export const CELL = 32;
 
 /**
- * The part to draw for a placed part at time `now` (ms). An animated item (the Jamiro Crown: sprites.json items.*.anim { tickMs, frames, seq }) is placed with
- * its resting art, frames[0]; the game shows frames[seq[tick]] for the tick `now` falls in, so the spikes step in and out with a glint, as on the board.
- * `now` undefined (a still picture) or any other part: the part as placed.
+ * The part to draw for a placed part at time `now` (ms). An animated item (the Jamiro Crown, the "Automaton" helmet: sprites.json items.*.anim { tickMs, modeMs,
+ * frames, seq }) is placed with its resting art, frames[0][0]. The game shows the frame the tick names (seq) in the colour mode the cycle falls in (one mode per
+ * modeMs: white with mixed LEDs, pink, icy blue, red and amber), so the LEDs blink, the visor pulses, the spikes step in and out and the colours change, as on the
+ * board. `now` undefined (a still picture) or any other part: the part as placed.
  */
 export const partAt = (item, part, now) => {
   const a = item && item.anim;
-  if (!a || part !== a.frames[0] || !Number.isFinite(now)) return part;
-  return a.frames[a.seq[Math.floor(now / a.tickMs) % a.seq.length]];
+  if (!a || part !== a.frames[0][0] || !Number.isFinite(now)) return part;
+  return a.frames[Math.floor(now / a.modeMs) % a.frames.length][a.seq[Math.floor(now / a.tickMs) % a.seq.length]];
 };
 
 /** Does the item move (its art changes over time)? The shop redraws such icons while it is open. */
