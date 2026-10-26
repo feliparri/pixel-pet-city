@@ -1,6 +1,7 @@
 // The town's shop and the pet's backpack, as plain data: which items are for sale, what state each one is in for this pet, the Spanish
 // texts and the list of what the pet carries. The server (docs/trip-api.md, trip-buy) decides every purchase; nothing here spends anything.
 import { toolKeys } from './tools.js';
+import { parseMissions, missionsAfterClaim } from './missions.js';
 
 /** The price list, mirrored from supabase/functions/trip/shop.js (tests/shop.test.js keeps them equal): key -> { price, slot, name }. */
 export const SHOP = {
@@ -39,7 +40,7 @@ const keys = (a) => (Array.isArray(a) ? a.filter(isKey) : []);
 /**
  * What the shop panel works from. `view` is a claim or status reply ({ can_spend, gold_left, bought }), `pet` the claim's pet
  * ({ owned, bag, tools }, optional on a status poll: `prev` keeps what the last state knew).
- * -> { canSpend, gold (null when the board cannot spend), owned, bought, full, bag, tools (the farm tools, src/tools.js) }
+ * -> { canSpend, gold (null when the board cannot spend), owned, bought, full, bag, tools (the farm tools, src/tools.js), missions (today's ledger, src/missions.js) }
  */
 export function shopFrom(view, pet = null, prev = null) {
   const bought = keys(view && view.bought);
@@ -50,7 +51,15 @@ export function shopFrom(view, pet = null, prev = null) {
     bought, full: bought.length >= GIFT_MAX || !!(prev && prev.full && prev.bought.length === bought.length),
     bag: pet ? parseBag(pet.bag) : prev ? prev.bag : [],
     tools: pet ? toolKeys(pet.tools) : prev ? prev.tools : [],
+    missions: view && view.missions ? parseMissions(view.missions) : prev ? prev.missions : parseMissions(null),
   };
+}
+
+/** What a finished mission claim (trip-mission answers { gold, capped, earned_today, gold_left }) changes in the state: the gold left and the day's ledger. */
+export function shopAfterMission(shop, m, r) {
+  const gold = r.ok && int(r.gold_left) !== null ? r.gold_left : shop.gold;
+  if (r.error === 'shop_closed') return { ...shop, canSpend: false, gold: null };
+  return { ...shop, gold, missions: missionsAfterClaim(shop.missions, m, r) };
 }
 
 /** What a finished tool purchase changes in the state (trip-buy-tool answers { gold_left, tools }); same rules as shopAfterBuy. */

@@ -4,12 +4,13 @@ import { drawItemIcon } from './sprites.js';
 import { drawProduce, produceCanvas } from './art/produce.js';
 import { KINDS, NAMES } from './canasta.js';
 import { shopRows, bagList, confirmText, buyErrorText, thanks, CLOSED_TEXT, GOLD_TEXT, SHOP } from './shop.js';
+import { MISSIONS_TITLE, MISSIONS_HINT, MISSIONS_CLOSED } from './missions.js';
 import { TOOLS, toolRows, confirmToolText, toolErrorText, STORE_TITLE, STORE_HINT, CLERK_THANKS } from './tools.js';
 
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 
-/** source: () => { shop, buy(key), buyTool(key) } | null (nothing to show: no pet's trip). sprites: for the item icons. onToolBought(key, line): the Almacén sold a tool. */
-export function createShopUi($, { source, sprites, canasta = () => null, onBought = () => {}, onToolBought = () => {}, onOpenChange = () => {} }) {
+/** source: () => { shop, buy(key), buyTool(key) } | null (nothing to show: no pet's trip). sprites: for the item icons. onToolBought(key, line): the Almacén sold a tool. missionList(): today's missions ({ rows, earned, cap }, src/town.js missions.list) or null. */
+export function createShopUi($, { source, sprites, canasta = () => null, missionList = () => null, onBought = () => {}, onToolBought = () => {}, onOpenChange = () => {} }) {
   const panel = $('panel'), body = $('panel-body'), note = $('panel-note');
   let view = null, confirming = null, busy = false, sold = 0;
 
@@ -62,6 +63,25 @@ export function createShopUi($, { source, sprites, canasta = () => null, onBough
       list.append(li);
     }
     body.replaceChildren(el('p', 'empty', STORE_HINT), list);
+  }
+
+  const STATE_LABEL = { open: (r) => `Llevas ${r.have} de ${r.need}`, ready: (r) => `¡Listo! Habla con ${r.name}`, done: () => 'Hecha, ¡gracias!' };
+  function paintMissions() {                                       // the villagers' missions of today and how far the pet is (nothing to press: the mission is handed in by talking to the villager)
+    const data = missionList();
+    $('panel-title').textContent = MISSIONS_TITLE;
+    $('panel-gold').hidden = !data;
+    if (!data) { $('panel-gold').textContent = ''; body.replaceChildren(el('p', 'empty', MISSIONS_CLOSED)); return; }
+    $('panel-gold').textContent = `Oro de hoy: ${data.earned} de ${data.cap}`;
+    const list = el('ul', 'shop-list missions');
+    for (const r of data.rows) {
+      const li = el('li', `shop-row mission ${r.state}`);
+      const c = produceCanvas(r.icon, 40); c.className = 'icon'; c.setAttribute('aria-hidden', 'true');
+      const info = el('div', 'shop-info');
+      info.append(el('strong', '', `${r.name}: ${r.text}`), el('span', 'price', `${STATE_LABEL[r.state](r)} · ${r.reward} de oro`));
+      li.append(c, info);
+      list.append(li);
+    }
+    body.replaceChildren(el('p', 'empty', MISSIONS_HINT(data.cap)), list);
   }
 
   function paintConfirm() {
@@ -120,7 +140,8 @@ export function createShopUi($, { source, sprites, canasta = () => null, onBough
   function paint() {
     const src = source();
     if (!view || !src) return;
-    if (view === 'bag') paintBag(src);
+    if (view === 'missions') paintMissions();
+    else if (view === 'bag') paintBag(src);
     else if (confirming) paintConfirm();
     else if (view === 'store') paintStore(src);
     else paintShop(src);
@@ -168,5 +189,5 @@ export function createShopUi($, { source, sprites, canasta = () => null, onBough
     if (confirming && !busy) { confirming = null; paint(); } else close();
   });
 
-  return { openShop: () => open('shop'), openStore: () => open('store'), openBag: () => open('bag'), close, get isOpen() { return view !== null; } };
+  return { openShop: () => open('shop'), openStore: () => open('store'), openBag: () => open('bag'), openMissions: () => open('missions'), close, get isOpen() { return view !== null; } };
 }

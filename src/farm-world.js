@@ -77,20 +77,22 @@ export function farmView(room, nowMs, mem) {
 // ---- what this pet did today ----------------------------------------------------------------------------------------------------------------
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/, ID_RE = /^\d{1,3},\d{1,3}$/;
-const fresh = (day) => ({ day, picked: [], watered: [], fruit: {}, did: {} });
+const MISSION_RE = /^\d{4}-\d{2}-\d{2}:[a-z]+:[a-z]+:[a-z-]+:\d$/;
+const fresh = (day) => ({ day, picked: [], watered: [], fruit: {}, did: {}, missions: [] });
 function sane(raw) {
   if (!raw || typeof raw !== 'object' || !DAY_RE.test(raw.day)) return null;
   const m = fresh(raw.day);
   for (const [key, src] of [['picked', plotById], ['watered', plotById]]) if (Array.isArray(raw[key])) m[key] = [...new Set(raw[key].filter((id) => src.has(id)))];
   if (raw.fruit && typeof raw.fruit === 'object') for (const [id, n] of Object.entries(raw.fruit)) if (treeById.has(id) && Number.isInteger(n) && n > 0) m.fruit[id] = Math.min(n, FRUIT_PER_TREE);
   if (raw.did && typeof raw.did === 'object') for (const [k, n] of Object.entries(raw.did)) if (/^[a-z]+(:[a-z]+)?$/.test(k) && Number.isInteger(n) && n > 0) m.did[k] = Math.min(n, 9999);
+  if (Array.isArray(raw.missions)) m.missions = [...new Set(raw.missions.filter((id) => typeof id === 'string' && MISSION_RE.test(id)))].slice(0, 12);
   return m;
 }
 
 /**
  * The pet's day on the farm. `load()` returns what was saved (or null), `save(data)` stores it; both are optional (the memory then lives for
  * this visit). `use(day)` starts a fresh day when the Chile day changed. `did` counts what was done today by action ('harvest:carrot',
- * 'pick:apple', 'water', 'fill', 'feed'): the missions (F.5) read it through count().
+ * 'pick:apple', 'water', 'fill', 'feed'): the missions (src/missions.js) read it through count(); `missions` lists the ids of the ones already handed in today.
  */
 export function createFarmMemory({ load = () => null, save = () => {} } = {}) {
   let m = sane(load()) || fresh(''), rev = 0;
@@ -105,12 +107,16 @@ export function createFarmMemory({ load = () => null, save = () => {} } = {}) {
     markPicked(id) { if (!m.picked.includes(id)) { m.picked.push(id); touch(); } },
     markWatered(id) { if (!m.watered.includes(id)) { m.watered.push(id); touch(); } },
     takeFruit(id) { m.fruit[id] = (m.fruit[id] || 0) + 1; touch(); },
+    /** A mission handed in uses up the actions it asked for, so one harvest or one watering never counts for two villagers. */
+    consume(type, kind, n) { const k = kind ? `${type}:${kind}` : type; m.did[k] = Math.max(0, (m.did[k] || 0) - n); if (!m.did[k]) delete m.did[k]; touch(); },
+    missionDone: (id) => m.missions.includes(id),
+    markMission(id) { if (!m.missions.includes(id)) { m.missions.push(id); touch(); } },
     record(type, kind) { const k = kind ? `${type}:${kind}` : type; m.did[k] = (m.did[k] || 0) + 1; touch(); },
     /** How many times today: count('harvest', 'carrot'), count('water'); count('harvest') adds up every kind. */
     count(type, kind) {
       if (kind) return m.did[`${type}:${kind}`] || 0;
       return Object.entries(m.did).reduce((s, [k, n]) => s + (k === type || k.startsWith(`${type}:`) ? n : 0), 0);
     },
-    toJSON: () => ({ ...m, picked: m.picked.slice(), watered: m.watered.slice(), fruit: { ...m.fruit }, did: { ...m.did } }),
+    toJSON: () => ({ ...m, picked: m.picked.slice(), watered: m.watered.slice(), fruit: { ...m.fruit }, did: { ...m.did }, missions: m.missions.slice() }),
   };
 }

@@ -80,6 +80,19 @@ export function createDb(url: string, serviceKey: string) {
       const r = await call('/pet_tools', { method: 'POST', body: JSON.stringify({ device_id: deviceId, tool }), prefer: 'resolution=ignore-duplicates,return=minimal' });
       if (!r.ok) throw new Error(`db ${r.status}`);
     },
+    /** A board's mission ledger for one town day (table pet_days), or null. */
+    getPetDay: (deviceId: string, day: string) => one(`/pet_days?device_id=eq.${q(deviceId)}&day=eq.${q(day)}&select=*&limit=1`),
+    /** Idempotent: an existing day stays as it is. */
+    async insertPetDay(row: Row): Promise<void> {
+      const r = await call('/pet_days', { method: 'POST', body: JSON.stringify(row), prefer: 'resolution=ignore-duplicates,return=minimal' });
+      if (!r.ok) throw new Error(`db ${r.status}`);
+    },
+    /** Atomic conditional update, like updateTrip: the patch applies only while every `where` column holds one of its values. Returns the new row, or null. */
+    async updatePetDay(deviceId: string, day: string, where: Where, patch: Row): Promise<Row | null> {
+      const r = await call(`/pet_days?device_id=eq.${q(deviceId)}&day=eq.${q(day)}&${filter(where)}`, { method: 'PATCH', body: JSON.stringify(patch), prefer: 'return=representation' });
+      if (!r.ok) throw new Error(`db ${r.status}`);
+      return Array.isArray(r.json) && r.json.length ? r.json[0] : null;
+    },
     async cleanup(): Promise<void> {
       await call('/rpc/cleanup_trips', { method: 'POST', body: '{}' });
     },

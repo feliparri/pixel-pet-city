@@ -4,7 +4,7 @@ import { normalizeTripCode } from './trip-code.js';
 import { parseKeepsake } from './keepsake.js';
 import { validateLook, validateStats, sanitizeName } from './protocol.js';
 import { entranceId } from './entrance.js';
-import { shopFrom, shopAfterBuy, shopAfterBuyTool, parseBag } from './shop.js';
+import { shopFrom, shopAfterBuy, shopAfterBuyTool, shopAfterMission, parseBag } from './shop.js';
 import { toolKeys } from './tools.js';
 
 export const POLL_MS = 5000;
@@ -97,6 +97,16 @@ export function createTripClient({ base, fetch: fetcher = globalThis.fetch, stor
       if (!r.ok && r.error === 'conflict') r = await post('trip-buy-tool', { trip: session.trip, tool: key }, session.token);
       const out = r.ok ? { ok: true, ...r.body } : { ok: false, error: r.error, ...(r.body && Number.isInteger(r.body.price) ? { price: r.body.price } : {}), ...(r.body && Number.isInteger(r.body.gold_left) ? { gold_left: r.body.gold_left } : {}) };
       session.shop = shopAfterBuyTool(session.shop, key, out);
+      return out;
+    },
+
+    /** Hands in a villager's mission (trip-mission; `m` is src/missions.js missionFor's): the server pays real gold within its daily cap. { ok, gold, capped, earned_today, gold_left } or { ok: false, error }. */
+    async claimMission(m) {
+      if (!session) return { ok: false, error: 'bad_session' };
+      let r = await post('trip-mission', { trip: session.trip, mission: m.id }, session.token);
+      if (!r.ok && r.error === 'conflict') r = await post('trip-mission', { trip: session.trip, mission: m.id }, session.token);
+      const out = r.ok ? { ok: true, ...r.body } : { ok: false, error: r.error, ...(r.body && Number.isInteger(r.body.earned_today) ? { earned_today: r.body.earned_today } : {}) };
+      session.shop = shopAfterMission(session.shop, m, out);
       return out;
     },
 

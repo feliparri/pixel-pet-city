@@ -237,16 +237,17 @@ export function petView(pkg) {
 /**
  * The return package of an outbound one: the same bytes with the direction BACK and the sequence +1. A purchase (the shop, docs/trip-api.md)
  * also lowers the pet record's gold by `spent` (never below 0) and appends the `bought` core items (ITEM_KEYS keys) to the gifts list as
- * WEAR gifts; the gifts sit before the records, so the later bytes shift, and the length and the CRC are recomputed. With nothing spent
- * or bought the bytes are the outbound ones, direction and sequence aside.
+ * WEAR gifts; the gifts sit before the records, so the later bytes shift, and the length and the CRC are recomputed. Gold the villagers' missions
+ * paid (`earned`) is added to the pet record's gold the same way (outbound - spent + earned): the board applies the signed difference with the gold it
+ * left with. With nothing spent, earned or bought the bytes are the outbound ones, direction and sequence aside.
  */
-export function buildReturn(out, seq, { spent = 0, bought = [] } = {}) {
+export function buildReturn(out, seq, { spent = 0, earned = 0, bought = [] } = {}) {
   let b = new Uint8Array(out);
   b[6] = DIR_BACK;
   put32(b, 16, seq >>> 0);
-  if (spent > 0 || bought.length) {
+  if (spent > 0 || earned > 0 || bought.length) {
     const petAt = b.length - 4 - u16(b, 22);
-    if (spent > 0) put32(b, petAt + P.gold, Math.max(0, u32(b, petAt + P.gold) - spent));
+    if (spent > 0 || earned > 0) put32(b, petAt + P.gold, Math.min(0xFFFFFFFF, Math.max(0, u32(b, petAt + P.gold) - spent + earned)));
     if (bought.length) {
       let at = HEADER_BYTES + 1 + b[HEADER_BYTES] * ITEM_BYTES;           // the gifts count byte, after the backpack
       const gifts = b[at], end = at + 1 + gifts * ITEM_BYTES;

@@ -15,6 +15,7 @@ import { devEntrance } from './entrance.js';
 import { drawKeepsake } from './keepsake.js';
 import { createHud } from './hud.js';
 import { createShopUi } from './shop-ui.js';
+import { parseMissions } from './missions.js';
 import { createMockShop } from './shop-mock.js';
 import { createBridge } from './usb-bridge.js';
 import { createRadarSaver, radarOf, stateWithRadar } from './radar.js';
@@ -168,13 +169,20 @@ async function enter(code, { transport = mode, arrival = null, solo = false } = 
   canasta = visit ? visit.canasta : (canasta || createCanasta());       // dev only: a basket that lives for this page
   if (!visit && !devFarm) devFarm = farmMemoryFor('dev');
   window.cityDebug = () => ({ town, net, canasta });                    // handy in the console when testing with two tabs
-  town = startTown({ canvas: $('view'), stage: $('stage'), pad: touch ? { stick: $('stick'), a: $('pad-a'), b: $('pad-b') } : null, sprites, font, net, me, entrance: arrival, stars: counter, canasta, farmMemory: visit ? visit.farm : devFarm, tools: () => (shopSource && shopSource.shop ? shopSource.shop.tools : []), onStore: () => shopUi && shopUi.openStore(), onFarm: paintFarmPrompt, onFarmDone: farmPop, onHud: (info) => hud && hud.update(info), onHdMode: () => paintFx(), onShow: (on) => { $('show-back').hidden = !on; }, onShop: () => shopUi && shopUi.openShop() });
+  town = startTown({ canvas: $('view'), stage: $('stage'), pad: touch ? { stick: $('stick'), a: $('pad-a'), b: $('pad-b') } : null, sprites, font, net, me, entrance: arrival, stars: counter, canasta, farmMemory: visit ? visit.farm : devFarm, tools: () => (shopSource && shopSource.shop ? shopSource.shop.tools : []), onStore: () => shopUi && shopUi.openStore(), missions: missionsApi, onFarm: paintFarmPrompt, onFarmDone: farmPop, onHud: (info) => hud && hud.update(info), onHdMode: () => paintFx(), onShow: (on) => { $('show-back').hidden = !on; }, onShop: () => shopUi && shopUi.openShop() });
   if (!town.hd.locked) town.hd.set(hdPref);
   paintFx();
   setStatus('connected');
   if (visit) visit.radar.now();                                 // the room changed: tell the phone's radar now
   return true;
 }
+
+/** What the town needs of the missions (src/town.js): on while the pet's board can spend (a real trip, or the dev mock), handed in through the shop source. */
+const missionsApi = {
+  enabled: () => !!(shopSource && shopSource.shop && shopSource.shop.canSpend && shopSource.claimMission),
+  ledger: () => (shopSource && shopSource.shop ? shopSource.shop.missions : parseMissions(null)),
+  claim: (m) => shopSource.claimMission(m),
+};
 
 /** The "Efectos" switch (the HD-2D view): the choice is remembered in this browser; ?flat=1 locks it off. */
 let hdPref = store.get('city.hd2d') !== '0';
@@ -302,7 +310,7 @@ async function recalled(kind) {
   if (kind === 'recalled' && town) await town.playExit(visit.entrance);
   closeRoom();
   visit.client.forget();
-  shopSource = null; $('bag-open').hidden = true;
+  shopSource = null; $('bag-open').hidden = true; $('missions-open').hidden = true;
   const text = kind === 'recalled' ? 'Volvió a su casa' : 'El viaje terminó';
   visit = null;
   showGone(text);
@@ -331,7 +339,7 @@ async function bootTrip(code) {
   });
   radar.start();
   shopSource = client;                                          // the trip client: its shop state and trip-buy
-  $('bag-open').hidden = false;
+  $('bag-open').hidden = false; $('missions-open').hidden = false;
   visit = { client, entrance: client.session.entrance, stop: null, solo: true, saver, canSaver, radar, stars: createStars({ initial: starsFromState(r.state), persist: (n) => saver.save(n) }), canasta: createCanasta({ initial: canastaFrom(r.state), persist: (snap) => canSaver.save(snap) }), farm: farmMemoryFor(code) };
   const box = $('keepsakes');
   box.replaceChildren();
@@ -378,10 +386,12 @@ async function boot() {
     sprites, source: () => shopSource,
     onOpenChange: (open) => { $('play').classList.toggle('modal', open); if (town) town.setModal(open); },
     canasta: () => canasta,
+    missionList: () => (town ? town.missions.list() : null),
     onBought: (key, line) => { if (town) { town.wear(key); town.thank(line); } },
     onToolBought: (key, line) => { if (town) town.thank(line); },
   });
   $('bag-open').addEventListener('click', () => shopUi.openBag());
+  $('missions-open').addEventListener('click', () => shopUi.openMissions());
   const prompt = $('farm-prompt');
   prompt.addEventListener('mousedown', (e) => e.preventDefault());               // the prompt never takes the keyboard focus: Enter and Space stay the pet's
   prompt.addEventListener('pointerdown', (e) => { e.preventDefault(); if (town) town.farm.act(); });
@@ -397,7 +407,7 @@ async function boot() {
   }
   // development only (?local=1&dev=1): the pet chooser and rooms between tabs of this browser
   shopSource = createMockShop(location.search);                  // no server: a mock with the same rules
-  $('bag-open').hidden = false;
+  $('bag-open').hidden = false; $('missions-open').hidden = false;
   show('lobby');
   applySaved();
   $('chooser').addEventListener('input', refreshPet);

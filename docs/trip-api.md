@@ -84,8 +84,8 @@ clock when it saved: the phone treats a radar older than 60 s as stale. Nothing 
 
 ### `trip-return` (after the recall)
 Request `{ "trip_id": <u32> }`. `200 { "trip_id", "seq": <outbound seq + 1>, "size", "package": "<base64>" }`: the same pet, direction BACK,
-sequence + 1, valid CRC, parsed by `travel_parse`. Shop purchases (`trip-buy`) patch it: the pet record's gold (u32 at offset 103) becomes the
-outbound gold - `spent` (never below 0) and each bought item is appended to the gifts list as a WEAR gift (the gifts sit before the records, so the later
+sequence + 1, valid CRC, parsed by `travel_parse`. Shop purchases (`trip-buy`) and mission pay (`trip-mission`) patch it: the pet record's gold (u32 at offset 103) becomes the
+outbound gold - `spent` + `earned` (never below 0) and each bought item is appended to the gifts list as a WEAR gift (the gifts sit before the records, so the later
 bytes shift; the total length and the CRC are recomputed). Nothing else changes; with nothing bought the bytes are the plain return's. Asking again before the ack gives the same bytes.
 `409 not_recalled` (still `waiting|active|expired`), `409 trip_closed`, `409 trip_cancelled`, `404 unknown_trip`.
 
@@ -138,6 +138,17 @@ the pet on later trips; it is **never** part of a return package. `trip-claim` l
 `trip-buy` (`401 bad_session`, `403 shop_closed`, `409 no_gold` with `gold_left` and `price`, `409 trip_over`, `409 conflict`), `400 not_for_sale` (unknown key), `409 owned`
 (with `tools`) and `503 try_again` (the tool could not be saved: the spent gold was given back).
 
+### `trip-mission`
+Request `{ "trip": "<ref>", "mission": "<day>:<villager>:<type>:<kind or ->:<n>" }` with the token: the pet handed in a villager's mission and is paid real gold. The villagers' mission of
+the day is a function of the room's code, which the server cannot know, so it checks the claim's **shape** (`missions.js parseMission`: a real villager, a template within its limits
+-- `harvest` 2-3 of a crop, `bring` 2-3 of a fruit, `water` 2-3 plots, `feed` 2-3 times --, the day equal to today's **town day**, the 06:00 to 06:00 America/Santiago day of the villagers)
+and prices it itself from the template (3 gold per unit, 4 for `feed`). What a forged claim can earn is bounded: one payment per villager per day and a **daily cap of 50 gold per pet**
+across trips, kept per board and town day in table `pet_days` (only the function writes it). The day's ledger is claimed first with a conditional update (so a duplicate or a race never
+pays twice or past the cap; the last payment is cut to what is left), then the gold is added to the trip's `earned`, which the return package adds to the pet's gold
+(outbound - `spent` + `earned`) and the shop counts as available gold (`gold_left`). Only trips that started with `"spend": 1` (the board applies a gold change).
+`200 { "gold", "capped", "earned_today", "cap", "gold_left" }`. Errors: `401 bad_session`, `403 shop_closed`, `400 bad_mission`, `409 mission_expired` (with `day`), `409 done` (that villager
+paid today), `409 cap_reached`, `409 trip_over`, `409 conflict` (ask again). `trip-claim` also returns `missions: { day, cap, earned, done: [villager ids] }` (today's ledger).
+
 ### `trip-status`
 Request `{ "trip": "<ref>" }` with the token. `200 { "status", "recalled", "claimed", "entrance", "version", "can_spend", "gold_left", "bought" }`; it also refreshes the session's
 idle clock, so the page polls it every 5 s while open. `recalled: true` means: play the departure, leave the room, show "Volvió a su casa".
@@ -177,7 +188,8 @@ on `trip-claim` yet (add one at the gateway if abused).
 1b. Apply `supabase/migrations/20261025120000_town_events.sql` (table `town_events`, RLS on with no policy, `cleanup_town_events()`).
 1c. Apply `supabase/migrations/20261025140000_trip_shop.sql` (trips gain `can_spend`, `spent`, `bought`; apply it before deploying the function).
 1d. Apply `supabase/migrations/20261025160000_farm_tools.sql` (table `pet_tools`, RLS on with no policy; before deploying the function).
+1e. Apply `supabase/migrations/20261025170000_farm_missions.sql` (trips gain `earned`; table `pet_days`; `cleanup_trips()` also clears old days; before deploying the function).
 2. Deploy the single function `trip` with `--no-verify-jwt` (or via `supabase/config.toml`). Entrypoint `index.ts`; files (relative to
-   `supabase/functions/trip/`): `index.ts serve.ts db.ts handlers.js events.js crypto.js radar.js shop.js tools.js travel-package.js trip-code.js`. Secret `ADMIN_KEY` (the owner's, for the admin actions). Optional secret `TOWN_URL` (default `https://feliparri.github.io/pixel-pet-city/`);
+   `supabase/functions/trip/`): `index.ts serve.ts db.ts handlers.js events.js crypto.js radar.js shop.js tools.js missions.js travel-package.js trip-code.js`. Secret `ADMIN_KEY` (the owner's, for the admin actions). Optional secret `TOWN_URL` (default `https://feliparri.github.io/pixel-pet-city/`);
    `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are provided by Supabase to every function.
 3. End-to-end test: `node tools/fake-board.mjs run` (see the README's "Web trip" section).

@@ -6,6 +6,7 @@ import { newCode, normalizeCode, isEntrance, DEFAULT_ENTRANCE } from './trip-cod
 import { cleanRadar } from './radar.js';
 import { SHOP, isForSale } from './shop.js';
 import { TOOLS, isTool } from './tools.js';
+import { DAILY_CAP, parseMission, townDay } from './missions.js';
 import { events, eventSave, eventCancel } from './events.js';
 
 export const BODY_MAX = 12288;                 // a 6144-byte package is 8192 base64 characters, plus the JSON around it
@@ -56,15 +57,13 @@ async function webTrip(req, body, deps) {
   return { trip };
 }
 
-/** what the shop has left to spend: the pet's gold at the start minus the ledger (null for a trip that started before gold was read) */
-const shopView = (trip) => ({
-  can_spend: !!trip.can_spend, gold_left: trip.can_spend && trip.pet_view?.gold !== undefined ? Math.max(0, trip.pet_view.gold - (trip.spent ?? 0)) : null,
-  bought: trip.bought ?? [],
-});
+/** the gold the pet has to spend: its gold at the start, minus the ledger, plus what missions paid (null for a trip that started before gold was read) */
+const goldLeft = (trip) => (trip.can_spend && Number.isInteger(trip.pet_view?.gold) ? Math.max(0, trip.pet_view.gold - (trip.spent ?? 0) + (trip.earned ?? 0)) : null);
+const shopView = (trip) => ({ can_spend: !!trip.can_spend, gold_left: goldLeft(trip), bought: trip.bought ?? [] });
 
-/** The claim's view; `tools` (the pet's farm tools, kept per board) goes inside the pet. */
-const view = (trip, tools = []) => ({
-  trip: trip.id, status: trip.status, entrance: trip.entrance, pet: { ...trip.pet_view, tools },
+/** The claim's view; `tools` (the pet's farm tools, kept per board) goes inside the pet, `missions` (today's ledger) beside it. */
+const view = (trip, { tools = [], missions = null } = {}) => ({
+  trip: trip.id, status: trip.status, entrance: trip.entrance, pet: { ...trip.pet_view, tools }, ...(missions ? { missions } : {}),
   state: { version: trip.state_version, data: trip.state }, ...shopView(trip),
 });
 
@@ -111,7 +110,7 @@ async function tripStart(req, deps, device) {
       id: deps.uuid(), device_id: device.id, trip_id: pkg.tripId, code: newCode(deps.randomBytes), status: 'waiting',
       package_b64: p.v.package, package_sha256: sha, package_bytes: bytes.length, seq: pkg.seq,
       pet_view: petView(pkg), entrance, state: {}, state_version: 0, session_hash: null, session_seen_at: null,
-      can_spend: p.v.spend === 1, spent: 0, bought: [],
+      can_spend: p.v.spend === 1, spent: 0, bought: [], earned: 0,
       created_at: iso(now), expires_at: iso(now + CLAIM_TTL_S), claimed_at: null, recalled_at: null, returned_at: null, closed_at: null,
     };
     const r = await deps.db.insertTrip(row);
@@ -134,13 +133,17 @@ async function tripClaim(req, deps) {
   if (trip.status === 'expired') return err(410, 'code_expired');
   if (trip.status !== 'waiting' && trip.status !== 'active') return err(410, 'trip_over', { status: trip.status });
 
-  const toolsOf = async (row) => deps.db.getTools(row.device_id).catch((e) => { deps.log?.('trip-claim tools', e); return []; });
+  const townOf = async (row) => {                                              // what the town keeps per board: its tools and today's mission ledger (a failure leaves them empty)
+    const day = townDay(deps.nowS() * 1000);
+    const [tools, pd] = await Promise.all([deps.db.getTools(row.device_id), deps.db.getPetDay(row.device_id, day)]).catch((e) => { deps.log?.('trip-claim town', e); return [[], null]; });
+    return { tools, missions: { day, cap: DAILY_CAP, earned: pd ? pd.earned : 0, done: pd ? pd.done : [] } };
+  };
   const newSession = async (where) => {
     const token = randomHex(32);
     const patch = { status: 'active', session_hash: await sha256Hex(fromHex(token)), session_seen_at: iso(now) };
     if (trip.status === 'waiting') patch.claimed_at = iso(now);
     const row = await deps.db.updateTrip(trip.id, where, patch);
-    return row ? reply(200, { ...view(row, await toolsOf(row)), token }) : null;
+    return row ? reply(200, { ...view(row, await townOf(row)), token }) : null;
   };
   if (trip.status === 'waiting') {
     const r = await newSession({ status: ['waiting'] });
@@ -151,7 +154,7 @@ async function tripClaim(req, deps) {
   const token = req.headers['x-trip-token'] || p.v.token;
   if (typeof token === 'string' && /^[0-9a-f]{64}$/.test(token) && trip.session_hash && safeEqual(await sha256Hex(fromHex(token)), trip.session_hash)) {
     const row = await deps.db.updateTrip(trip.id, { status: ['active'], session_hash: [trip.session_hash] }, { session_seen_at: iso(now) });
-    return row ? reply(200, { ...view(row, await toolsOf(row)), token }) : err(409, 'already_claimed');   // resumed: the same token keeps working
+    return row ? reply(200, { ...view(row, await townOf(row)), token }) : err(409, 'already_claimed');   // resumed: the same token keeps working
   }
   if (ms(trip.session_seen_at) < (now - SESSION_IDLE_S) * 1000) {            // the old tab went quiet: this one takes over
     const r = await newSession({ status: ['active'], session_hash: [trip.session_hash] });
@@ -201,10 +204,11 @@ async function tripBuy(req, deps) {
   const item = SHOP[key];
   if (pkg.petInfo.core.includes(key) || bought.includes(key)) return err(409, 'owned');
   if (pkg.gifts.length + bought.length >= GIFT_MAX || bytes.length + 5 * (bought.length + 1) > BYTES_MAX) return err(409, 'bag_full');
-  if (item.price > pkg.petInfo.gold - spent) return err(409, 'no_gold', { gold_left: Math.max(0, pkg.petInfo.gold - spent), price: item.price });
+  const earned = trip.earned ?? 0;
+  if (item.price > pkg.petInfo.gold - spent + earned) return err(409, 'no_gold', { gold_left: Math.max(0, pkg.petInfo.gold - spent + earned), price: item.price });
   const row = await deps.db.updateTrip(trip.id, { status: ['active'], spent: [spent] }, { spent: spent + item.price, bought: [...bought, key], session_seen_at: iso(deps.nowS()) });
   if (!row) return err(409, 'conflict');                                       // another buy or the recall got in first: the client asks again
-  return reply(200, { gold_left: pkg.petInfo.gold - row.spent, bought: row.bought });
+  return reply(200, { gold_left: pkg.petInfo.gold - row.spent + earned, bought: row.bought });
 }
 
 // ---- trip-buy-tool ------------------------------------------------------------------------------------------------------------
@@ -223,7 +227,7 @@ async function tripBuyTool(req, deps) {
   if (!isTool(key)) return err(400, 'not_for_sale');
   const owned = await deps.db.getTools(trip.device_id);
   if (owned.includes(key)) return err(409, 'owned', { tools: owned });
-  const spent = trip.spent ?? 0, price = TOOLS[key].price, left = gold - spent;
+  const spent = trip.spent ?? 0, earned = trip.earned ?? 0, price = TOOLS[key].price, left = gold - spent + earned;
   if (price > left) return err(409, 'no_gold', { gold_left: Math.max(0, left), price });
   const row = await deps.db.updateTrip(trip.id, { status: ['active'], spent: [spent] }, { spent: spent + price, session_seen_at: iso(deps.nowS()) });
   if (!row) return err(409, 'conflict');                                       // another buy or the recall got in first: the client asks again
@@ -234,7 +238,47 @@ async function tripBuyTool(req, deps) {
     await deps.db.updateTrip(trip.id, { spent: [row.spent] }, { spent }).catch((e2) => deps.log?.('trip-buy-tool undo', e2));
     return err(503, 'try_again');
   }
-  return reply(200, { gold_left: gold - row.spent, tools: [...owned, key] });
+  return reply(200, { gold_left: gold - row.spent + earned, tools: [...owned, key] });
+}
+
+// ---- trip-mission -------------------------------------------------------------------------------------------------------------
+// A villager's mission paid in real gold. The server cannot see the farm, so it bounds what a forged claim can earn: the mission must be a valid
+// template for today's town day (missions.js parseMission), each villager pays once a day, and a pet earns at most DAILY_CAP a day across trips.
+// The day's ledger (pet_days, per board) is claimed first with a conditional update, so a duplicate or a race never pays twice or past the cap; then the
+// gold goes into this trip's `earned`, which the return package adds to the pet's gold.
+async function tripMission(req, deps) {
+  const p = parseJson(req.body);
+  if (p.fail) return p.fail;
+  const s = await webTrip(req, p.v, deps);
+  if (s.fail) return s.fail;
+  const { trip } = s;
+  if (trip.status !== 'active') return err(409, 'trip_over', { status: trip.status });
+  if (!trip.can_spend) return err(403, 'shop_closed');
+  const m = parseMission(p.v.mission);
+  if (!m) return err(400, 'bad_mission');
+  const day = townDay(deps.nowS() * 1000);
+  if (m.day !== day) return err(409, 'mission_expired', { day });
+  let row = await deps.db.getPetDay(trip.device_id, day);
+  if (!row) {
+    await deps.db.insertPetDay({ device_id: trip.device_id, day, earned: 0, done: [] });
+    row = await deps.db.getPetDay(trip.device_id, day);
+    if (!row) return err(500, 'internal');
+  }
+  if (row.done.includes(m.villager)) return err(409, 'done', { earned_today: row.earned, cap: DAILY_CAP });
+  const room = DAILY_CAP - row.earned;
+  if (room <= 0) return err(409, 'cap_reached', { earned_today: row.earned, cap: DAILY_CAP });
+  const pay = Math.min(m.reward, room);
+  const day2 = await deps.db.updatePetDay(trip.device_id, day, { earned: [row.earned] }, { earned: row.earned + pay, done: [...row.done, m.villager], updated_at: iso(deps.nowS()) });
+  if (!day2) return err(409, 'conflict');
+  let t = trip;
+  for (let attempt = 0; attempt < 2; attempt++) {                              // the gold goes into this trip's return; a recall in between ends the trip, and the day keeps the count
+    const r = await deps.db.updateTrip(t.id, { status: ['active'], earned: [t.earned ?? 0] }, { earned: (t.earned ?? 0) + pay, session_seen_at: iso(deps.nowS()) });
+    if (r) return reply(200, { gold: pay, capped: pay < m.reward, earned_today: day2.earned, cap: DAILY_CAP, gold_left: goldLeft(r) });
+    t = await deps.db.getTripById(trip.id);
+    if (!t || t.status !== 'active') break;
+  }
+  deps.log?.('trip-mission', new Error('gold counted in the day but not in the trip'));
+  return err(409, t && t.status === 'active' ? 'conflict' : 'trip_over');
 }
 
 // ---- trip-recall --------------------------------------------------------------------------------------------------------------
@@ -293,7 +337,7 @@ async function tripReturn(req, deps, device) {
   }
   if (!trip || trip.status !== 'returned' || !trip.package_b64) return err(409, 'trip_closed', { status: trip?.status });
   const seq = (trip.seq + 1) >>> 0;
-  const pkg = buildReturn(fromBase64(trip.package_b64), seq, { spent: trip.spent ?? 0, bought: trip.bought ?? [] });
+  const pkg = buildReturn(fromBase64(trip.package_b64), seq, { spent: trip.spent ?? 0, earned: trip.earned ?? 0, bought: trip.bought ?? [] });
   return reply(200, { trip_id: trip.trip_id, seq, size: pkg.length, package: toBase64(pkg) });   // asking again returns the same bytes until the ack
 }
 
@@ -313,7 +357,7 @@ async function tripAck(req, deps, device) {
   return now && now.status === 'closed' ? reply(200, { trip_id: trip.trip_id, status: 'closed', replayed: true }) : err(409, 'not_returned', { status: now?.status });
 }
 
-const ROUTES = { 'device-register': deviceRegister, 'trip-claim': tripClaim, 'trip-save': tripSave, 'trip-buy': tripBuy, 'trip-buy-tool': tripBuyTool, 'trip-status': tripStatus,
+const ROUTES = { 'device-register': deviceRegister, 'trip-claim': tripClaim, 'trip-save': tripSave, 'trip-buy': tripBuy, 'trip-buy-tool': tripBuyTool, 'trip-mission': tripMission, 'trip-status': tripStatus,
   'trip-start': tripStart, 'trip-recall': tripRecall, 'trip-return': tripReturn, 'trip-ack': tripAck,
   'events': events, 'event-save': eventSave, 'event-cancel': eventCancel };
 const GET_OK = new Set(['events']);                // the public list can also be read with GET

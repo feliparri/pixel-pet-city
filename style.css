@@ -113,7 +113,7 @@ a.btn { display: inline-block; text-decoration: none; }
   .touch .emotes.open { display: flex; position: fixed; z-index: 5; top: 2.4rem; left: 50%; right: auto; bottom: auto; transform: translateX(-50%); max-width: 92%; padding: .3rem; border: 2px solid var(--edge); }
   .touch .panel { top: 2.5rem; bottom: .4rem; width: min(40rem, calc(100% - 1rem)); padding: .35rem .5rem; }
   .touch .panel-head h2 { font-size: 1.05rem; }
-  .touch .shop-list:not(.bag) { grid-template-columns: 1fr 1fr; }
+  .touch .shop-list:not(.bag):not(.missions) { grid-template-columns: 1fr 1fr; }
   .touch .shop-row .btn { max-width: 7rem; font-size: .75rem; min-height: 2rem; padding: .15rem .4rem; }
   .touch .shop-row .icon { width: 32px; height: 32px; }
   .touch .shop-info strong { font-size: .85rem; }
@@ -154,6 +154,9 @@ a.btn { display: inline-block; text-decoration: none; }
 .shop-info .price { color: var(--gold); font-size: .85rem; }
 .shop-row .btn { flex: none; max-width: 9.5rem; white-space: normal; text-align: center; line-height: 1.1; }
 .shop-row.owned, .shop-row.bought, .shop-row.closed { opacity: .75; }
+.shop-row.mission.done { opacity: .7; }
+.shop-row.mission.ready { box-shadow: inset 4px 0 0 var(--gold); }
+.shop-row.mission .shop-info strong { white-space: normal; }
 .confirm { display: grid; gap: .6rem; justify-items: center; text-align: center; padding: .6rem 0; }
 .confirm .icon { width: 64px; height: 64px; image-rendering: pixelated; background: var(--bg); border: 1px solid var(--edge); }
 .confirm p { margin: 0; font-size: 1.1rem; font-weight: 700; }
