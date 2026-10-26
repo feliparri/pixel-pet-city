@@ -23,12 +23,12 @@ export const DIR_BACK = 1;
 
 const ITEM_BYTES = 5;
 const KIND = { WEAR: 1, SEASON: 2, TOY: 3, DECOR: 4 };
-const ITEM_COUNT = 14, TOY_COUNT = 3, DECOR_COUNT = 12;
+const ITEM_COUNT = 16, TOY_COUNT = 3, DECOR_COUNT = 12;
 const SITEM_BYTES_MAX = 4096, SITEM_NAME_MAX = 31, SITEM_SPRITES_MAX = 4, SITEM_PARTS_MAX = 6, SITEM_DIM_MAX = 64, SITEM_PRICE_MAX = 999;
 const STAT_COUNT = 5, SLOTS = 4, DECOR_KIND_COUNT = 6, DECOR_KIND_BED = 4, SITEM_AT_COUNT = 9;
 
 /** The catalogue key of every item id (store.c KEYS): what the town's sprites.json names it. */
-export const ITEM_KEYS = [null, 'tophat', 'bow', 'beanie', 'crown', 'hood', 'jamiro', 'sunglasses', 'heart_cheeks', 'scarf', 'bell_collar', 'wings', 'cape', 'witch_hat'];
+export const ITEM_KEYS = [null, 'tophat', 'bow', 'beanie', 'crown', 'hood', 'jamiro', 'sunglasses', 'heart_cheeks', 'scarf', 'bell_collar', 'wings', 'cape', 'witch_hat', 'horns', 'furhat'];
 export const SPECIES = [null, 'frog', 'seal', 'cat'];
 
 // offsets inside the pet record (schema 14, save.c save_payload_encode)

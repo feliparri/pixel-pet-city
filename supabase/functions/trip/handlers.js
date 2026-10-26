@@ -4,7 +4,7 @@ import { parsePackage, buildReturn, petView, fromBase64, toBase64, GIFT_MAX, BYT
 import { sha256Hex, fromHex, verifyRequest, randomHex, safeEqual } from './crypto.js';
 import { newCode, normalizeCode, isEntrance, DEFAULT_ENTRANCE } from './trip-code.js';
 import { cleanRadar } from './radar.js';
-import { SHOP, isForSale } from './shop.js';
+import { SHOP, isForSale, boardKnows, knownItems } from './shop.js';
 import { TOOLS, isTool } from './tools.js';
 import { DAILY_CAP, parseMission, townDay } from './missions.js';
 import { events, eventSave, eventCancel } from './events.js';
@@ -59,7 +59,7 @@ async function webTrip(req, body, deps) {
 
 /** the gold the pet has to spend: its gold at the start, minus the ledger, plus what missions paid (null for a trip that started before gold was read) */
 const goldLeft = (trip) => (trip.can_spend && Number.isInteger(trip.pet_view?.gold) ? Math.max(0, trip.pet_view.gold - (trip.spent ?? 0) + (trip.earned ?? 0)) : null);
-const shopView = (trip) => ({ can_spend: !!trip.can_spend, gold_left: goldLeft(trip), bought: trip.bought ?? [] });
+const shopView = (trip) => ({ can_spend: !!trip.can_spend, gold_left: goldLeft(trip), bought: trip.bought ?? [], items: knownItems(trip.items) });
 
 /** The claim's view; `tools` (the pet's farm tools, kept per board) goes inside the pet, `missions` (today's ledger) beside it. */
 const view = (trip, { tools = [], missions = null } = {}) => ({
@@ -110,7 +110,7 @@ async function tripStart(req, deps, device) {
       id: deps.uuid(), device_id: device.id, trip_id: pkg.tripId, code: newCode(deps.randomBytes), status: 'waiting',
       package_b64: p.v.package, package_sha256: sha, package_bytes: bytes.length, seq: pkg.seq,
       pet_view: petView(pkg), entrance, state: {}, state_version: 0, session_hash: null, session_seen_at: null,
-      can_spend: p.v.spend === 1, spent: 0, bought: [], earned: 0,
+      can_spend: p.v.spend === 1, spent: 0, bought: [], earned: 0, items: knownItems(p.v.items),
       created_at: iso(now), expires_at: iso(now + CLAIM_TTL_S), claimed_at: null, recalled_at: null, returned_at: null, closed_at: null,
     };
     const r = await deps.db.insertTrip(row);
@@ -196,6 +196,7 @@ async function tripBuy(req, deps) {
   if (!trip.can_spend) return err(403, 'shop_closed');
   const key = p.v.item;
   if (!isForSale(key)) return err(400, 'not_for_sale');
+  if (!boardKnows(key, trip.items)) return err(409, 'update_board');          // the board's firmware predates this item: its return would be refused
   const bytes = trip.package_b64 ? fromBase64(trip.package_b64) : null;
   const parsed = bytes && parsePackage(bytes);
   if (!parsed || !parsed.ok) return err(500, 'internal');

@@ -14,7 +14,7 @@ const rowOf = (shop, key) => shopRows(shop).find((r) => r.key === key);
 
 test('the price list mirrors the server one (names, prices, slots)', () => {
   assert.deepEqual(Object.keys(SHOP), Object.keys(SERVER_SHOP));
-  for (const [k, it] of Object.entries(SERVER_SHOP)) assert.deepEqual(SHOP[k], { price: it.price, slot: it.slot, name: it.name }, k);
+  for (const [k, it] of Object.entries(SERVER_SHOP)) assert.deepEqual(SHOP[k], { price: it.price, slot: it.slot, name: it.name, ...(it.town ? { needs: it.id + 1 } : {}) }, k);   // a town hat needs a board that knows its id
   for (const k of Object.keys(SHOP)) assert.ok(catalogue[k], `${k} has art`);
 });
 
@@ -44,7 +44,7 @@ test('panel state per item: buy, owned, bought, not enough gold, gifts full, clo
 
 test('the confirmation and every error code have a Spanish sentence', () => {
   assert.equal(confirmText('cape'), '¿Comprar Capa por 120 de oro? Tu mascota lo recibe al volver a casa.');
-  for (const error of ['no_gold', 'owned', 'bag_full', 'shop_closed', 'not_for_sale', 'trip_over', 'bad_session', 'conflict', 'network', 'unknown', 'internal']) assert.match(buyErrorText({ error }), /^[A-ZÁ¿¡]/);
+  for (const error of ['no_gold', 'owned', 'bag_full', 'shop_closed', 'not_for_sale', 'trip_over', 'bad_session', 'conflict', 'network', 'unknown', 'internal', 'update_board']) assert.match(buyErrorText({ error }), /^[A-ZÁ¿¡]/);
   assert.equal(buyErrorText({ error: 'no_gold', price: 120, gold_left: 90 }), 'Te faltan 30 de oro para eso.');
   assert.equal(buyErrorText({ error: 'shop_closed' }), CLOSED_TEXT);
   assert.equal(new Set(['owned', 'bag_full', 'trip_over', 'network', 'conflict'].map((error) => buyErrorText({ error }))).size, 5);
@@ -200,4 +200,29 @@ test('buy: a second conflict is reported, not retried forever; other errors are 
   const boom = await withScript([{ status: 500, body: { error: 'internal' } }]);
   assert.equal((await boom.client.buy('cape')).ok, false);
   assert.equal(boom.client.shop.canSpend, true);
+});
+
+test('the town hats: shown with their price, buyable only when the board knows their ids', () => {
+  const pet = { owned: ['tophat'], bag: [] };
+  assert.equal(shopFrom(view(), pet).items, 14);                                           // a claim without "items": an older board
+  assert.equal(shopFrom(view({ items: 16 }), pet).items, 16);
+  assert.equal(shopFrom(view({ items: 'x' }), pet).items, 14);
+  assert.equal(shopFrom(view(), null, { items: 15 }).items, 15);                           // a status poll keeps what the claim said
+  const old = shopFrom(view({ gold_left: 1000 }), pet);
+  for (const key of ['horns', 'furhat']) {
+    assert.deepEqual([rowOf(old, key).state, rowOf(old, key).label, rowOf(old, key).enabled], ['update', 'Necesitas actualizar tu placa', false]);
+    assert.equal(rowOf(old, key).price, SHOP[key].price);                                  // the price is there to see
+  }
+  assert.equal(rowOf(old, 'cape').state, 'buy');                                           // the rest of the shop is untouched
+  const half = shopFrom(view({ gold_left: 1000, items: 15 }), pet);                        // knows horns (id 14) but not furhat (id 15)
+  assert.deepEqual([rowOf(half, 'horns').state, rowOf(half, 'furhat').state], ['buy', 'update']);
+  const now = shopFrom(view({ gold_left: 300, items: 16 }), pet);
+  assert.deepEqual([rowOf(now, 'furhat').state, rowOf(now, 'furhat').enabled, rowOf(now, 'horns').state, rowOf(now, 'horns').missing], ['buy', true, 'nogold', 50]);
+  const closed = shopFrom({ can_spend: false, gold_left: null, bought: [], items: 16 }, pet);
+  assert.equal(rowOf(closed, 'horns').state, 'closed');
+  assert.equal(shopFrom(view({ gold_left: 1000, items: 14 }), { owned: ['horns'], bag: [] }).owned[0], 'horns');
+  assert.equal(rowOf(shopFrom(view({ gold_left: 1000, items: 14 }), { owned: ['horns'], bag: [] }), 'horns').state, 'owned');   // owned wins
+  assert.equal(buyErrorText({ error: 'update_board' }), 'Tu placa necesita una actualización para recibir ese artículo.');
+  assert.equal(confirmText('horns'), '¿Comprar Gorro con cuernos por 350 de oro? Tu mascota lo recibe al volver a casa.');
+  assert.deepEqual(Object.keys(SHOP).slice(-2), ['horns', 'furhat']);                      // after the rest, in the order of their ids
 });

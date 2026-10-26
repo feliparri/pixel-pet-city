@@ -57,6 +57,9 @@ Request `{ "package": "<base64 of the outbound package, <= 6144 bytes>", "entran
 The body may also carry `"spend": 1` (optional; it is signed with the rest of the body, so a browser cannot add it): the firmware that sends it applies a gold
 **decrease** on return (board gold += returned pet gold - the gold it left with, never below 0, on top of what the board earned meanwhile). Only such a trip may
 spend its pet's gold in the shop; without it a lower returned gold is ignored by the board.
+The body may also carry `"items": <n>` (optional, signed like `spend`): how many core items the firmware knows (its `ITEM_COUNT`, 16 with the town hats). A body without a
+sane integer (1..255) means 14, the catalogue before them. It is stored on the trip (`trips.items`) and decides which items `trip-buy` may sell: a board refuses a return
+package with an item id it does not know, which would leave the pet away.
 The server validates the package as `travel_parse` does (magic, version 1, length, CRC-32, direction OUT, trip id, counts, items, records,
 pet record size and schema 14, species, stage, name, worn ids) and reads the pet view from it.
 `201 { "trip_id": <u32 of the package>, "trip": "<uuid ref>", "code": "K7M2QX", "url": "https://feliparri.github.io/pixel-pet-city/?trip=K7M2QX",
@@ -124,10 +127,10 @@ version (optimistic concurrency). `200 { "version": base + 1, "entrance" }`. Err
 
 ### `trip-buy`
 Request `{ "trip": "<ref>", "item": "<key>" }` with the token: buys one core WEAR item with the pet's gold (prices in `shop.js`, mirrored from the game's `store.c`
-and kept equal by a test; the free top hat and the witch hat are not for sale). It comes home as a gift; at most 3 gifts per trip, counting any already in the package.
+and kept equal by a test; the free top hat and the witch hat are not for sale; `horns` 350 and `furhat` 280 are sold only here). The claim and status replies carry `items`, the catalogue size the board advertised. It comes home as a gift; at most 3 gifts per trip, counting any already in the package.
 `200 { "gold_left", "bought": [keys] }`. The ledger (`spent`, `bought`) lives in trip columns only the function writes; the update is conditional on the trip
 being `active` and `spent` unchanged, so two buys cannot overspend. Errors: `401 bad_session`, `403 shop_closed` (the trip did not start with `"spend": 1`),
-`400 not_for_sale`, `409 owned` (the pet has it, or it was bought already), `409 bag_full`, `409 no_gold` (with `gold_left`, `price`), `409 trip_over`,
+`400 not_for_sale`, `409 update_board` (the trip's board advertised a catalogue that does not hold the item: the town hats `horns` and `furhat`, ids 14 and 15, need `items` >= 15 and 16), `409 owned` (the pet has it, or it was bought already), `409 bag_full`, `409 no_gold` (with `gold_left`, `price`), `409 trip_over`,
 `409 conflict` (another buy got in first: read the state and ask again).
 
 ### `trip-buy-tool`
@@ -187,6 +190,7 @@ on `trip-claim` yet (add one at the gateway if abused).
    `cleanup_trips()`, and an hourly pg_cron job when the extension is enabled).
 1b. Apply `supabase/migrations/20261025120000_town_events.sql` (table `town_events`, RLS on with no policy, `cleanup_town_events()`).
 1c. Apply `supabase/migrations/20261025140000_trip_shop.sql` (trips gain `can_spend`, `spent`, `bought`; apply it before deploying the function).
+1c2. Apply `supabase/migrations/20261026120000_trip_items.sql` (trips gain `items`, default 14; before deploying the function). Release order: the firmware that advertises `items` first, then this migration and the function, then the town page (the shop shows the hats as "Necesitas actualizar tu placa" until a trip's board knows them).
 1d. Apply `supabase/migrations/20261025160000_farm_tools.sql` (table `pet_tools`, RLS on with no policy; before deploying the function).
 1e. Apply `supabase/migrations/20261025170000_farm_missions.sql` (trips gain `earned`; table `pet_days`; before deploying the function). `20261025180000_cleanup_trips.sql` creates `cleanup_trips()` (also clearing old days); nothing depends on it.
 2. Deploy the single function `trip` with `--no-verify-jwt` (or via `supabase/config.toml`). Entrypoint `index.ts`; files (relative to

@@ -1,6 +1,6 @@
 // The "Tienda" and "Mochila" panels over the town (index.html #panel). Plain DOM on top of src/shop.js; the purchase itself is
 // source.buy(key) (the trip client, or the dev mock). Opening and closing tell the town (onOpenChange) so the pet stops and the touch pad hides.
-import { drawItemIcon } from './sprites.js';
+import { drawItemIcon, isAnimated } from './sprites.js';
 import { drawProduce, produceCanvas } from './art/produce.js';
 import { KINDS, NAMES } from './canasta.js';
 import { shopRows, bagList, confirmText, buyErrorText, thanks, CLOSED_TEXT, GOLD_TEXT, SHOP } from './shop.js';
@@ -14,11 +14,26 @@ export function createShopUi($, { source, sprites, canasta = () => null, mission
   const panel = $('panel'), body = $('panel-body'), note = $('panel-note');
   let view = null, confirming = null, busy = false, sold = 0;
 
+  const moving = new Map();                                       // the icons on screen whose item moves (the Jamiro Crown) -> their item key
+  let ticker = null;
+  const redraw = () => {
+    for (const [c, key] of moving) {
+      if (!c.isConnected) { moving.delete(c); continue; }
+      const g = c.getContext('2d');
+      g.clearRect(0, 0, c.width, c.height);
+      drawItemIcon(g, sprites, key, 40, Date.now());
+    }
+    if (!moving.size && ticker) { clearInterval(ticker); ticker = null; }
+  };
   const icon = (key) => {
     const c = el('canvas', 'icon');
     c.width = c.height = 40;
     c.setAttribute('aria-hidden', 'true');
-    drawItemIcon(c.getContext('2d'), sprites, key, 40);
+    drawItemIcon(c.getContext('2d'), sprites, key, 40, isAnimated(sprites, key) ? Date.now() : undefined);
+    if (isAnimated(sprites, key)) {                               // it moves like on the board: redrawn each tick while the panel shows it
+      moving.set(c, key);
+      if (!ticker) ticker = setInterval(redraw, sprites.data.items[key].anim.tickMs);
+    }
     return c;
   };
   const say = (text, kind = '') => { note.textContent = text || ''; note.className = `panel-note ${kind}`.trim(); note.hidden = !text; };

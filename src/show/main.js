@@ -59,7 +59,7 @@ function petItem(e, cam, now, flashes, watching) {
     const flap = moving && Math.floor(now / 140) % 2 === 1;
     // watching the show: facing the camera (never flipped), still, a little hop at each burst
     const jump = watching && flashes.length ? Math.round(flashes[0].k * 2) : 0;
-    drawPet(tctx, sprites, e.look, 8, 12 - hop - jump, { frame: headFrame(e, now), flip: !watching && e.walker.d === 'right', flap });
+    drawPet(tctx, sprites, e.look, 8, 12 - hop - jump, { frame: headFrame(e, now), flip: !watching && e.walker.d === 'right', flap, now });
     grade(tctx, tmp, 1, lightAt(world.lights, wx, wy));
     if (tint) { tctx.globalCompositeOperation = 'source-atop'; tctx.fillStyle = `rgba(${tint.r | 0},${tint.g | 0},${tint.b | 0},${tint.a})`; tctx.fillRect(0, 0, 48, 48); tctx.globalCompositeOperation = 'source-over'; }
     c.drawImage(tmp, 0, 0, 48, 48, cx - 24 * s, cy - 42 * s, 48 * s, 48 * s);

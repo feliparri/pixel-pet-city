@@ -20,8 +20,22 @@ export async function loadSprites(base = 'assets/') {
 
 export const CELL = 32;
 
-/** The frame to show: 'idle' | 'blink' | 'look' (eyes to its right) | 'chomp' | 'happy'. */
-export function drawPet(ctx, sp, look, x, y, { frame = 'idle', flip = false, flap = false } = {}) {
+/**
+ * The part to draw for a placed part at time `now` (ms). An animated item (the Jamiro Crown: sprites.json items.*.anim { tickMs, frames, seq }) is placed with
+ * its resting art, frames[0]; the game shows frames[seq[tick]] for the tick `now` falls in, so the spikes step in and out with a glint, as on the board.
+ * `now` undefined (a still picture) or any other part: the part as placed.
+ */
+export const partAt = (item, part, now) => {
+  const a = item && item.anim;
+  if (!a || part !== a.frames[0] || !Number.isFinite(now)) return part;
+  return a.frames[a.seq[Math.floor(now / a.tickMs) % a.seq.length]];
+};
+
+/** Does the item move (its art changes over time)? The shop redraws such icons while it is open. */
+export const isAnimated = (sp, key) => !!(sp.data.items[key] && sp.data.items[key].anim);
+
+/** The frame to show: 'idle' | 'blink' | 'look' (eyes to its right) | 'chomp' | 'happy'. `now` (ms) drives an animated accessory; without it the crown rests. */
+export function drawPet(ctx, sp, look, x, y, { frame = 'idle', flip = false, flap = false, now } = {}) {
   const { data } = sp;
   const key = `${look.species}-${STAGES[look.stage]}`;
   const row = data.species.indexOf(look.species) * STAGES.length + look.stage;
@@ -33,8 +47,9 @@ export function drawPet(ctx, sp, look, x, y, { frame = 'idle', flip = false, fla
       const id = look.items[SLOTS.indexOf(slot)];
       const worn = id && data.items[id] && data.items[id].worn[key];
       if (!worn) continue;
-      for (const [part, px, py, mirror, isBehind] of (flap && worn.flap) || worn.rest) {
+      for (const [placed, px, py, mirror, isBehind] of (flap && worn.flap) || worn.rest) {
         if (isBehind !== behind) continue;
+        const part = partAt(data.items[id], placed, now);
         const [w, h] = data.partSizes[part];
         const sx = (part % data.partCols) * data.partCell, sy = Math.floor(part / data.partCols) * data.partCell;
         if (mirror) {
@@ -54,10 +69,10 @@ export function drawPet(ctx, sp, look, x, y, { frame = 'idle', flip = false, fla
 }
 
 /** An accessory on its own (the shop and the backpack): its parts as an adult cat wears them, scaled to fit a `size` x `size` box. False when the catalogue has no art for it. */
-export function drawItemIcon(ctx, sp, key, size = 40) {
+export function drawItemIcon(ctx, sp, key, size = 40, now) {
   const def = sp.data.items[key], worn = def && (def.worn['cat-adult'] || Object.values(def.worn)[0]);
   if (!worn) return false;
-  const parts = worn.rest.map(([part, px, py, mirror, behind]) => ({ part, px, py, mirror, behind, w: sp.data.partSizes[part][0], h: sp.data.partSizes[part][1] }));
+  const parts = worn.rest.map(([part, px, py, mirror, behind]) => ({ part: partAt(def, part, now), px, py, mirror, behind, w: sp.data.partSizes[part][0], h: sp.data.partSizes[part][1] }));
   const x0 = Math.min(...parts.map((p) => p.px)), y0 = Math.min(...parts.map((p) => p.py));
   const bw = Math.max(...parts.map((p) => p.px + p.w)) - x0, bh = Math.max(...parts.map((p) => p.py + p.h)) - y0;
   const k = Math.max(1, Math.floor(size / Math.max(bw, bh))), ox = Math.floor((size - bw * k) / 2), oy = Math.floor((size - bh * k) / 2);

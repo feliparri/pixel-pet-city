@@ -3,7 +3,8 @@
 import { toolKeys } from './tools.js';
 import { parseMissions, missionsAfterClaim } from './missions.js';
 
-/** The price list, mirrored from supabase/functions/trip/shop.js (tests/shop.test.js keeps them equal): key -> { price, slot, name }. */
+/** The price list, mirrored from supabase/functions/trip/shop.js (tests/shop.test.js keeps them equal): key -> { price, slot, name, needs? }. `needs` marks the
+ * hats only this shop sells: the catalogue size (the board's ITEM_COUNT, "items" in a claim) a board must have advertised to take them home. */
 export const SHOP = {
   bow:          { price: 40,  slot: 0, name: 'Moño' },
   beanie:       { price: 60,  slot: 0, name: 'Gorro de lana' },
@@ -16,7 +17,11 @@ export const SHOP = {
   bell_collar:  { price: 80,  slot: 2, name: 'Collar con cascabel' },
   wings:        { price: 100, slot: 3, name: 'Alitas' },
   cape:         { price: 120, slot: 3, name: 'Capa' },
+  horns:        { price: 350, slot: 0, name: 'Gorro con cuernos', needs: 15 },
+  furhat:       { price: 280, slot: 0, name: 'Sombrero de piel', needs: 16 },
 };
+
+export const LEGACY_ITEMS = 14;                  // the catalogue every board knew before those hats: a trip that did not advertise one
 
 export const GIFT_MAX = 3;                    // a trip brings home at most this many gifts (the board's limit)
 
@@ -38,15 +43,16 @@ const int = (n) => (Number.isInteger(n) && n >= 0 ? n : null);
 const keys = (a) => (Array.isArray(a) ? a.filter(isKey) : []);
 
 /**
- * What the shop panel works from. `view` is a claim or status reply ({ can_spend, gold_left, bought }), `pet` the claim's pet
+ * What the shop panel works from. `view` is a claim or status reply ({ can_spend, gold_left, bought, items }), `pet` the claim's pet
  * ({ owned, bag, tools }, optional on a status poll: `prev` keeps what the last state knew).
- * -> { canSpend, gold (null when the board cannot spend), owned, bought, full, bag, tools (the farm tools, src/tools.js), missions (today's ledger, src/missions.js) }
+ * -> { canSpend, gold (null when the board cannot spend), items (how many items the board's firmware knows), owned, bought, full, bag, tools (the farm tools, src/tools.js), missions (today's ledger, src/missions.js) }
  */
 export function shopFrom(view, pet = null, prev = null) {
   const bought = keys(view && view.bought);
   const canSpend = !!(view && view.can_spend) && int(view.gold_left) !== null;
   return {
     canSpend, gold: canSpend ? int(view.gold_left) : null,
+    items: view && int(view.items) !== null ? view.items : prev ? prev.items : LEGACY_ITEMS,
     owned: pet ? keys(pet.owned) : prev ? prev.owned : [],
     bought, full: bought.length >= GIFT_MAX || !!(prev && prev.full && prev.bought.length === bought.length),
     bag: pet ? parseBag(pet.bag) : prev ? prev.bag : [],
@@ -83,7 +89,7 @@ export function shopAfterBuy(shop, key, r) {
 
 /**
  * One row per item for sale, in the shop's order: { key, name, price, slot, state, label, enabled }. state: 'owned' (the pet has it),
- * 'bought' (bought on this trip), 'closed' (the board cannot spend), 'full' (the gift bag is full), 'nogold' (needs `missing` more) or 'buy'.
+ * 'bought' (bought on this trip), 'closed' (the board cannot spend), 'update' (a hat the board's firmware does not know yet), 'full' (the gift bag is full), 'nogold' (needs `missing` more) or 'buy'.
  */
 export function shopRows(shop) {
   return Object.entries(SHOP).map(([key, it]) => {
@@ -91,12 +97,14 @@ export function shopRows(shop) {
     if (shop.owned.includes(key)) return { ...row, state: 'owned', label: 'Ya lo tienes', enabled: false };
     if (shop.bought.includes(key)) return { ...row, state: 'bought', label: 'Comprado', enabled: false };
     if (!shop.canSpend) return { ...row, state: 'closed', label: 'No disponible', enabled: false };
+    if (it.needs && shop.items < it.needs) return { ...row, state: 'update', label: UPDATE_TEXT, enabled: false };
     if (shop.full) return { ...row, state: 'full', label: 'Mochila de regalos llena', enabled: false };
     if (it.price > shop.gold) { const missing = it.price - shop.gold; return { ...row, state: 'nogold', label: `Te faltan ${missing} de oro`, missing, enabled: false }; }
     return { ...row, state: 'buy', label: 'Comprar', enabled: true };
   });
 }
 
+export const UPDATE_TEXT = 'Necesitas actualizar tu placa';
 export const CLOSED_TEXT = 'Tu placa necesita actualizarse para comprar aquí.';
 export const GOLD_TEXT = (gold) => `Oro: ${gold}`;
 export const confirmText = (key) => `¿Comprar ${SHOP[key].name} por ${SHOP[key].price} de oro? Tu mascota lo recibe al volver a casa.`;
@@ -110,6 +118,7 @@ export function buyErrorText(r) {
     case 'owned': return 'Tu mascota ya tiene ese artículo.';
     case 'bag_full': return 'La mochila de regalos está llena: tu mascota solo puede traer 3 regalos de cada viaje.';
     case 'shop_closed': return CLOSED_TEXT;
+    case 'update_board': return 'Tu placa necesita una actualización para recibir ese artículo.';
     case 'not_for_sale': return 'Ese artículo no está a la venta.';
     case 'trip_over': return 'El viaje terminó, ya no se puede comprar.';
     case 'bad_session': return 'Tu sesión se cerró. Vuelve a entrar con el código de tu mascota.';

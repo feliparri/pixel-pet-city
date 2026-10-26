@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { world, fixture } from './trip-helpers.js';
 import { parsePackage, buildReturn, crc32, fromBase64, toBase64, petView, ITEM_KEYS } from '../supabase/functions/trip/travel-package.js';
-import { SHOP, isForSale } from '../supabase/functions/trip/shop.js';
+import { SHOP, isForSale, knownItems, boardKnows, LEGACY_ITEMS } from '../supabase/functions/trip/shop.js';
 
 const plain = fixture('plain.bin'), kept = fixture('keepsake.bin');
 const petAt = (b) => b.length - 4 - 733;
@@ -21,12 +21,16 @@ test('shop.js matches pixel-pet common/store.c (names, prices, ids, free and kee
   assert.equal(defs.length, names.length - 1, 'every item has a definition');
   const keys = c.match(/KEYS\[ITEM_COUNT\]\s*=\s*\{([^}]*)\}/)[1].split(',').map((k) => k.trim()).map((k) => (k === 'NULL' ? null : k.replace(/"/g, '')));
   assert.deepEqual(keys, ITEM_KEYS);
+  const townMacro = h.match(/STORE_TOWN_ITEMS \(([^)]*)\)/)[1];                                   // the hats only the town sells
+  const townNames = [...townMacro.matchAll(/ITEM_[A-Z_]+/g)].map((m) => m[0]);
   const forSale = {};
   for (const [, enumName, name, slot, price, keepsake] of defs) {
     const id = names.indexOf(enumName), key = ITEM_KEYS[id];
     if (+price === 0 || keepsake === 'true') { assert.equal(isForSale(key), false, `${key} is not for sale`); continue; }
-    forSale[key] = { id, price: +price, slot: ['HEAD', 'FACE', 'NECK', 'BACK'].indexOf(slot), name };
+    forSale[key] = { id, price: +price, slot: ['HEAD', 'FACE', 'NECK', 'BACK'].indexOf(slot), name, ...(townNames.includes(enumName) ? { town: true } : {}) };
   }
+  assert.deepEqual(Object.keys(SHOP).filter((k) => SHOP[k].town), ['horns', 'furhat']);
+  assert.equal(townNames.length, 2);
   assert.deepEqual(SHOP, forSale);
   assert.match(h, /STORE_FREE_ITEMS \(1u << ITEM_TOPHAT\)/);
   assert.equal(readFileSync(new URL('save.h', GAME), 'utf8').match(/SAVE_OFF_OWNED (\d+)/)[1], '107');   // gold is the u32 before it (103)
@@ -155,4 +159,58 @@ test('buy: two buys at once cannot overspend, only one wins when the gold covers
   assert.equal(t.row.bought.length, 1);
   const retry = await t.buy(t.row.bought[0] === 'crown' ? 'hood' : 'crown');                // the client retries and now sees the real balance
   assert.equal(retry.body.error, 'no_gold');
+});
+
+// ---- the town's own hats and the board that knows them -----------------------------------------------------------------------------
+test('knownItems: a sane integer is the board\'s catalogue, anything else is the legacy one', () => {
+  assert.equal(LEGACY_ITEMS, 14);
+  assert.deepEqual([16, 15, 14, 255, 1].map(knownItems), [16, 15, 14, 255, 1]);
+  assert.deepEqual([undefined, null, 0, -3, 256, 15.5, '16', true, NaN].map(knownItems), Array(9).fill(14));
+  assert.deepEqual([boardKnows('horns', 16), boardKnows('horns', 15), boardKnows('horns', 14), boardKnows('furhat', 16), boardKnows('furhat', 15), boardKnows('cape', undefined)], [true, true, false, true, false, true]);
+});
+
+test('trip-start stores the advertised catalogue size and the claim and status say it', async () => {
+  const t = await trip(plain, { spend: 1, items: 16 });
+  assert.equal(t.row.items, 16);
+  assert.equal(t.claim.items, 16);
+  assert.equal((await t.web.call('trip-status', { trip: t.ref })).body.items, 16);
+  const old = await trip(plain, { spend: 1 });                                              // an older firmware says nothing: 14
+  assert.deepEqual([old.row.items, old.claim.items], [14, 14]);
+  for (const bad of [0, -1, 300, 16.5, '16', null, true]) assert.equal((await trip(plain, { spend: 1, items: bad })).row.items, 14, `items: ${JSON.stringify(bad)}`);
+});
+
+test('buy: the town hats come home as gifts on a trip whose board knows them', async () => {
+  const t = await trip(plain, { spend: 1, items: 16 });
+  const a = await t.buy('horns');
+  assert.deepEqual([a.status, a.body], [200, { gold_left: 4650, bought: ['horns'] }]);
+  const b = await t.buy('furhat');
+  assert.deepEqual([b.status, b.body.gold_left, b.body.bought], [200, 4370, ['horns', 'furhat']]);
+  assert.equal((await t.buy('horns')).body.error, 'owned');
+  await t.board.call('trip-recall', { trip_id: 0xA1B2C3D4 });
+  const ret = await t.board.call('trip-return', { trip_id: 0xA1B2C3D4 });
+  const r = parsePackage(fromBase64(ret.body.package));
+  assert.equal(r.ok, true);                                                                  // the server's own parser (the board's ITEM_COUNT check) takes ids 14 and 15
+  assert.deepEqual(r.pkg.gifts, [{ kind: 1, id: 14 }, { kind: 1, id: 15 }]);
+  assert.equal(r.pkg.petInfo.gold, 4370);
+});
+
+test('buy: a board that does not know a hat gets update_board, and nothing is spent', async () => {
+  for (const extra of [{ spend: 1 }, { spend: 1, items: 14 }]) {                            // an older firmware, or one that says 14
+    const t = await trip(plain, extra);
+    for (const key of ['horns', 'furhat']) {
+      const r = await t.buy(key);
+      assert.deepEqual([r.status, r.body.error], [409, 'update_board'], key);
+    }
+    assert.deepEqual([t.row.spent, t.row.bought], [0, []]);
+    assert.equal((await t.buy('cape')).status, 200);                                         // the rest of the shop works
+  }
+  const half = await trip(plain, { spend: 1, items: 15 });                                  // knows horns (id 14), not furhat (id 15)
+  assert.equal((await half.buy('furhat')).body.error, 'update_board');
+  assert.equal((await half.buy('horns')).status, 200);
+});
+
+test('buy: an unknown or unsellable key is still not_for_sale, before the board check', async () => {
+  const t = await trip(plain, { spend: 1 });
+  assert.equal((await t.buy('nope')).body.error, 'not_for_sale');
+  assert.equal((await t.buy('witch_hat')).body.error, 'not_for_sale');
 });
