@@ -5,7 +5,7 @@ import { TILE, SIGNS, PLACES, getArea } from '../map.js';
 import { createRenderer, drawBubble, MIN_VIEW_H, VIEW_H } from '../render.js';
 import { drawText, textWidth, textCanvas } from '../font.js';
 import { badge, bobY, BADGE } from '../art/icons.js';
-import { cameraFor, followFocus, snapFocus, sortBackToFront, screenToTile, standAt, project } from './camera.js';
+import { cameraFor, PHONE_OUT, followFocus, snapFocus, sortBackToFront, screenToTile, standAt, project } from './camera.js';
 import { groundMult, approach } from './light.js';
 import { buildWorld, bakeGround, drawGround, standingItems, drawGlows, fountainItem, paintFarm } from './scene.js';
 import { createFx } from './fx.js';
@@ -23,14 +23,14 @@ import { smooth } from '../show/rand.js';
 const SHOW_FOCUS = { x: 24 * TILE, y: 21.5 * TILE };                     // the show's own frame: its bursts and drones are placed as seen from here
 const BADGE_LIFT = 60;                                                  // a place's badge floats this high over the ground point under it
 
-/** The HD-2D renderer of the outdoor town. `compact` (a phone in landscape) frames the view a little tighter. */
+/** The HD-2D renderer of the outdoor town. `compact` (a phone) frames the view tighter, but shows 1.5 times more of the world than it used to (PHONE_OUT). */
 const LEVEL_KEY = 'city.hd2d.level';
 const savedLevel = () => { try { return Math.max(0, Number(localStorage.getItem(LEVEL_KEY)) | 0); } catch { return 0; } };
 const saveLevel = (v) => { try { localStorage.setItem(LEVEL_KEY, String(v)); } catch { /* private mode */ } };
 
 export function createHdRenderer({ canvas, sprites, font, compact = false, onQuality = () => {} }) {
   const ctx = canvas.getContext('2d');
-  const ref = compact ? 170 : 230;
+  const ref = compact ? 170 : 230, out = compact ? PHONE_OUT : 1;
   const painter = createPetPainter(sprites);
   const things = createThings();
   let darkCanvas = null;
@@ -86,13 +86,13 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
     const n = Math.max(amb.night, k), mult = groundMult({ tint: amb.tint, night: n });
 
     const mp = state.me.walker.pos();                                   // the camera follows the player (see followFocus for the edges of the map)
-    const probe = cameraFor(view.w, view.h, MAP_W / 2, MAP_H / 2, 1, { ref });
-    const t = followFocus(view.w, view.h, mp.x * TILE + TILE / 2, mp.y * TILE + TILE, MAP_W, MAP_H, { ref });
+    const probe = cameraFor(view.w, view.h, MAP_W / 2, MAP_H / 2, 1, { ref, out });
+    const t = followFocus(view.w, view.h, mp.x * TILE + TILE / 2, mp.y * TILE + TILE, MAP_W, MAP_H, { ref, out });
     const tx = t.x, ty = t.y;
     if (!focus) focus = { x: tx, y: ty };
     else { const kf = 1 - Math.exp(-dt / 140); focus.x += (tx - focus.x) * kf; focus.y += (ty - focus.y) * kf; }
     const [fxp, fyp] = snapFocus(probe, focus.x, focus.y);
-    cam = k > 0.001 ? showCamera(view.w, view.h, fxp, fyp, k, { ref }) : cameraFor(view.w, view.h, fxp, fyp, 1, { ref });
+    cam = k > 0.001 ? showCamera(view.w, view.h, fxp, fyp, k, { ref, out }) : cameraFor(view.w, view.h, fxp, fyp, 1, { ref, out });
     ui = Math.max(1, Math.round((cam.focal / cam.dist) * 0.6));
     const scam = { ...cam, focusX: SHOW_FOCUS.x, focusY: SHOW_FOCUS.y };    // the show's bursts and drones are placed in the show's own frame
     const u = pixelUnit(view.h), hy = horizonY(cam);
@@ -244,8 +244,8 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
  * The town's renderer: HD-2D outdoors, the flat renderer in interiors or when HD-2D is off (setHd(false), or `flat`, which also locks it
  * off). Same interface as createRenderer, plus hd (is it on), setHd(on) and flat.
  */
-export function createTownRenderer({ canvas, sprites, font, minH = MIN_VIEW_H, flat = false, onNotice = () => {}, onMode = () => {} }) {
-  const flatR = createRenderer({ canvas, sprites, font, minH });
+export function createTownRenderer({ canvas, sprites, font, minH = MIN_VIEW_H, minW, flat = false, onNotice = () => {}, onMode = () => {} }) {
+  const flatR = createRenderer({ canvas, sprites, font, minH, minW });
   let hdOn = !flat, kind = null, box = null, failed = false, autoFlat = false, told = false;
   const hdR = createHdRenderer({ canvas, sprites, font, compact: minH < VIEW_H, onQuality(ev) {
     if (ev.kind === 'down' && !told) { told = true; onNotice('Bajamos un poco los efectos para que vaya fluido'); }

@@ -72,6 +72,13 @@ export function sortBackToFront(items) {
 /** A sprite's scale snapped to a whole number of screen px per art px (at least 1): every art pixel then covers the same square. */
 export const snapScale = (s) => Math.max(1, Math.round(s));
 
+/** A pet's pixel size on screen: PET_SCALE of the world's scale at its feet, whole (at least 1), so a pet is about 2/3 the size it was against the world around it. */
+export const PET_SCALE = 2 / 3;
+export const petScale = (s) => snapScale(s * PET_SCALE);
+
+/** A phone shows this many times more of the world than the camera framed before (1.5 times the tiles each way). */
+export const PHONE_OUT = 1.5;
+
 /** The camera's focus snapped to whole screen pixels at the focus depth, so the ground does not crawl by fractions of a pixel as the camera glides. */
 export function snapFocus(cam, focusX, focusY) {
   const z = cam.focal / cam.dist;
@@ -95,15 +102,15 @@ export const MAX_REACH = 680;      // the furthest north (world px beyond the fo
 /**
  * The camera for a view: a zoom that frames about 20 tiles across (more on a tall phone screen: it zooms in until the top row no longer
  * reaches past MAX_REACH, so a portrait view does not stretch towards the horizon), the focus point a little below the middle.
- * `tilt` 0..1 blends the flat view (0) into the tilted one (1). `ref` is how many world px tall the view frames at the focus (smaller = bigger pets).
+ * `out` (1 or more) zooms out: the view frames `out` times more of the world each way (the reach limit grows with it). `tilt` 0..1 blends the flat view (0) into the tilted one (1). `ref` is how many world px tall the view frames at the focus (smaller = bigger pets).
  */
-export function cameraFor(viewW, viewH, focusX, focusY, tilt = 1, { pitch = 40, dist = 330, ref = 230 } = {}) {
+export function cameraFor(viewW, viewH, focusX, focusY, tilt = 1, { pitch = 40, dist = 330, ref = 230, out = 1 } = {}) {
   const p = 90 + (pitch - 90) * tilt;
-  let zoom = Math.max(Math.min(viewW / 340, viewH / ref), viewH / 460);
+  let zoom = Math.max(Math.min(viewW / 340, viewH / ref), viewH / 460) / out;
   for (let i = 0; i < 16; i++) {
     const cam = makeCamera({ focusX, focusY, pitch: p, dist, focal: zoom * dist, cx: viewW / 2, cy: viewH * (0.5 + 0.06 * tilt) });
     const top = groundRow(cam, 0);
-    if (top && focusY - top.y <= MAX_REACH) return cam;
+    if (top && focusY - top.y <= MAX_REACH * out) return cam;
     zoom *= 1.06;
   }
   return makeCamera({ focusX, focusY, pitch: p, dist, focal: zoom * dist, cx: viewW / 2, cy: viewH * (0.5 + 0.06 * tilt) });

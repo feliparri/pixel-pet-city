@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { makeCamera, cameraFor, MAX_REACH, focusBounds, followFocus, snapScale, snapFocus, visibleTiles, project, unproject, groundRow, depthOf, billboardScale, standAt, tileToScreen, screenToTile, sortBackToFront, TILE } from '../src/hd2d/camera.js';
+import { makeCamera, cameraFor, MAX_REACH, PHONE_OUT, petScale, focusBounds, followFocus, snapScale, snapFocus, visibleTiles, project, unproject, groundRow, depthOf, billboardScale, standAt, tileToScreen, screenToTile, sortBackToFront, TILE } from '../src/hd2d/camera.js';
 import { groundMult, NIGHT_TINT, falloff, lightAt, nightMultiply, spriteGrade, approach, LAMP_RADIUS } from '../src/hd2d/light.js';
 import { createGovernor, LEVELS, SLOW_MS } from '../src/hd2d/quality.js';
 import { Wanderer, rng } from '../src/hd2d/wander.js';
@@ -315,4 +315,12 @@ test('parts.png fits a phone\'s texture limit and every part sits inside it, apa
     const a = rects[i], b = rects[j];
     assert.ok(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y, 'two parts overlap');
   }
+});
+
+test('pets are about 2/3 of the world scale, whole pixels, and a phone camera frames 1.5 times more of the world', () => {
+  assert.deepEqual([1, 3, 6, 9].map(petScale), [1, 2, 4, 6]);
+  const a = cameraFor(1000, 600, 400, 320, 1), b = cameraFor(1000, 600, 400, 320, 1, { out: PHONE_OUT });
+  near(a.focal / b.focal, PHONE_OUT);
+  const c = cameraFor(390, 844, 400, 320, 1, { out: PHONE_OUT }), top = groundRow(c, 0);
+  assert.ok(top && 320 - top.y <= MAX_REACH * PHONE_OUT + 1e-6);
 });

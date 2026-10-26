@@ -6,7 +6,7 @@ import { jumpLift } from '../jump.js';
 import { entranceState, drawEntranceFx, flickers } from '../entrance.js';
 import { headFrame } from '../render.js';
 import { TILE } from '../map.js';
-import { project, snapScale } from './camera.js';
+import { project, petScale } from './camera.js';
 import { lightAt } from './light.js';
 import { grade } from './scene.js';
 
@@ -37,7 +37,7 @@ export function createPetPainter(sprites) {
     const wx = p.x * TILE + TILE / 2, wy = p.y * TILE + TILE;
     const g = project(cam, wx, wy);
     if (!g) return null;
-    const s = snapScale(g.scale), cx = Math.round(g.x), cy = Math.round(g.y);
+    const s = petScale(g.scale), cx = Math.round(g.x), cy = Math.round(g.y);
     const { w: SIZE, feetY: FEET_Y } = layoutFor(e.sprites || sprites, e.look);
     if (cx < -SIZE * s || cx > view.w + SIZE * s || cy < 0 || cy > view.h + FEET_Y * s) return null;
     const k = e.walker.moving ? Math.min(1, e.walker.t / e.walker.stepMs()) : 0;

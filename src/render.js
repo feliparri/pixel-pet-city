@@ -1,5 +1,7 @@
 // Draws the world: a view that fits the box it is given (see viewFor), scaled up by a whole number with nearest-neighbour, centred.
-// The scene is drawn at 1 px = 1 game pixel on a small canvas and enlarged; only the emote bubbles are drawn at the final size (emoji).
+// The scene is drawn straight onto the canvas in game pixels magnified by a whole number: the world (ground, props, signs, names) by `zoom`, the pets by `petZoom`
+// (about 2/3 of it, also a whole number), so a pet's pixels are a little smaller than the world's and every one is still a crisp square. Only the emote bubbles are drawn
+// at the final size (emoji).
 // Layers: ground (baked), animated water, props and pets sorted by their feet, the day/night tint, the night lights, labels.
 import { TILE, SIGNS, PLACES, getArea, tileAt } from './map.js';
 import { drawPet, CELL } from './sprites.js';
@@ -19,23 +21,28 @@ import { drawAnimal, plotTile } from './art/farm.js';
 
 export const VIEW_W = 224;              // the portrait reference view; a box taller than wide is fitted to it (and the dev previews use it)
 export const VIEW_H = 288;
-export const MIN_VIEW_H = 176;          // a wide box (a landscape phone) always shows at least 11 tiles from top to bottom
+export const MIN_VIEW_H = 264;          // a wide box (a landscape phone) always shows at least 16 tiles from top to bottom (it was 11: the camera was too close)
+export const MIN_VIEW_W = 336;          // a tall phone shows at least 21 tiles across (it was 14)
+export const PET_RATIO = 2 / 3;         // a pet's pixels against the world's: the pets are drawn smaller than the world around them
 const HAPPY_EMOTES = new Set(['heart', 'smile', 'party', 'hola', 'wave']);
 export const EMOTE_MS = 2600;
 const NO_LIGHT = { tint: [255, 255, 255], night: 0 };
 
-/** Integer scale that fits the portrait reference view in a box of device pixels (at least 1). */
-export const fitScale = (devW, devH) => Math.max(1, Math.floor(Math.min(devW / VIEW_W, devH / VIEW_H)));
+/** Integer scale that fits the portrait reference view (`wide` game px across, VIEW_H / VIEW_W as tall as wide) in a box of device pixels (at least 1). */
+export const fitScale = (devW, devH, wide = VIEW_W) => Math.max(1, Math.floor(Math.min(devW / wide, devH / (wide * VIEW_H / VIEW_W))));
+
+/** The whole-number scale of a pet's pixels for a world scale: about PET_RATIO of it, at least 1 (world 3 -> pets 2, 4 -> 3, 6 -> 4). */
+export const petScaleFor = (scale) => Math.max(1, Math.round(scale * PET_RATIO));
 
 /**
- * The view for a box of device pixels: { scale, w, h } with w x h in game pixels. A box wider than tall takes the scale from its height
- * (a view of at least minH: MIN_VIEW_H on a phone, so the pixels stay as big as they can; VIEW_H on a desktop, as tall as before); a taller
- * one keeps the portrait scale. The view fills the box, but never beyond the area (areaW x areaH px): a small interior is shown whole
+ * The view for a box of device pixels: { scale, pet, w, h } with w x h in game pixels, `scale` the world's pixel size and `pet` the pets' (petScaleFor). A box wider
+ * than tall takes the scale from its height (a view of at least minH: MIN_VIEW_H on a phone; VIEW_H on a desktop, as tall as before); a taller one fits `minW`
+ * across (MIN_VIEW_W on a phone, VIEW_W on a desktop). The view fills the box, but never beyond the area (areaW x areaH px): a small interior is shown whole
  * and the rest of the box stays empty around it.
  */
-export function viewFor(devW, devH, areaW = Infinity, areaH = Infinity, minH = MIN_VIEW_H) {
-  const scale = devW > devH ? Math.max(1, Math.floor(devH / minH)) : fitScale(devW, devH);
-  return { scale, w: Math.max(1, Math.min(Math.floor(devW / scale), areaW)), h: Math.max(1, Math.min(Math.floor(devH / scale), areaH)) };
+export function viewFor(devW, devH, areaW = Infinity, areaH = Infinity, minH = MIN_VIEW_H, minW = MIN_VIEW_W) {
+  const scale = devW > devH ? Math.max(1, Math.floor(devH / minH)) : fitScale(devW, devH, minW);
+  return { scale, pet: petScaleFor(scale), w: Math.max(1, Math.min(Math.floor(devW / scale), areaW)), h: Math.max(1, Math.min(Math.floor(devH / scale), areaH)) };
 }
 
 /** The camera's top left in map pixels: centred on the player, never showing outside the map; a map smaller than the view is centred. */
@@ -55,11 +62,13 @@ export const headFrame = (e, now, id) => {
 
 /**
  * Paints one frame of an area into `sctx` (1 px = 1 game pixel, view of `vw` x `vh`).
+ * `zoom` / `petZoom`: device px per game px for the world / for the pets (1: the scene on a small canvas, to be enlarged). The context is left at the world's transform.
  * opts: { area (name), cam {x, y}, entities [{ id, name, look, walker, emote?, jumpAt?, fx?, gone? }], me, now, amb {tint, night}, sprites, font, marker?, fade? }.
  * Returns the bubbles to draw at the final size: [{ x, y, e }] (an emote) or [{ x, y, text }] (a line) in view pixels. `talk`: [{ x, y, text }] lines in map px.
  */
-export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now, amb = NO_LIGHT, sprites, font, marker = null, fade = 0, chicken = null, dark = null, life = null, ball = null, talk = null, farm = null }) {
+export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now, amb = NO_LIGHT, sprites, font, marker = null, fade = 0, chicken = null, dark = null, life = null, ball = null, talk = null, farm = null, zoom = 1, petZoom = zoom }) {
   const area = getArea(areaName), baked = bakeArea(area);
+  sctx.setTransform(zoom, 0, 0, zoom, 0, 0);                                    // everything below is in game px; the pets are drawn in their own (smaller) px
   sctx.imageSmoothingEnabled = false;
   sctx.fillStyle = '#0e101a';
   sctx.fillRect(0, 0, vw, vh);
@@ -96,7 +105,7 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
     if (pr.x - cam.x > vw || pr.x + sw - cam.x < 0 || pr.y - cam.y > vh || pr.y + sh - cam.y < 0) continue;
     items.push({ sortY: pr.sortY, order: 0, draw: () => (pr.sprite ? sctx.drawImage(pr.sprite, pr.x - cam.x, pr.y - cam.y) : pr.draw(sctx, cam.x, cam.y, now, sprites)) });
   }
-  const labels = [], bubbles = [];
+  const labels = [], bubbles = [], pr = petZoom / zoom;
   const all = [me, ...entities].filter((e) => e && e.walker.pos().x !== null && !e.gone);
   for (const e of all) {
     const p = e.walker.pos();
@@ -109,22 +118,23 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
     const lift = fx ? Math.round(fx.lift * (by + CELL + 24)) : 0;                                             // 1 = just above the top edge
     const px = bx + (fx ? Math.round(fx.sway) : 0);
     items.push({ sortY: p.y * TILE + TILE, order: 1, draw: () => {
-      if (fx) drawEntranceFx(sctx, e.fx.id, fx, bx, by, CELL, false);
+      const small = (x, y, f) => { sctx.save(); sctx.translate(x, y); sctx.scale(pr, pr); f(); sctx.restore(); };         // in the pets' px, standing on (x, y)
+      if (fx) small(bx, by, () => drawEntranceFx(sctx, e.fx.id, fx, 0, 0, CELL, false));
       if (!fx || !fx.hidden) {
         if (lift < by * 0.6) {
           sctx.fillStyle = 'rgba(24,28,44,0.35)';                                                           // shadow (it grows as the pet lands)
-          sctx.fillRect(bx - 7, by - 3, 14, 3); sctx.fillRect(bx - 5, by - 4, 10, 1);
+          small(bx, by, () => { sctx.fillRect(-7, -3, 14, 3); sctx.fillRect(-5, -4, 10, 1); });
         }
         if (!(fx && flickers(e.fx.id, e.fx.phase, now - e.fx.t0))) {
           const flap = (e.walker.moving || lift > 0) && Math.floor(now / 140) % 2 === 1;
-          drawPet(sctx, e.sprites || sprites, e.look, px - CELL / 2, by - CELL + 2 - hop - air - lift, { frame: lift > 0 ? 'happy' : headFrame(e, now, e.id), flip: e.walker.d === 'left', flap, now });
+          small(px, by - lift, () => drawPet(sctx, e.sprites || sprites, e.look, -CELL / 2, -CELL + 2 - hop - air, { frame: lift > 0 ? 'happy' : headFrame(e, now, e.id), flip: e.walker.d === 'left', flap, now }));
         }
         labels.push({ text: e.name, x: px - Math.floor(textWidth(font, e.name) / 2), y: by + 2 - lift, colour: e === me ? '#f8d040' : e.npc ? '#a8e6cf' : '#f4f6fa' });
       }
-      if (fx) drawEntranceFx(sctx, e.fx.id, fx, px, by - lift, CELL, true);
+      if (fx) small(px, by - lift, () => drawEntranceFx(sctx, e.fx.id, fx, 0, 0, CELL, true));
     } });
-    if (e.emote && now < e.emote.until && !lift && !(fx && fx.hidden)) bubbles.push({ x: bx, y: by - CELL - hop - air, e: e.emote.e });
-    else if (e.say && !lift) bubbles.push({ x: bx, y: by - CELL - hop, text: e.say });                    // a villager's line
+    if (e.emote && now < e.emote.until && !lift && !(fx && fx.hidden)) bubbles.push({ x: bx, y: by - (CELL + hop + air) * pr, e: e.emote.e });      // above the head: the pet's height is in its own px
+    else if (e.say && !lift) bubbles.push({ x: bx, y: by - (CELL + hop) * pr, text: e.say });                    // a villager's line
   }
   if (talk) for (const t of talk) bubbles.push({ x: Math.round(t.x - cam.x), y: Math.round(t.y - cam.y), text: t.text });      // a shopkeeper's line: (x, y) in map px, just above its head
   if (chicken && areaName === 'town') {                                      // the chicken of Pillar la gallina
@@ -229,20 +239,17 @@ function drawGlows(sctx, glows, cam, night, now, vw, vh) {
   sctx.globalCompositeOperation = 'source-over';
 }
 
-export function createRenderer({ canvas, sprites, font, minH = MIN_VIEW_H }) {
+export function createRenderer({ canvas, sprites, font, minH = MIN_VIEW_H, minW = MIN_VIEW_W }) {
   const ctx = canvas.getContext('2d');
-  const scene = document.createElement('canvas');
-  const sctx = scene.getContext('2d');
-  let scale = 1, viewW = VIEW_W, viewH = VIEW_H;
+  let scale = 1, petScale = 1, viewW = VIEW_W, viewH = VIEW_H;
   let cam = { x: 0, y: 0 };
   let areaName = 'town';
   let box = null, laidOut = null;                   // the last box (css size and pixel ratio) and the area the view was fitted to
 
   function layout() {
     const a = getArea(areaName);
-    const v = viewFor(box.w * box.dpr, box.h * box.dpr, a.w * TILE, a.h * TILE, minH);
-    scale = v.scale; viewW = v.w; viewH = v.h; laidOut = areaName;
-    scene.width = viewW; scene.height = viewH;
+    const v = viewFor(box.w * box.dpr, box.h * box.dpr, a.w * TILE, a.h * TILE, minH, minW);
+    scale = v.scale; petScale = v.pet; viewW = v.w; viewH = v.h; laidOut = areaName;
     canvas.width = viewW * scale; canvas.height = viewH * scale;
     canvas.style.width = `${(viewW * scale) / box.dpr}px`;
     canvas.style.height = `${(viewH * scale) / box.dpr}px`;
@@ -273,15 +280,12 @@ export function createRenderer({ canvas, sprites, font, minH = MIN_VIEW_H }) {
     const a = getArea(areaName);
     const mp = state.me.walker.pos();
     cam = cameraFor(mp.x * TILE + TILE / 2, mp.y * TILE + TILE / 2, a.w * TILE, a.h * TILE, viewW, viewH);
-    const bubbles = drawScene(sctx, { area: areaName, cam, vw: viewW, vh: viewH, entities: state.others, me: state.me, now, amb: state.amb, sprites, font, marker: state.marker, fade: state.fade || 0, chicken: state.chicken || null, dark: state.dark || null, life: state.life || null, ball: state.ball || null, talk: state.talk || null, farm: state.farm || null });
-    ctx.imageSmoothingEnabled = false;
-    ctx.fillStyle = '#0e101a';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(scene, 0, 0, canvas.width, canvas.height);
+    const bubbles = drawScene(ctx, { area: areaName, cam, vw: viewW, vh: viewH, entities: state.others, me: state.me, now, amb: state.amb, sprites, font, marker: state.marker, fade: state.fade || 0, chicken: state.chicken || null, dark: state.dark || null, life: state.life || null, ball: state.ball || null, talk: state.talk || null, farm: state.farm || null, zoom: scale, petZoom: petScale });
+    ctx.setTransform(1, 0, 0, 1, 0, 0);                                         // the bubbles are drawn at the final size
     for (const b of bubbles) drawBubble(ctx, b, scale, canvas.width, scale);
   }
 
-  return { resize, draw, pointToTile, invalidate() { laidOut = null; }, get scale() { return scale; } };
+  return { resize, draw, pointToTile, invalidate() { laidOut = null; }, get scale() { return scale; }, get petScale() { return petScale; } };
 }
 
 /** Draws a bubble from the list drawScene returns: an emote or a line. `x`, `y` are multiplied by `mul` (flat: the view's zoom; HD-2D: already final). */
