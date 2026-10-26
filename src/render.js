@@ -117,7 +117,7 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
         }
         if (!(fx && flickers(e.fx.id, e.fx.phase, now - e.fx.t0))) {
           const flap = (e.walker.moving || lift > 0) && Math.floor(now / 140) % 2 === 1;
-          drawPet(sctx, e.sprites || sprites, e.look, px - CELL / 2, by - CELL + 2 - hop - air - lift, { frame: lift > 0 ? 'happy' : headFrame(e, now, e.id), flip: e.walker.d === 'right', flap, now });
+          drawPet(sctx, e.sprites || sprites, e.look, px - CELL / 2, by - CELL + 2 - hop - air - lift, { frame: lift > 0 ? 'happy' : headFrame(e, now, e.id), flip: e.walker.d === 'left', flap, now });
         }
         labels.push({ text: e.name, x: px - Math.floor(textWidth(font, e.name) / 2), y: by + 2 - lift, colour: e === me ? '#f8d040' : e.npc ? '#a8e6cf' : '#f4f6fa' });
       }

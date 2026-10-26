@@ -48,7 +48,7 @@ export function createPetPainter(sprites) {
           const flap = (e.walker.moving || lift > 0) && Math.floor(now / 140) % 2 === 1;
           const L = layoutFor(e.sprites || sprites);
           tctx.clearRect(0, 0, L.w, L.h);
-          drawPet(tctx, e.sprites || sprites, e.look, L.origin.x, L.origin.y - hop, { frame: lift > 0 ? 'happy' : headFrame(e, now, e.id), flip: e.walker.d === 'right', flap, now });
+          drawPet(tctx, e.sprites || sprites, e.look, L.origin.x, L.origin.y - hop, { frame: lift > 0 ? 'happy' : headFrame(e, now, e.id), flip: e.walker.d === 'left', flap, now });
           if (n > 0.02) grade(tctx, tmp, n, lightAt(world.lights, wx, wy));                      // night: the veil, and the warm wash where a lamp reaches
           const tint = wash ? wash(wx) : null;                                                    // a burst of the sky show washes its colour over the pet
           if (tint) { tctx.globalCompositeOperation = 'source-atop'; tctx.fillStyle = `rgba(${tint.r | 0},${tint.g | 0},${tint.b | 0},${tint.a})`; tctx.fillRect(0, 0, L.w, L.h); tctx.globalCompositeOperation = 'source-over'; }
