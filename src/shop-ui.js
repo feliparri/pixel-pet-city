@@ -1,14 +1,15 @@
 // The "Tienda" and "Mochila" panels over the town (index.html #panel). Plain DOM on top of src/shop.js; the purchase itself is
 // source.buy(key) (the trip client, or the dev mock). Opening and closing tell the town (onOpenChange) so the pet stops and the touch pad hides.
 import { drawItemIcon } from './sprites.js';
-import { drawProduce } from './art/produce.js';
+import { drawProduce, produceCanvas } from './art/produce.js';
 import { KINDS, NAMES } from './canasta.js';
 import { shopRows, bagList, confirmText, buyErrorText, thanks, CLOSED_TEXT, GOLD_TEXT, SHOP } from './shop.js';
+import { TOOLS, toolRows, confirmToolText, toolErrorText, STORE_TITLE, STORE_HINT, CLERK_THANKS } from './tools.js';
 
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 
-/** source: () => { shop, buy(key) } | null (nothing to show: no pet's trip). sprites: for the item icons. */
-export function createShopUi($, { source, sprites, canasta = () => null, onBought = () => {}, onOpenChange = () => {} }) {
+/** source: () => { shop, buy(key), buyTool(key) } | null (nothing to show: no pet's trip). sprites: for the item icons. onToolBought(key, line): the Almacén sold a tool. */
+export function createShopUi($, { source, sprites, canasta = () => null, onBought = () => {}, onToolBought = () => {}, onOpenChange = () => {} }) {
   const panel = $('panel'), body = $('panel-body'), note = $('panel-note');
   let view = null, confirming = null, busy = false, sold = 0;
 
@@ -41,10 +42,33 @@ export function createShopUi($, { source, sprites, canasta = () => null, onBough
     body.replaceChildren(list);
   }
 
+  const toolIcon = (key) => { const c = produceCanvas(TOOLS[key].icon, 40); c.className = 'icon'; c.setAttribute('aria-hidden', 'true'); return c; };
+
+  function paintStore(src) {                                       // the Almacén (the farm store): tools for the farm, paid with the board's gold
+    const shop = src.shop;
+    $('panel-title').textContent = STORE_TITLE;
+    $('panel-gold').textContent = shop.canSpend ? GOLD_TEXT(shop.gold) : '';
+    $('panel-gold').hidden = !shop.canSpend;
+    if (!shop.canSpend && !note.textContent) say(CLOSED_TEXT, 'bad');
+    const list = el('ul', 'shop-list');
+    for (const row of toolRows(shop)) {
+      const li = el('li', `shop-row ${row.state}`);
+      const info = el('div', 'shop-info');
+      info.append(el('strong', '', row.name), el('span', 'price', `${row.price} de oro`));
+      const b = el('button', row.enabled ? 'btn small primary' : 'btn small', row.label);
+      b.type = 'button'; b.disabled = !row.enabled || busy;
+      b.addEventListener('click', () => { confirming = row.key; say(''); paint(); });
+      li.append(toolIcon(row.key), info, b);
+      list.append(li);
+    }
+    body.replaceChildren(el('p', 'empty', STORE_HINT), list);
+  }
+
   function paintConfirm() {
-    $('panel-title').textContent = 'Tienda';
+    const tool = view === 'store';
+    $('panel-title').textContent = tool ? STORE_TITLE : 'Tienda';
     const box = el('div', 'confirm');
-    box.append(icon(confirming), el('p', '', confirmText(confirming)));
+    box.append(tool ? toolIcon(confirming) : icon(confirming), el('p', '', tool ? confirmToolText(confirming) : confirmText(confirming)));
     const yes = el('button', 'btn primary', 'Sí, comprar'), no = el('button', 'btn', 'No');
     yes.type = no.type = 'button'; yes.disabled = no.disabled = busy;
     yes.addEventListener('click', buy);
@@ -74,6 +98,12 @@ export function createShopUi($, { source, sprites, canasta = () => null, onBough
     };
     section('Lo que lleva tu mascota', carried, 'No trajo nada en la mochila.');
     section('Comprado (llega a casa con tu mascota)', bought, 'Todavía no compras nada.');
+    if (src.shop.tools.length) {                                   // the farm tools stay in the town with the pet
+      frag.append(el('h3', '', 'Herramientas (de la granja, se quedan en el pueblo)'));
+      const ul = el('ul', 'shop-list bag');
+      for (const k of src.shop.tools) { const li = el('li', 'shop-row'); li.append(toolIcon(k), el('strong', '', TOOLS[k].name)); ul.append(li); }
+      frag.append(ul);
+    }
     const basket = canasta();
     if (basket) {                                                  // the farm's Canasta: stays in the town, nothing of it goes home
       frag.append(el('h3', '', 'Canasta (de la granja, se queda en el pueblo)'));
@@ -92,6 +122,7 @@ export function createShopUi($, { source, sprites, canasta = () => null, onBough
     if (!view || !src) return;
     if (view === 'bag') paintBag(src);
     else if (confirming) paintConfirm();
+    else if (view === 'store') paintStore(src);
     else paintShop(src);
   }
 
@@ -99,6 +130,14 @@ export function createShopUi($, { source, sprites, canasta = () => null, onBough
     const src = source(), key = confirming;
     if (!src || !key || busy) return;
     busy = true; paint(); say('Comprando…');
+    if (view === 'store') {
+      const r = await src.buyTool(key);
+      busy = false; confirming = null;
+      if (r.ok) { const line = CLERK_THANKS[sold++ % CLERK_THANKS.length]; say(`🐻 ${line} Ya tienes ${TOOLS[key].article} ${TOOLS[key].name}.`, 'good'); onToolBought(key, line); }
+      else say(toolErrorText(r) || buyErrorText(r), 'bad');
+      paint();
+      return;
+    }
     const r = await src.buy(key);
     busy = false; confirming = null;
     if (r.ok) { const line = thanks(sold++); say(`🦝 ${line} ${SHOP[key].name} irá a casa con tu mascota.`, 'good'); onBought(key, line); }
@@ -129,5 +168,5 @@ export function createShopUi($, { source, sprites, canasta = () => null, onBough
     if (confirming && !busy) { confirming = null; paint(); } else close();
   });
 
-  return { openShop: () => open('shop'), openBag: () => open('bag'), close, get isOpen() { return view !== null; } };
+  return { openShop: () => open('shop'), openStore: () => open('store'), openBag: () => open('bag'), close, get isOpen() { return view !== null; } };
 }

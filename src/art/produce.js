@@ -37,12 +37,21 @@ const bucket = (full) => [
   '...kkkkkk...', '..k......k..', '..k......k..', '.kkkkkkkkkk.', '.kElEElEEEk.', '.kwwwwwwwWk.',
   '.kwwwwwwwWk.', '.kssssssssk.', '.kwwwwwwwWk.', '..kwwwwwWk..', '..kkkkkkkk..', '............',
 ].map((r) => r.replace(/E/g, full ? 'a' : 'e').replace(/l/g, full ? 'A' : 'e'));
+// the farm tools of the Almacén (src/tools.js)
+PICTURES.sickle = [
+  '..kkkkkk....', '.ksssssssk..', 'ksskkkkssk..', 'kskk...kssk.', 'kk.....ksk..', '.......kwk..',
+  '......kwWk..', '......kwWk..', '......kwWk..', '......kwWk..', '......kkkk..', '............',
+];
+PICTURES.sack = [
+  '....kkkk....', '...kyYYYk...', '..kkWWWWkk..', '.kyyyYYYYYk.', 'kyyyyYYYYYYk', 'kyyyyYYYYYWk',
+  'kyyyyYYrYYWk', 'kyyyyYYYYYWk', 'kyyyYYYYYYWk', 'kYYYYYYYYYWk', '.kWWWWWWWWk.', '..kkkkkkkk..',
+];
 PICTURES['bucket-empty'] = bucket(false);
 PICTURES['bucket-full'] = bucket(true);
 
 export const PRODUCE = Object.keys(PICTURES);
 
-/** Draws an icon (a basket kind, or 'bucket-empty' / 'bucket-full') centred in a `size` x `size` box; false for an unknown kind. */
+/** Draws an icon (a basket kind, a tool, or 'bucket-empty' / 'bucket-full') centred in a `size` x `size` box; false for an unknown kind. */
 export function drawProduce(ctx, kind, size = 40) {
   const rows = PICTURES[kind];
   if (!rows) return false;

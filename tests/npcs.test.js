@@ -61,7 +61,7 @@ test('the villagers with a variant have a distinct one each, and createNpcs uses
   let made = 0;
   const variants = createVariants(() => { made++; return {}; });
   createNpcs({ seed: SEED, sprites: fakeSprites, variants }); createNpcs({ seed: 'OTRO', sprites: fakeSprites, variants });
-  assert.equal(made, tinted.length);
+  assert.equal(made, tinted.length + 1, 'the villagers plus the Almacén clerk');
 });
 
 test('the hue shift moves colours, leaves greys and transparent pixels alone and is reversible', () => {

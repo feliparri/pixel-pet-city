@@ -16,7 +16,7 @@ import { activityOf, radarPets } from './radar.js';
 import { createLife, createFarmLife, stepLife, lifeFrame, farmLifeFrame } from './life.js';
 import { inArea } from './presence.js';
 import { SLOTS } from './protocol.js';
-import { createNpcs, showSpans, nearShopkeeper, shopGreeting, SHOPKEEPER, SHOP_SAY_MS } from './npcs.js';
+import { createNpcs, showSpans, nearShopkeeper, shopGreeting, SHOPKEEPER, SHOP_SAY_MS, nearStore, clerkGreeting } from './npcs.js';
 import config from '../config.js';
 import { isConfigured } from './config-check.js';
 import { createEventsApi } from './events-client.js';
@@ -37,10 +37,10 @@ function spawnFor(id) {
 /** pad: { stick, a, b } (the phone's on-screen controls) or null;
  * me: { name, look }; net: a createNet() session already joined; entrance: an entrance id to play on arrival (a visiting pet), or null;
  * stars: the pet's star counter ({ add(n) }); onHud(info): called a few times a second with what the game buttons and panels need.
- * canasta / farmMemory: the pet's basket (src/canasta.js) and what it did on the farm today (src/farm-world.js); onFarm({ action, prompt }) says which
- * action is available (or null) when it changes, onFarmDone(result) reports an action's outcome (the pop) and onFarmAction(event) every action done (missions).
+ * canasta / farmMemory: the pet's basket (src/canasta.js) and what it did on the farm today (src/farm-world.js); tools(): the keys of the farm tools the pet owns
+ * (src/tools.js); onStore(): the pet asked for the Almacén (the farm store); onFarm({ action, prompt }) says which action is available (or null) when it changes, onFarmDone(result) reports an action's outcome (the pop) and onFarmAction(event) every action done (missions).
  * Returns { onNetEvent, emote, playExit, games: { play, join, seek, leave, dismiss }, farm: { act }, destroy }. */
-export function startTown({ canvas, stage, pad = null, sprites, font, net, me, entrance = null, stars = { add() {} }, canasta = createCanasta(), farmMemory = createFarmMemory(), onHud = () => {}, onHdMode = () => {}, onShow = () => {}, onShop = () => {}, onFarm = () => {}, onFarmDone = () => {}, onFarmAction = () => {} }) {
+export function startTown({ canvas, stage, pad = null, sprites, font, net, me, entrance = null, stars = { add() {} }, canasta = createCanasta(), farmMemory = createFarmMemory(), tools = () => [], onStore = () => {}, onHud = () => {}, onHdMode = () => {}, onShow = () => {}, onShop = () => {}, onFarm = () => {}, onFarmDone = () => {}, onFarmAction = () => {} }) {
   const [sx, sy] = spawnFor(net.id);
   const self = { id: net.id, name: me.name, look: me.look, stats: me.stats || null, act: 'idle', walker: new Walker(sx, sy), emote: null, jumpAt: null, area: 'town' };
   if (entrance) self.fx = { id: entrance, phase: 'arrive', t0: performance.now(), resolve: null };
@@ -51,7 +51,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   const renderer = createTownRenderer({ canvas, sprites, font, minH: pad ? MIN_VIEW_H : VIEW_H, flat: new URLSearchParams(location.search).get('flat') === '1', onNotice: (text) => games.notify(text), onMode: onHdMode });   // a phone: big pixels; a desktop: as many tiles as before
   const npcs = createNpcs({ seed: net.code || net.id, sprites });           // the villagers: their place and lines come from (room, server time) alone, nothing of them goes over the net
   const search = new URLSearchParams(location.search), devNpcT = search.get('dev') === '1' && Number.isFinite(Number(search.get('npct'))) && search.has('npct') ? Number(search.get('npct')) : null;      // development only: ?dev=1&npct=<ms> pins the villagers' clock
-  let shopVisits = 0, shopNear = false, shopSayUntil = 0, modal = false, thankLine = null;      // modal: a panel is open (shop, backpack): the pet stands still
+  let shopVisits = 0, shopNear = false, shopSayUntil = 0, modal = false, thankLine = null, storeVisits = 0, storeNear = false, clerkSayUntil = 0;      // modal: a panel is open (shop, backpack): the pet stands still
   let farmAction = null, farmKey = '', farmAt = -Infinity, farmStamp = 0, farmSig = '', farmState = null;       // the farm: the action available now, and the crops as this pet sees them
   let fadeT0 = -Infinity, ambAt = -Infinity;
   const held = [];                                   // direction keys held, the latest last
@@ -192,8 +192,18 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
         farmState = { ...v, stamp: farmStamp };
       }
       state.farm = farmState;
-      farmAction = !w.busy && !self.fx && !modal && !mv.closed ? actionAt('farm', w.tileX, w.tileY, w.d, { basket: canasta, mem: farmMemory, room: net.code || net.id, nowMs: devNpcT === null ? events.serverNow() : devNpcT }) : null;
+      farmAction = !w.busy && !self.fx && !modal && !mv.closed ? actionAt('farm', w.tileX, w.tileY, w.d, { basket: canasta, mem: farmMemory, room: net.code || net.id, nowMs: devNpcT === null ? events.serverNow() : devNpcT, tools: tools() }) : null;
     } else { state.farm = null; farmAction = null; }
+    const atStore = self.area === 'farm' && !w.busy && !self.fx && !modal && !mv.closed && nearStore(w.tileX, w.tileY);
+    if (atStore && (!farmAction || farmAction.id === 'hint')) farmAction = { id: 'store', label: 'Ver Almacén', target: 'store' };       // the stall's counter: the prompt opens the store
+    if (self.area === 'farm') {                                    // the Almacén's clerk greets a pet that steps up to the counter, and thanks it after a purchase
+      const near = nearStore(w.tileX, w.tileY);
+      if (near && !storeNear) { clerkSayUntil = t + SHOP_SAY_MS; storeVisits++; }
+      storeNear = near;
+      const clerk = npcs.clerk;
+      clerk.say = thankLine && t < thankLine.until ? thankLine.text : t < clerkSayUntil ? clerkGreeting(storeVisits - 1) : null;
+      state.others = [...state.others, clerk];
+    } else storeNear = false;
     const fk = farmAction ? `${farmAction.id}|${farmAction.label}` : '';
     if (fk !== farmKey) { farmKey = fk; onFarm({ action: farmAction }); }
     state.talk = null;
@@ -231,7 +241,8 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   /** Does the farm action of this pet's reach (the object that was tapped, or the pet's own tile)? Does it and returns true. */
   function farmDo() {
     if (!farmAction || farmAction.id === 'hint') return false;
-    const res = perform(farmAction, { basket: canasta, mem: farmMemory });
+    if (farmAction.id === 'store') { onStore(); return true; }
+    const res = perform(farmAction, { basket: canasta, mem: farmMemory, tools: tools() });
     farmAt = -Infinity;                                            // the plots and the prompt are looked at again at once
     if (res.ok) { const t = performance.now(); self.jumpAt = t; net.sendJump(); onFarmAction({ type: res.type, kind: res.kind || null, target: farmAction.target }); }
     onFarmDone(res);
@@ -245,7 +256,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     const w = self.walker;
     if (Math.abs(w.tileX - tile[0]) + Math.abs(w.tileY - tile[1]) === 1) {       // beside it: face it and act
       w.face(w.tileX < tile[0] ? 'right' : w.tileX > tile[0] ? 'left' : w.tileY < tile[1] ? 'down' : 'up');
-      farmAction = actionAt('farm', w.tileX, w.tileY, w.d, { basket: canasta, mem: farmMemory, room: net.code || net.id, nowMs: devNpcT === null ? events.serverNow() : devNpcT }, tile);      // only what that object offers
+      farmAction = actionAt('farm', w.tileX, w.tileY, w.d, { basket: canasta, mem: farmMemory, room: net.code || net.id, nowMs: devNpcT === null ? events.serverNow() : devNpcT, tools: tools() }, tile);      // only what that object offers
       if (farmDo()) return true;
     }
     if (!walks) return false;

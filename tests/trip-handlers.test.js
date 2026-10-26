@@ -80,7 +80,7 @@ test('claim: pet view and token; one session; resume with the token; takeover wh
   const c = await w.web().call('trip-claim', { code: s.body.code.toLowerCase() });
   assert.equal(c.status, 200);
   assert.deepEqual(c.body.pet, { name: 'Mochi', species: 'cat', stage: 2, stats: [80, 80, 100, 100, 100], items: ['bow', 'sunglasses', '', ''], keepsakes: [],
-    gold: 5000, owned: ['tophat', 'bow', 'sunglasses'], bag: [{ kind: 'wear', key: 'tophat' }, { kind: 'toy', id: 1 }] });
+    gold: 5000, owned: ['tophat', 'bow', 'sunglasses'], bag: [{ kind: 'wear', key: 'tophat' }, { kind: 'toy', id: 1 }], tools: [] });
   assert.equal(c.body.status, 'active');
   assert.match(c.body.token, /^[0-9a-f]{64}$/);
   assert.ok(!JSON.stringify(w.db.trips.get(c.body.trip)).includes(c.body.token), 'only the token hash is stored');

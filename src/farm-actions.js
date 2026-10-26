@@ -4,6 +4,7 @@
 import { FARM, tileAt } from './map.js';
 import { NAMES } from './canasta.js';
 import { plotAt, treeAt, plotLook, clockOf } from './farm-world.js';
+import { NEEDS, needText } from './tools.js';
 
 const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const SIDES = ['up', 'down', 'left', 'right'];
@@ -22,38 +23,48 @@ export function reach(x, y, d) {
 
 /**
  * The action available to a pet at (x, y) facing `d`, or null: { id: 'harvest' | 'pick' | 'fill' | 'water' | 'feed' | 'hint', label, kind?, target }.
- * `hint` is only a line to show (no key); `focus` ([x, y]) limits it to a tapped object. ctx: { basket, mem, room, nowMs }. Plots first, then trees, the well, the paddock.
+ * `hint` is only a line to show (no key); `focus` ([x, y]) limits it to a tapped object. ctx: { basket, mem, room, nowMs, tools } (`tools`: the keys of the
+ * farm tools the pet owns, src/tools.js). Harvesting, drawing water, watering and feeding each need their tool: without it the answer is a hint that names it
+ * ("Necesitas una Hoz — Almacén"), unless the pet can do something else from where it stands. Picking fruit by hand needs nothing. Plots first, then trees, the well, the paddock.
  */
 export function actionAt(area, x, y, d, ctx, focus = null) {
   if (area !== 'farm') return null;
   const { basket, mem, room, nowMs } = ctx, { day, minute } = clockOf(nowMs);
+  const has = (tool) => Array.isArray(ctx.tools) && ctx.tools.includes(tool);
+  let missing = null;                                                          // the first tool that stopped an action here: shown only when nothing else can be done
+  const need = (action, target) => { missing = missing || { id: 'hint', label: needText(NEEDS[action]), need: NEEDS[action], target }; };
   const tiles = focus ? [[x, y], focus] : reach(x, y, d);                      // `focus`: only what that tile (a tapped object) offers
   for (const [tx, ty] of focus ? [] : tiles.slice(0, 2)) {                  // plots: the one the pet stands on, then the one it faces
     const p = plotAt(tx, ty);
     if (!p) continue;
     const { look, wet } = plotLook(room, day, minute, p, mem);
-    if (look === 'ripe') return { id: 'harvest', label: `Cosechar ${one(p.kind)}`, kind: p.kind, target: p.id };
-    if (basket.bucketFull && !wet && (look === 'seeded' || look === 'growing')) return { id: 'water', label: 'Regar', target: p.id };
+    if (look === 'ripe') { if (has(NEEDS.harvest)) return { id: 'harvest', label: `Cosechar ${one(p.kind)}`, kind: p.kind, target: p.id }; need('harvest', p.id); continue; }
+    if (basket.bucketFull && !wet && (look === 'seeded' || look === 'growing')) { if (has(NEEDS.water)) return { id: 'water', label: 'Regar', target: p.id }; need('water', p.id); }
   }
   for (const [tx, ty] of tiles.slice(1)) {
     const t = treeAt(tx, ty);
     if (t && mem.fruitLeft(t.id) > 0) return { id: 'pick', label: `Recoger ${one(t.fruit)}`, kind: t.fruit, target: t.id };
   }
-  if (nextToWell(x, y) && !basket.bucketFull) return { id: 'fill', label: 'Sacar agua', target: 'well' };
+  if (nextToWell(x, y) && !basket.bucketFull) { if (has(NEEDS.fill)) return { id: 'fill', label: 'Sacar agua', target: 'well' }; need('fill', 'well'); }
   if (nearPaddock(x, y) && tiles.slice(1).some(([tx, ty]) => tileAt(tx, ty, 'farm') === 'F' || tileAt(tx, ty, 'farm') === 'a')) {
-    const food = FEEDS.find((k) => basket.count(k) > 0);
-    return food ? { id: 'feed', label: 'Dar de comer', kind: food, target: 'paddock' } : { id: 'hint', label: 'Trae trigo o lechuga', target: 'paddock' };
+    if (!has(NEEDS.feed)) need('feed', 'paddock');
+    else {
+      const food = FEEDS.find((k) => basket.count(k) > 0);
+      return food ? { id: 'feed', label: 'Dar de comer', kind: food, target: 'paddock' } : { id: 'hint', label: 'Trae trigo o lechuga', target: 'paddock' };
+    }
   }
-  return null;
+  return missing;
 }
 
 /**
- * Does the action: returns { ok, type, kind?, text }. A full basket refuses a pick or a harvest and changes nothing (the plot stays ripe).
+ * Does the action: returns { ok, type, kind?, text }. A full basket refuses a pick or a harvest and changes nothing (the plot stays ripe);
+ * a pet without the tool (`tools` given) is told which one it lacks and nothing changes.
  * Success records the action in the pet's day (mem.count) and tells what to show: `icon` is a basket kind or 'bucket-empty' / 'bucket-full'.
  */
-export function perform(action, { basket, mem }) {
+export function perform(action, { basket, mem, tools = null }) {
   if (!action || action.id === 'hint') return { ok: false, type: 'hint', text: '' };
   const { id, kind, target } = action;
+  if (NEEDS[id] && Array.isArray(tools) && !tools.includes(NEEDS[id])) return { ok: false, type: id, text: needText(NEEDS[id]) };
   if (id === 'pick' || id === 'harvest') {
     if (!basket.room(kind)) return { ok: false, type: id, kind, text: 'La canasta está llena' };
     basket.add(kind, 1);

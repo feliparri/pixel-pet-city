@@ -69,6 +69,17 @@ export function createDb(url: string, serviceKey: string) {
       if (!r.ok) throw new Error(`db ${r.status}`);
       return Array.isArray(r.json) && r.json.length ? r.json[0] : null;
     },
+    /** The tools a board's pet owns (table pet_tools). */
+    async getTools(deviceId: string): Promise<string[]> {
+      const r = await call(`/pet_tools?device_id=eq.${q(deviceId)}&select=tool&order=bought_at.asc&limit=20`);
+      if (!r.ok) throw new Error(`db ${r.status}`);
+      return Array.isArray(r.json) ? r.json.map((x: Row) => String(x.tool)) : [];
+    },
+    /** Idempotent: a tool already owned stays as it is. */
+    async addTool(deviceId: string, tool: string): Promise<void> {
+      const r = await call('/pet_tools', { method: 'POST', body: JSON.stringify({ device_id: deviceId, tool }), prefer: 'resolution=ignore-duplicates,return=minimal' });
+      if (!r.ok) throw new Error(`db ${r.status}`);
+    },
     async cleanup(): Promise<void> {
       await call('/rpc/cleanup_trips', { method: 'POST', body: '{}' });
     },

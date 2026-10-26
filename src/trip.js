@@ -4,7 +4,8 @@ import { normalizeTripCode } from './trip-code.js';
 import { parseKeepsake } from './keepsake.js';
 import { validateLook, validateStats, sanitizeName } from './protocol.js';
 import { entranceId } from './entrance.js';
-import { shopFrom, shopAfterBuy, parseBag } from './shop.js';
+import { shopFrom, shopAfterBuy, shopAfterBuyTool, parseBag } from './shop.js';
+import { toolKeys } from './tools.js';
 
 export const POLL_MS = 5000;
 const KEY = 'city.trip';
@@ -43,7 +44,7 @@ export function petFromClaim(pet, catalogue) {
   const look = validateLook(pet, catalogue);
   if (!look) return null;
   const keepsakes = (Array.isArray(pet.keepsakes) ? pet.keepsakes : []).slice(0, 4).map(parseKeepsake).filter(Boolean);
-  return { name: sanitizeName(pet.name), look, stats: validateStats(pet.stats), keepsakes, owned: shopFrom(null, pet).owned, bag: parseBag(pet.bag) };
+  return { name: sanitizeName(pet.name), look, stats: validateStats(pet.stats), keepsakes, owned: shopFrom(null, pet).owned, bag: parseBag(pet.bag), tools: toolKeys(pet.tools) };
 }
 
 export function createTripClient({ base, fetch: fetcher = globalThis.fetch, storage = null, setInterval: setI = globalThis.setInterval, clearInterval: clearI = globalThis.clearInterval }) {
@@ -86,6 +87,16 @@ export function createTripClient({ base, fetch: fetcher = globalThis.fetch, stor
       if (!r.ok && r.error === 'conflict') r = await post('trip-buy', { trip: session.trip, item: key }, session.token);
       const out = r.ok ? { ok: true, ...r.body } : { ok: false, error: r.error, ...(r.body && Number.isInteger(r.body.price) ? { price: r.body.price } : {}), ...(r.body && Number.isInteger(r.body.gold_left) ? { gold_left: r.body.gold_left } : {}) };
       session.shop = shopAfterBuy(session.shop, key, out);
+      return out;
+    },
+
+    /** Buys a farm tool at the Almacén (trip-buy-tool), same rules and retry as buy. { ok, gold_left, tools } or { ok: false, error, price?, gold_left? }. */
+    async buyTool(key) {
+      if (!session) return { ok: false, error: 'bad_session' };
+      let r = await post('trip-buy-tool', { trip: session.trip, tool: key }, session.token);
+      if (!r.ok && r.error === 'conflict') r = await post('trip-buy-tool', { trip: session.trip, tool: key }, session.token);
+      const out = r.ok ? { ok: true, ...r.body } : { ok: false, error: r.error, ...(r.body && Number.isInteger(r.body.price) ? { price: r.body.price } : {}), ...(r.body && Number.isInteger(r.body.gold_left) ? { gold_left: r.body.gold_left } : {}) };
+      session.shop = shopAfterBuyTool(session.shop, key, out);
       return out;
     },
 

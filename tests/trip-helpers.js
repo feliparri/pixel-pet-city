@@ -8,10 +8,10 @@ import { toBase64 } from '../supabase/functions/trip/travel-package.js';
 export const fixture = (name) => new Uint8Array(readFileSync(new URL(`./fixtures/${name}`, import.meta.url)));
 
 export function memoryDb() {
-  const devices = new Map(), trips = new Map(), townEvents = new Map();
+  const devices = new Map(), trips = new Map(), townEvents = new Map(), tools = new Map();
   const matches = (row, where) => Object.entries(where).every(([k, vs]) => vs.some((v) => row[k] === v));
   const db = {
-    devices, trips, townEvents,
+    devices, trips, townEvents, tools,
     async getDevice(id) { return devices.get(id) ?? null; },
     async insertDevice(row) { if (devices.has(row.id)) return false; devices.set(row.id, { ...row }); return true; },
     async getTripByDevice(d, t) { return [...trips.values()].find((x) => x.device_id === d && x.trip_id === t) ?? null; },
@@ -32,6 +32,8 @@ export function memoryDb() {
     async cancelOpenTrips(d) {
       for (const t of trips.values()) if (t.device_id === d && ['waiting', 'active', 'recalled', 'returned'].includes(t.status)) Object.assign(t, { status: 'cancelled', session_hash: null });
     },
+    async getTools(d) { return [...(tools.get(d) ?? [])]; },
+    async addTool(d, t) { tools.set(d, new Set([...(tools.get(d) ?? []), t])); },
     async cleanup() {},
     async listEvents(from, to) { return [...townEvents.values()].filter((e) => !e.cancelled_at && e.start_at >= from && e.start_at <= to).sort((a, b) => a.start_at.localeCompare(b.start_at)); },
     async countUpcoming(now) { return [...townEvents.values()].filter((e) => !e.cancelled_at && e.start_at > now).length; },

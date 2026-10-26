@@ -7,11 +7,13 @@ import { actionAt, perform, objectAt, reach } from '../src/farm-actions.js';
 import { stateWithRadar, radarOf } from '../src/radar.js';
 import { stateWithStars } from '../src/stars.js';
 import { zonedToMs } from '../src/admin-time.js';
+import { TOOLS } from '../src/tools.js';
 
 const ROOM = 'FOCA-LUNA-42';
 const at = (date, time) => zonedToMs(date, time);                       // a Chile wall clock time as a UTC instant
 const D1 = '2026-10-26', D2 = '2026-10-27';
-const ctxOf = (nowMs, basket = createCanasta(), mem = createFarmMemory()) => ({ basket, mem, room: ROOM, nowMs });
+const ALL_TOOLS = Object.keys(TOOLS);
+const ctxOf = (nowMs, basket = createCanasta(), mem = createFarmMemory(), tools = ALL_TOOLS) => ({ basket, mem, room: ROOM, nowMs, tools });
 const plot = (kind) => PLOTS.find((p) => p.kind === kind);
 /** A walkable tile next to a tree / the well / the fence for the tests. */
 const standBy = (x, y) => [[0, 1], [0, -1], [1, 0], [-1, 0]].map(([dx, dy]) => [x + dx, y + dy]).find(([a, b]) => isWalkable(a, b, 'farm'));

@@ -178,6 +178,45 @@ export function scarecrow() {
   return c;
 }
 
+/** The stall's floor: wooden planks under the counter and the clerk (one 16 x 16 tile of the stall, painted over the grass). */
+export function stallFloor(ctx, x, y, tx, ty) {
+  rect(ctx, P.w1, x, y, 16, 16);
+  for (let j = 0; j < 16; j += 8) { rect(ctx, P.w3, x, y + j, 16, 7); rect(ctx, P.w4, x, y + j, 16, 1); rect(ctx, P.w1, x, y + j + 7, 16, 1); }
+  for (let j = 0; j < 2; j++) { const k = ((noise(tx, ty, 80 + j) * 14) | 0) + 1; rect(ctx, P.w1, x + k, y + j * 8, 1, 7); }
+  if (noise(tx, ty, 90) > 0.6) rect(ctx, P.w2, x + 4, y + 3, 3, 1);
+}
+
+/** The Almacén's stall, 64 px wide (4 tiles): the back, a plank wall with shelves that stands behind the clerk, 64 x 34. The foot is the bottom row. */
+export function stallBack() {
+  const c = canvas(64, 34), ctx = c.getContext('2d');
+  rect(ctx, P.ink, 1, 0, 62, 34); rect(ctx, P.w2, 2, 1, 60, 33);
+  for (let x = 2; x < 62; x += 6) { rect(ctx, P.w1, x, 1, 1, 33); rect(ctx, P.w3, x + 2, 1, 2, 33); }
+  for (const sy of [12, 25]) { rect(ctx, P.ink, 2, sy + 1, 60, 3); rect(ctx, P.w4, 2, sy, 60, 1); rect(ctx, P.w5, 2, sy, 60, 1); }
+  const goods = [[P.red, 6], [P.yellow, 14], [P.a1, 22], [P.g2, 33], [P.cream2, 42], [P.orange, 52]];
+  for (const [col, gx] of goods) { rect(ctx, P.ink, gx, 5, 7, 7); rect(ctx, col, gx + 1, 6, 5, 5); dot(ctx, P.cream, gx + 1, 6); }             // jars and tins on the upper shelf
+  for (const gx of [7, 31, 47]) { rect(ctx, P.ink, gx, 17, 11, 8); rect(ctx, P.w3, gx + 1, 18, 9, 6); rect(ctx, P.w5, gx + 1, 18, 9, 1); rect(ctx, P.w1, gx + 4, 18, 1, 6); }   // crates on the lower one
+  return c;
+}
+
+/** The stall's front, 64 x 62: a striped awning on two posts and the counter with a sickle, a bucket and a sack on it; clear between awning and counter so the clerk shows. */
+export function stallFront() {
+  const c = canvas(64, 62), ctx = c.getContext('2d');
+  for (const px of [0, 61]) { rect(ctx, P.ink, px, 12, 3, 50); rect(ctx, P.w3, px + 1, 12, 1, 50); }                       // the posts
+  rect(ctx, P.ink, 0, 0, 64, 14);                                                                                      // the awning: stripes, shade and a scalloped lip
+  for (let x = 0; x < 64; x += 8) { const red = (x / 8) % 2 === 0; rect(ctx, red ? P.red : P.cream, x + 1, 1, 7, 11); rect(ctx, red ? P.red2 : P.cream3, x + 1, 9, 7, 3); rect(ctx, red ? P.pink : P.cream, x + 1, 1, 2, 3); }
+  for (let x = 0; x < 64; x += 8) { const red = (x / 8) % 2 === 0; rect(ctx, P.ink, x, 12, 9, 1); for (let i = 0; i < 7; i++) { const d = Math.round(Math.sqrt(Math.max(0, 12.25 - (i - 3) ** 2))); rect(ctx, P.ink, x + i + 1, 12, 1, d + 1); rect(ctx, red ? P.red2 : P.cream3, x + i + 1, 12, 1, d); } }
+  rect(ctx, P.ink, 0, 42, 64, 20); rect(ctx, P.w5, 1, 43, 62, 3); rect(ctx, P.w4, 1, 46, 62, 2);                          // the counter's top
+  rect(ctx, P.w3, 1, 48, 62, 12); rect(ctx, P.w2, 1, 58, 62, 2);
+  for (let x = 1; x < 62; x += 15) { rect(ctx, P.w1, x + 1, 50, 13, 8); rect(ctx, P.w2, x + 2, 51, 11, 6); rect(ctx, P.w4, x + 2, 51, 11, 1); }
+  rect(ctx, P.w1, 1, 48, 62, 1);
+  // on the counter: a sickle leaning on it, a bucket and a sack
+  rect(ctx, P.ink, 8, 28, 3, 15); rect(ctx, P.w3, 9, 29, 1, 14);                                                       // the handle
+  for (const [x, y, w] of [[9, 25, 4], [12, 24, 4], [15, 24, 3], [17, 25, 2], [18, 27, 2]]) { rect(ctx, P.ink, x - 1, y - 1, w + 2, 3); rect(ctx, P.s4, x, y, w, 1); }   // the blade
+  rect(ctx, P.ink, 27, 33, 12, 10); rect(ctx, P.a1, 28, 34, 10, 8); rect(ctx, P.a3, 28, 34, 10, 1); rect(ctx, P.a0, 28, 40, 10, 2); rect(ctx, P.ink, 28, 31, 10, 2); rect(ctx, P.s2, 29, 32, 8, 1);
+  rect(ctx, P.ink, 45, 31, 12, 12); rect(ctx, P.cream3, 46, 33, 10, 9); rect(ctx, P.cream, 47, 33, 3, 7); rect(ctx, P.cream4, 46, 40, 10, 2); rect(ctx, P.ink, 47, 29, 8, 3); rect(ctx, P.cream2, 48, 30, 6, 2); rect(ctx, P.red, 50, 36, 2, 2);
+  return c;
+}
+
 const FRUITS = [[P.red, P.pink], [P.orange, P.yellow], [P.yellow, P.yellow2]];
 const FRUIT_AT = [[10, 10], [19, 7], [14, 14], [23, 14], [8, 17], [17, 19], [13, 8], [21, 11], [26, 19], [11, 22]];
 /** A fruit tree, 32 x 40 like the oak: apples, oranges or pears among the leaves. `kind` 0-2. */

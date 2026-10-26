@@ -130,6 +130,14 @@ being `active` and `spent` unchanged, so two buys cannot overspend. Errors: `401
 `400 not_for_sale`, `409 owned` (the pet has it, or it was bought already), `409 bag_full`, `409 no_gold` (with `gold_left`, `price`), `409 trip_over`,
 `409 conflict` (another buy got in first: read the state and ask again).
 
+### `trip-buy-tool`
+Request `{ "trip": "<ref>", "tool": "sickle|bucket|feed_sack" }` with the token: the Almacén (the farm store) sells the tools a pet needs to work on the farm (Hoz, Balde,
+Saco de alimento; prices in `tools.js`, mirrored by `src/tools.js` under a test). The gold goes through the same ledger as `trip-buy` (`spent`, conditional on `active`
+and `spent` unchanged), so the return's gold is lower by the price. The tool itself is kept per board in table `pet_tools` (only the function writes it), so it stays with
+the pet on later trips; it is **never** part of a return package. `trip-claim` lists the owned tools as `pet.tools`. `200 { "gold_left", "tools": [keys] }`. Errors as
+`trip-buy` (`401 bad_session`, `403 shop_closed`, `409 no_gold` with `gold_left` and `price`, `409 trip_over`, `409 conflict`), `400 not_for_sale` (unknown key), `409 owned`
+(with `tools`) and `503 try_again` (the tool could not be saved: the spent gold was given back).
+
 ### `trip-status`
 Request `{ "trip": "<ref>" }` with the token. `200 { "status", "recalled", "claimed", "entrance", "version", "can_spend", "gold_left", "bought" }`; it also refreshes the session's
 idle clock, so the page polls it every 5 s while open. `recalled: true` means: play the departure, leave the room, show "Volvió a su casa".
@@ -168,7 +176,8 @@ on `trip-claim` yet (add one at the gateway if abused).
    `cleanup_trips()`, and an hourly pg_cron job when the extension is enabled).
 1b. Apply `supabase/migrations/20261025120000_town_events.sql` (table `town_events`, RLS on with no policy, `cleanup_town_events()`).
 1c. Apply `supabase/migrations/20261025140000_trip_shop.sql` (trips gain `can_spend`, `spent`, `bought`; apply it before deploying the function).
+1d. Apply `supabase/migrations/20261025160000_farm_tools.sql` (table `pet_tools`, RLS on with no policy; before deploying the function).
 2. Deploy the single function `trip` with `--no-verify-jwt` (or via `supabase/config.toml`). Entrypoint `index.ts`; files (relative to
-   `supabase/functions/trip/`): `index.ts serve.ts db.ts handlers.js events.js crypto.js radar.js shop.js travel-package.js trip-code.js`. Secret `ADMIN_KEY` (the owner's, for the admin actions). Optional secret `TOWN_URL` (default `https://feliparri.github.io/pixel-pet-city/`);
+   `supabase/functions/trip/`): `index.ts serve.ts db.ts handlers.js events.js crypto.js radar.js shop.js tools.js travel-package.js trip-code.js`. Secret `ADMIN_KEY` (the owner's, for the admin actions). Optional secret `TOWN_URL` (default `https://feliparri.github.io/pixel-pet-city/`);
    `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are provided by Supabase to every function.
 3. End-to-end test: `node tools/fake-board.mjs run` (see the README's "Web trip" section).

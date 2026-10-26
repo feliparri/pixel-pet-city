@@ -7,6 +7,8 @@
 import { Walker } from './walker.js';
 import { hashSeed, mulberry32 } from './life.js';
 import { createWorld, NPC_STEP_MS } from './npc-world.js';
+import { FARM } from './map.js';
+import { CLERK_LINES } from './tools.js';
 
 export { npcTile, showSpans } from './npc-world.js';
 export const SLOT_MS = 13000;             // a villager may speak once per slot...
@@ -172,8 +174,12 @@ export function createNpcs({ seed, sprites, variants = createVariants() }) {
     const sayOffset = Math.floor(mulberry32(hashSeed(`${seed}:npc:${v.id}`))() * SLOT_MS);
     return { sayOffset, entity: { id: `npc:${v.id}`, name: v.name, look, walker: new Walker(0, 0), emote: null, jumpAt: null, say: null, npc: true, area: 'town', asleep: false, sprites: v.variant ? variants.get(sprites, v.variant) : sprites } };
   });
+  const clerkOk = CLERK.look.items.every((it) => !it || (sprites.catalogue && sprites.catalogue[it]));
+  const clerk = { id: `npc:${CLERK.id}`, name: CLERK.name, look: clerkOk ? CLERK.look : { ...CLERK.look, items: ['', '', '', ''] }, walker: new Walker(CLERK.tile[0], CLERK.tile[1], 'down'), emote: null, jumpAt: null, say: null, npc: true, clerk: true, area: 'farm', asleep: false, sprites: variants.get(sprites, CLERK.variant) };
   return {
     world,
+    /** The Almacén's clerk: one fixed entity in the farm (always awake, not part of the villagers' routines); the town sets its `say` when a pet comes by. */
+    clerk,
     update(t, ctx = {}) {
       const spans = ctx.shows || [], poses = world.poses(t, spans), pet = ctx.pet;
       return ents.map(({ entity, sayOffset }, i) => {
@@ -190,6 +196,15 @@ export function createNpcs({ seed, sprites, variants = createVariants() }) {
     },
   };
 }
+
+// ---- the Almacén's clerk ----------------------------------------------------------------------------------------------------------------
+
+/** The clerk stands behind the stall's counter (FARM.store); pets come from the south. `near`: tiles from which the stall can be used and the clerk greets. */
+export const CLERK = { id: 'clerk', name: 'Don Beto', look: { species: 'bear', stage: 2, items: ['tophat', '', 'bell_collar', ''] }, variant: { id: 'clerk', hue: 40, sat: 1.3 }, tile: [FARM.store.x + 1, FARM.store.y] };
+/** Is a pet at tile (x, y) at the stall's counter (the row below it, or one further, from a tile before its left end to one after its right end)? */
+export const nearStore = (x, y) => x >= FARM.store.x - 1 && x <= FARM.store.x + FARM.store.w && y >= FARM.store.y + FARM.store.h && y <= FARM.store.y + FARM.store.h + 1;
+/** The clerk's greeting for the n-th time a pet comes to the counter. */
+export const clerkGreeting = (n) => CLERK_LINES[((n % CLERK_LINES.length) + CLERK_LINES.length) % CLERK_LINES.length];
 
 // ---- the shopkeeper ---------------------------------------------------------------------------------------------------------------------
 

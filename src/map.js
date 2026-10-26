@@ -44,6 +44,7 @@ export const TILES = {
   'R': { name: 'barn', solid: true },
   'v': { name: 'well', solid: true },
   'Z': { name: 'scarecrow', solid: true },
+  'M': { name: 'stall', solid: true },         // the Almacén's stall (see FARM.store)
   // the shop
   '_': { name: 'floor', solid: false },
   'r': { name: 'rug', solid: false },
@@ -103,6 +104,7 @@ export const SIGNS = [
   { area: 'town', x: 43, y: 69, text: 'Pista', sub: 'Jugar' },
   { area: 'town', x: 42, y: 28, text: 'La Granja', sub: 'Al este' },
   { area: 'farm', x: 2, y: 16, text: 'Pueblo', sub: 'Al oeste' },
+  { area: 'farm', x: 36, y: 15, text: 'Almacén', sub: 'Herramientas' },
   { area: 'shop', x: 6.5, y: 2, text: 'Tienda', sub: 'Abierto' },
 ];
 
@@ -261,6 +263,7 @@ export const FARM = {
   pond: { x: 33, y: 30, w: 6, h: 4 },
   well: [25, 14],
   scarecrow: [11, 29],
+  store: { x: 31, y: 13, w: 4, h: 2 },         // the Almacén: a stall of 4 x 2 tiles east of the barn lane; the clerk stands behind its counter, pets come from the south
 };
 /** Which of the three fruit trees (0 apples, 1 oranges, 2 pears) stands at an orchard tile: stripes across the rows and columns. */
 export const fruitKind = (x, y) => (Math.floor((x - 4) / 3) + Math.floor((y - 4) / 3) + 6) % 3;
@@ -294,6 +297,7 @@ function buildFarm() {
     for (let j = 0; j < wh.h; j++) fill(wh.x, wh.y + j, wh.w, 1, j % 3 === 2 ? 'd' : 'Y');
     // the well and a bench by the road, the pond in the south east
     set(FARM.well[0], FARM.well[1], 'v'); set(27, 15, 'n');
+    fill(FARM.store.x, FARM.store.y, FARM.store.w, FARM.store.h, 'M');
     const pond = { 30: [34, 37], 31: [33, 38], 32: [33, 38], 33: [34, 37] };
     for (const [y, [a, b]] of Object.entries(pond)) fill(a, Number(y), b - a + 1, 1, '~');
     // lamps along the road and the lane, and the signpost back to the town
@@ -303,7 +307,7 @@ function buildFarm() {
     for (let x = 0; x < w; x++) { set(x, 0, x % 2 ? 'T' : 't'); set(x, h - 1, x % 2 ? 't' : 'T'); }
     for (let y = 0; y < h; y++) { set(0, y, y % 2 ? 't' : 'T'); set(w - 1, y, y % 2 ? 'T' : 't'); }
     fill(0, 17, 1, 2, '=');
-    for (const [x, y] of [[24, 2], [19, 2], [40, 14], [41, 15], [3, 32], [8, 33], [17, 33], [27, 33], [41, 33], [41, 29], [42, 22], [42, 26], [30, 31], [40, 31], [31, 14], [33, 14], [24, 20]]) set(x, y, (x + y) % 3 ? 't' : 'T');
+    for (const [x, y] of [[24, 2], [19, 2], [40, 14], [41, 15], [3, 32], [8, 33], [17, 33], [27, 33], [41, 33], [41, 29], [42, 22], [42, 26], [30, 31], [40, 31], [24, 20]]) set(x, y, (x + y) % 3 ? 't' : 'T');
   });
 }
 

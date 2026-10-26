@@ -5,6 +5,7 @@ import { sha256Hex, fromHex, verifyRequest, randomHex, safeEqual } from './crypt
 import { newCode, normalizeCode, isEntrance, DEFAULT_ENTRANCE } from './trip-code.js';
 import { cleanRadar } from './radar.js';
 import { SHOP, isForSale } from './shop.js';
+import { TOOLS, isTool } from './tools.js';
 import { events, eventSave, eventCancel } from './events.js';
 
 export const BODY_MAX = 12288;                 // a 6144-byte package is 8192 base64 characters, plus the JSON around it
@@ -61,8 +62,9 @@ const shopView = (trip) => ({
   bought: trip.bought ?? [],
 });
 
-const view = (trip) => ({
-  trip: trip.id, status: trip.status, entrance: trip.entrance, pet: trip.pet_view,
+/** The claim's view; `tools` (the pet's farm tools, kept per board) goes inside the pet. */
+const view = (trip, tools = []) => ({
+  trip: trip.id, status: trip.status, entrance: trip.entrance, pet: { ...trip.pet_view, tools },
   state: { version: trip.state_version, data: trip.state }, ...shopView(trip),
 });
 
@@ -132,12 +134,13 @@ async function tripClaim(req, deps) {
   if (trip.status === 'expired') return err(410, 'code_expired');
   if (trip.status !== 'waiting' && trip.status !== 'active') return err(410, 'trip_over', { status: trip.status });
 
+  const toolsOf = async (row) => deps.db.getTools(row.device_id).catch((e) => { deps.log?.('trip-claim tools', e); return []; });
   const newSession = async (where) => {
     const token = randomHex(32);
     const patch = { status: 'active', session_hash: await sha256Hex(fromHex(token)), session_seen_at: iso(now) };
     if (trip.status === 'waiting') patch.claimed_at = iso(now);
     const row = await deps.db.updateTrip(trip.id, where, patch);
-    return row ? reply(200, { ...view(row), token }) : null;
+    return row ? reply(200, { ...view(row, await toolsOf(row)), token }) : null;
   };
   if (trip.status === 'waiting') {
     const r = await newSession({ status: ['waiting'] });
@@ -148,7 +151,7 @@ async function tripClaim(req, deps) {
   const token = req.headers['x-trip-token'] || p.v.token;
   if (typeof token === 'string' && /^[0-9a-f]{64}$/.test(token) && trip.session_hash && safeEqual(await sha256Hex(fromHex(token)), trip.session_hash)) {
     const row = await deps.db.updateTrip(trip.id, { status: ['active'], session_hash: [trip.session_hash] }, { session_seen_at: iso(now) });
-    return row ? reply(200, { ...view(row), token }) : err(409, 'already_claimed');   // resumed: the same token keeps working
+    return row ? reply(200, { ...view(row, await toolsOf(row)), token }) : err(409, 'already_claimed');   // resumed: the same token keeps working
   }
   if (ms(trip.session_seen_at) < (now - SESSION_IDLE_S) * 1000) {            // the old tab went quiet: this one takes over
     const r = await newSession({ status: ['active'], session_hash: [trip.session_hash] });
@@ -202,6 +205,36 @@ async function tripBuy(req, deps) {
   const row = await deps.db.updateTrip(trip.id, { status: ['active'], spent: [spent] }, { spent: spent + item.price, bought: [...bought, key], session_seen_at: iso(deps.nowS()) });
   if (!row) return err(409, 'conflict');                                       // another buy or the recall got in first: the client asks again
   return reply(200, { gold_left: pkg.petInfo.gold - row.spent, bought: row.bought });
+}
+
+// ---- trip-buy-tool ------------------------------------------------------------------------------------------------------------
+// The Almacén: a farm tool paid with the pet's gold through the same ledger (trip.spent) as trip-buy. The tool is kept per board (pet_tools), so it
+// stays with the pet on later trips; it never goes in the return package, only its price lowers the returned gold.
+async function tripBuyTool(req, deps) {
+  const p = parseJson(req.body);
+  if (p.fail) return p.fail;
+  const s = await webTrip(req, p.v, deps);
+  if (s.fail) return s.fail;
+  const { trip } = s;
+  if (trip.status !== 'active') return err(409, 'trip_over', { status: trip.status });
+  const gold = trip.pet_view?.gold;
+  if (!trip.can_spend || !Number.isInteger(gold)) return err(403, 'shop_closed');
+  const key = p.v.tool;
+  if (!isTool(key)) return err(400, 'not_for_sale');
+  const owned = await deps.db.getTools(trip.device_id);
+  if (owned.includes(key)) return err(409, 'owned', { tools: owned });
+  const spent = trip.spent ?? 0, price = TOOLS[key].price, left = gold - spent;
+  if (price > left) return err(409, 'no_gold', { gold_left: Math.max(0, left), price });
+  const row = await deps.db.updateTrip(trip.id, { status: ['active'], spent: [spent] }, { spent: spent + price, session_seen_at: iso(deps.nowS()) });
+  if (!row) return err(409, 'conflict');                                       // another buy or the recall got in first: the client asks again
+  try {
+    await deps.db.addTool(trip.device_id, key);
+  } catch (e) {                                                                // the gold must not go without the tool: give it back, then fail
+    deps.log?.('trip-buy-tool', e);
+    await deps.db.updateTrip(trip.id, { spent: [row.spent] }, { spent }).catch((e2) => deps.log?.('trip-buy-tool undo', e2));
+    return err(503, 'try_again');
+  }
+  return reply(200, { gold_left: gold - row.spent, tools: [...owned, key] });
 }
 
 // ---- trip-recall --------------------------------------------------------------------------------------------------------------
@@ -280,7 +313,7 @@ async function tripAck(req, deps, device) {
   return now && now.status === 'closed' ? reply(200, { trip_id: trip.trip_id, status: 'closed', replayed: true }) : err(409, 'not_returned', { status: now?.status });
 }
 
-const ROUTES = { 'device-register': deviceRegister, 'trip-claim': tripClaim, 'trip-save': tripSave, 'trip-buy': tripBuy, 'trip-status': tripStatus,
+const ROUTES = { 'device-register': deviceRegister, 'trip-claim': tripClaim, 'trip-save': tripSave, 'trip-buy': tripBuy, 'trip-buy-tool': tripBuyTool, 'trip-status': tripStatus,
   'trip-start': tripStart, 'trip-recall': tripRecall, 'trip-return': tripReturn, 'trip-ack': tripAck,
   'events': events, 'event-save': eventSave, 'event-cancel': eventCancel };
 const GET_OK = new Set(['events']);                // the public list can also be read with GET

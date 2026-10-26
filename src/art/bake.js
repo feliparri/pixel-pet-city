@@ -1,6 +1,6 @@
 // Bakes an area (the town or an interior) into what the renderer needs: one ground canvas with every tile, small sprites for the tall
 // things that sort with the pets, the animated spots (pond ripples, the fountain), and what lights up at night (windows, lamps).
-import { TILE, HOUSES, PITCH, inPlaza, fruitKind } from '../map.js';
+import { TILE, HOUSES, PITCH, FARM, inPlaza, fruitKind } from '../map.js';
 import { canvas, noise, shadow } from './palette.js';
 import * as G from './ground.js';
 import * as PL from './places.js';
@@ -12,7 +12,7 @@ import { drawPet, CELL } from '../sprites.js';
 import { SHOPKEEPER } from '../npcs.js';
 
 let sprites = null;
-const kit = () => sprites || (sprites = { barn: FM.barn(), well: FM.well(), scarecrow: FM.scarecrow(), fruit: [FM.fruitTree(0), FM.fruitTree(1), FM.fruitTree(2)], oak: [oak(1), oak(2)], pine: [pine(1), pine(2)], bush: [bush(0), bush(1)], lamp: lamp(), lampLit: lampLit(), coop: PL.coop(), counter: counter(), nightWindow: nightWindow() });
+const kit = () => sprites || (sprites = { barn: FM.barn(), well: FM.well(), scarecrow: FM.scarecrow(), stallBack: FM.stallBack(), stallFront: FM.stallFront(), fruit: [FM.fruitTree(0), FM.fruitTree(1), FM.fruitTree(2)], oak: [oak(1), oak(2)], pine: [pine(1), pine(2)], bush: [bush(0), bush(1)], lamp: lamp(), lampLit: lampLit(), coop: PL.coop(), counter: counter(), nightWindow: nightWindow() });
 
 /** The outdoor areas: the town (plaza, fountain, houses) and the farm (fields, barn, orchard) share every tile that is the same. */
 function bakeOutdoor(area) {
@@ -56,6 +56,12 @@ function bakeOutdoor(area) {
       case 'A': G.grass(ctx, x, y, tx, ty); shadow(ctx, x + 14, y + 13, 13, 4, 0.32); out.props.push({ x: x - 8, y: y + 16 - 40, sortY: y + 16, sprite: k.fruit[fruitKind(tx, ty)] }); break;
       case 'R': G.grass(ctx, x, y, tx, ty); if (raw(tx - 1, ty) !== 'R' && raw(tx, ty - 1) !== 'R') { shadow(ctx, x + 48, y + 49, 52, 4, 0.3); out.props.push({ x, y: y + 48 - 64, sortY: y + 48, sprite: k.barn }); } break;
       case 'v': G.grass(ctx, x, y, tx, ty); shadow(ctx, x + 12, y + 15, 11, 3, 0.3); out.props.push({ x: x - 4, y: y + 16 - 32, sortY: y + 16, sprite: k.well }); break;
+      case 'M': G.grass(ctx, x, y, tx, ty); FM.stallFloor(ctx, x, y, tx, ty); if (tx === FARM.store.x && ty === FARM.store.y) {          // the Almacén's stall: the back stands behind the clerk, the front (awning, counter) before it
+        const foot = (FARM.store.y + FARM.store.h) * TILE, back = foot - 2 * TILE;                         // the back's foot is the top of the clerk's row
+        shadow(ctx, x + 32, foot - 1, 36, 4, 0.3);
+        out.props.push({ x, y: back - 34, sortY: back - 2, sprite: k.stallBack });
+        out.props.push({ x, y: foot - 62, sortY: foot, sprite: k.stallFront });
+      } break;
       case 'Z': G.grass(ctx, x, y, tx, ty); shadow(ctx, x + 9, y + 15, 6, 1.5, 0.3); out.props.push({ x, y: y + 16 - 28, sortY: y + 14, sprite: k.scarecrow }); break;
       case 't': G.grass(ctx, x, y, tx, ty); shadow(ctx, x + 14, y + 13, 13, 4, 0.32); out.props.push({ x: x - 8, y: y + 16 - 40, sortY: y + 16, sprite: k.oak[(tx * 3 + ty) & 1] }); break;
       case 'T': G.grass(ctx, x, y, tx, ty); shadow(ctx, x + 14, y + 13, 11, 3.5, 0.32); out.props.push({ x: x - 4, y: y + 16 - 40, sortY: y + 16, sprite: k.pine[(tx + ty) & 1] }); break;
