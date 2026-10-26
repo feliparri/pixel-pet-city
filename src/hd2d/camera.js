@@ -75,6 +75,8 @@ export const snapScale = (s) => Math.max(1, Math.round(s));
 /** A pet's pixel size on screen: PET_SCALE of the world's scale at its feet, whole (at least 1), so a pet is about 2/3 the size it was against the world around it. */
 export const PET_SCALE = 2 / 3;
 export const petScale = (s) => snapScale(s * PET_SCALE);
+/** Every pet's pixel size in a frame: the world's scale at the focus point (the depth there is `dist`), so a pet keeps one size wherever it stands instead of growing as it walks toward the screen. */
+export const petScaleOf = (cam) => petScale(cam.focal / cam.dist);
 
 /** A phone shows this many times more of the world than the camera framed before (1.5 times the tiles each way). */
 export const PHONE_OUT = 1.5;
