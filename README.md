@@ -7,7 +7,8 @@ small top-down town, walk around and greet each other with presets. Plain HTML, 
   A page without a trip shows how to enter and a "Tengo un código" field; there is no free pet chooser on the public page.
 - Private rooms by invite code (`FOCA-LUNA-42`): "Crear sala" makes one, "Unirse" needs it; only a pet whose trip was claimed sees these
   controls (see "Rooms and real pets" below for what is not enforced yet). Rooms cannot be listed and end when everyone leaves. No accounts.
-- No free-text chat: only the presets (👋 ❤️ 😄 🎉 "¡Hola!", "¡Juguemos!", "¡Chau!"). Only the pet's name and look are shared.
+- No free-text chat: only the presets (👋 ❤️ 😄 🎉 "¡Hola!", "¡Juguemos!", "¡Chau!"). Only the pet's name and look are shared. A villager that has just spoken near the pet
+  answers the pet's preset with a short line (and an emote of its own for the happy ones), on that screen only (`src/npc-react.js`); the others only see the pet's own emote.
 - A town of 48 x 74 tiles with a plaza and fountain, four houses, the Parque (pond, trees, bushes, open grass) and the Tienda, which can
   be entered (its raccoon shopkeeper sells accessories for the pet's gold, "Tienda" panel). On the farm the Almacén's stall sells the tools the farm work needs
   (Hoz, Balde, Saco de alimento; also the pet's gold, kept per pet in the town, "Almacén" panel). Every villager asks for one thing a day (harvest, bring fruit, water, feed;

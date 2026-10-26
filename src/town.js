@@ -25,6 +25,7 @@ import { createCanasta } from './canasta.js';
 import { createFarmMemory, farmView, clockOf } from './farm-world.js';
 import { actionAt, perform, objectAt } from './farm-actions.js';
 import { dayOf } from './npc-world.js';
+import { hearer, reactionTo, REPLY_WINDOW_MS, REPLY_DELAY_MS, REPLY_EMOTE_MS, REPLY_SAY_MS } from './npc-react.js';
 import { missionFor, missionText, missionRows, statusOf, thanksFor, doneLine, CAPPED_LINE, NOT_READY, GOLD_POP, claimErrorText } from './missions.js';
 
 const FADE_MS = 240;                                  // the fade-in after a door
@@ -55,9 +56,12 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   const farmLife = createFarmLife(net.code || net.id);               // and the farm's: the animals walk where the room's clock says
   const renderer = createTownRenderer({ canvas, sprites, font, minH: pad ? MIN_VIEW_H : VIEW_H, flat: new URLSearchParams(location.search).get('flat') === '1', onNotice: (text) => games.notify(text), onMode: onHdMode });   // a phone: big pixels; a desktop: as many tiles as before
   const npcs = createNpcs({ seed: net.code || net.id, sprites });           // the villagers: their place and lines come from (room, server time) alone, nothing of them goes over the net
-  const search = new URLSearchParams(location.search), devNpcT = search.get('dev') === '1' && Number.isFinite(Number(search.get('npct'))) && search.has('npct') ? Number(search.get('npct')) : null;      // development only: ?dev=1&npct=<ms> pins the villagers' clock
-  let shopVisits = 0, shopNear = false, shopSayUntil = 0, modal = false, thankLine = null, storeVisits = 0, storeNear = false, clerkSayUntil = 0;
-  let talkLine = null, npcsHere = [], claiming = false;      // a villager's answer to this pet (this screen only), the villagers of this area, a mission being handed in      // modal: a panel is open (shop, backpack): the pet stands still
+  const search = new URLSearchParams(location.search);
+  let devNpcT = search.get('dev') === '1' && Number.isFinite(Number(search.get('npct'))) && search.has('npct') ? Number(search.get('npct')) : null;      // development only: ?dev=1&npct=<ms> pins the villagers' clock
+  let shopVisits = 0, shopNear = false, shopSayUntil = 0, modal = false, thankLine = null,   // modal: a panel is open (shop, backpack): the pet stands still
+    storeVisits = 0, storeNear = false, clerkSayUntil = 0;
+  let talkLine = null, npcsHere = [], claiming = false, voices = [], spokeAt = new Map(), reply = null, replies = 0, shopSpokeAt = -Infinity;
+  // talkLine: a villager's answer to this pet (this screen only); npcsHere: the villagers of this area; claiming: a mission being handed in; voices/spokeAt: who spoke lately (the pet's emote is answered by one of them, src/npc-react.js)
   let farmAction = null, farmKey = '', farmAt = -Infinity, farmStamp = 0, farmSig = '', farmState = null;       // the farm: the action available now, and the crops as this pet sees them
   let fadeT0 = -Infinity, ambAt = -Infinity;
   const held = [];                                   // direction keys held, the latest last
@@ -214,6 +218,13 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       clerk.say = thankLine && t < thankLine.until ? thankLine.text : t < clerkSayUntil ? clerkGreeting(storeVisits - 1) : null;
       state.others = [...state.others, clerk];
     } else storeNear = false;
+    voices = self.area === 'farm' ? [...npcsHere, npcs.clerk] : npcsHere;      // whoever is talking now can be answered with an emote (react below); a villager's answer to that is not "talking"
+    for (const v of voices) if (v.say && !v.asleep) spokeAt.set(v.id, t);
+    if (reply && t >= reply.from) {
+      const v = voices.find((e) => e.id === reply.id);
+      if (t >= reply.until) reply = null;
+      else if (v) { if (reply.emote && t < reply.from + REPLY_EMOTE_MS) v.emote = { e: reply.emote, until: reply.from + REPLY_EMOTE_MS }; else v.say = reply.text; }
+    }
     const fk = farmAction ? `${farmAction.id}|${farmAction.label}` : '';
     if (fk !== farmKey) { farmKey = fk; onFarm({ action: farmAction }); }
     state.talk = null;
@@ -221,8 +232,10 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       const near = nearShopkeeper(w.tileX, w.tileY);
       if (near && !shopNear) { shopSayUntil = t + SHOP_SAY_MS; shopVisits++; }
       shopNear = near;
+      if (t < shopSayUntil || (thankLine && t < thankLine.until)) shopSpokeAt = t;
       if (thankLine && t < thankLine.until) state.talk = [{ x: SHOPKEEPER.head.x, y: SHOPKEEPER.head.y, text: thankLine.text }];
       else if (t < shopSayUntil) state.talk = [{ x: SHOPKEEPER.head.x, y: SHOPKEEPER.head.y, text: shopGreeting(shopVisits - 1) }];
+      if (reply && reply.id === 'shopkeeper' && t >= reply.from && t < reply.until) state.talk = [{ x: SHOPKEEPER.head.x, y: SHOPKEEPER.head.y, text: reply.text }];
     } else shopNear = false;
     self.act = activityOf({ area: self.area, game: gv.game, moving: w.busy });
     net.setActivity(self.act);
@@ -258,6 +271,17 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       if (d <= bd) { bd = d; best = n; }
     }
     return best;
+  }
+  /** The pet's emote was sent: the nearest villager that has just spoken (src/npc-react.js; in the shop, the shopkeeper) answers it, on this screen only. */
+  function react(e) {
+    const now = performance.now(), w = self.walker, pet = { x: w.tileX, y: w.tileY };
+    let target = null;
+    if (self.area === 'shop') { if (nearShopkeeper(pet.x, pet.y) && now - shopSpokeAt <= REPLY_WINDOW_MS) target = { id: 'shopkeeper' }; }
+    else target = hearer(voices.map((n) => { const p = n.walker.pos(); return { id: n.id, x: p.x, y: p.y, asleep: n.asleep }; }), pet, spokeAt, now);
+    const r = target && reactionTo(e, target.id.replace('npc:', ''), self.name, replies);
+    if (!r) return;
+    replies++;
+    reply = { id: target.id, text: r.line, emote: r.emote, from: now + REPLY_DELAY_MS, until: now + REPLY_DELAY_MS + (r.emote ? REPLY_EMOTE_MS : 0) + REPLY_SAY_MS };
   }
   const says = (id, text) => { talkLine = { id, text, until: performance.now() + TALK_SAY_MS }; };
   /**
@@ -393,6 +417,8 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     debug: {
       pos: () => [self.walker.tileX, self.walker.tileY],
       area: () => self.area,
+      /** development only (?dev=1&npct=<ms>): moves the pinned villagers' clock. */
+      setClock(ms) { if (devNpcT !== null && Number.isFinite(ms)) devNpcT = ms; },
       npcs: () => npcsHere.map((n) => { const p = n.walker.pos(); return { id: n.id, name: n.name, x: p.x, y: p.y, asleep: n.asleep, say: n.say }; }),
       warp(area, x, y) { self.area = area; self.walker.snap(x, y, 'down'); net.sendPos(x, y, 'down', area); fadeT0 = performance.now(); },
       goTo(x, y) { const mv = games.movement(); const path = findPath(self.walker.tileX, self.walker.tileY, x, y, mv.zone || mv.closed ? walkableFor(mv) : self.area); if (path.length) self.walker.setPath(path); return path.length; },
@@ -432,7 +458,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     thank(text) { thankLine = { text, until: performance.now() + SHOP_SAY_MS }; },
     emote(e) {
       if (self.fx || self.gone) return;
-      if (net.sendEmote(e)) self.emote = { e, until: performance.now() + EMOTE_MS };
+      if (net.sendEmote(e)) { self.emote = { e, until: performance.now() + EMOTE_MS }; react(e); }
     },
     destroy() {
       alive = false;
