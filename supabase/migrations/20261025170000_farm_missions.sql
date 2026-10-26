@@ -8,7 +8,7 @@ alter table public.trips
 
 create table public.pet_days (
   device_id  text not null references public.devices(id) on delete cascade,
-  day        text not null check (day ~ '^\d{4}-\d{2}-\d{2}$'),
+  day        text not null check (day ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'),
   earned     integer not null default 0 check (earned >= 0),
   done       jsonb not null default '[]'::jsonb check (jsonb_typeof(done) = 'array' and jsonb_array_length(done) <= 12),
   updated_at timestamptz not null default now(),
@@ -17,20 +17,3 @@ create table public.pet_days (
 
 alter table public.pet_days enable row level security;
 revoke all on public.pet_days from anon, authenticated;
-
--- Housekeeping: forget the days of the past (the same function the trips use, now also clearing pet_days older than 7 days).
-create or replace function public.cleanup_trips() returns integer language plpgsql security definer set search_path = public as $$
-declare n integer := 0; k integer;
-begin
-  update trips set status = 'expired' where status = 'waiting' and expires_at < now();
-  get diagnostics k = row_count; n := n + k;
-  delete from trips where status in ('closed', 'cancelled') and updated_at < now() - interval '7 days';
-  get diagnostics k = row_count; n := n + k;
-  delete from trips where status = 'expired' and updated_at < now() - interval '30 days';
-  get diagnostics k = row_count; n := n + k;
-  delete from pet_days where updated_at < now() - interval '7 days';
-  get diagnostics k = row_count; n := n + k;
-  return n;
-end $$;
-revoke all on function public.cleanup_trips() from public, anon, authenticated;
-grant execute on function public.cleanup_trips() to service_role;

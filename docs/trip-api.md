@@ -188,7 +188,7 @@ on `trip-claim` yet (add one at the gateway if abused).
 1b. Apply `supabase/migrations/20261025120000_town_events.sql` (table `town_events`, RLS on with no policy, `cleanup_town_events()`).
 1c. Apply `supabase/migrations/20261025140000_trip_shop.sql` (trips gain `can_spend`, `spent`, `bought`; apply it before deploying the function).
 1d. Apply `supabase/migrations/20261025160000_farm_tools.sql` (table `pet_tools`, RLS on with no policy; before deploying the function).
-1e. Apply `supabase/migrations/20261025170000_farm_missions.sql` (trips gain `earned`; table `pet_days`; `cleanup_trips()` also clears old days; before deploying the function).
+1e. Apply `supabase/migrations/20261025170000_farm_missions.sql` (trips gain `earned`; table `pet_days`; before deploying the function). `20261025180000_cleanup_trips.sql` creates `cleanup_trips()` (also clearing old days); nothing depends on it.
 2. Deploy the single function `trip` with `--no-verify-jwt` (or via `supabase/config.toml`). Entrypoint `index.ts`; files (relative to
    `supabase/functions/trip/`): `index.ts serve.ts db.ts handlers.js events.js crypto.js radar.js shop.js tools.js missions.js travel-package.js trip-code.js`. Secret `ADMIN_KEY` (the owner's, for the admin actions). Optional secret `TOWN_URL` (default `https://feliparri.github.io/pixel-pet-city/`);
    `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are provided by Supabase to every function.
