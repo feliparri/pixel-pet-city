@@ -108,7 +108,7 @@ authorization policy); see `docs/room-access.md`.
 
 - `pets.png`: 32 px cells, row = species * 4 + stage (frog, seal, cat; baby, child, adult, elder), column = frame (idle, blink, look, chomp, happy).
   The game has no side or back walk frames, so the town mirrors `look` for left/right and hops between tiles.
-- `parts.png`: 40 px cells, every accessory part with its own palette; `sprites.json` says, per item and per species-stage, where each
+- `parts.png`: every accessory part with its own palette, packed tight at its own size (under 4096 px a side; `partPos` / `partSizes`); `sprites.json` says, per item and per species-stage, where each
   part goes (`[part, x, y, mirror, behind]`, relative to the pet's cell) and its draw order (`drawOrder`).
 - `font.json`: the game's pixel font.
 

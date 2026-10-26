@@ -282,3 +282,37 @@ test('the HD-2D pet canvas has room around the cell for every worn part, so a ta
   assert.equal(lay.feetY, lay.origin.y + 30);                                             // the feet keep their row in the cell
   assert.deepEqual(petLayout({ items: {}, partSizes: [] }), { w: 48, h: 48, origin: { x: 8, y: 12 }, feetX: 24, feetY: 42 });   // no hats: the old canvas
 });
+
+test('the canvas is sized from what the pet wears: no hat is the old 48 x 48 with the feet where they were, the crown gets its own room, and no look needs more than the worst case', () => {
+  const data = JSON.parse(readFileSync(new URL('../assets/sprites.json', import.meta.url), 'utf8'));
+  const all = petLayout(data);
+  const bare = petLayout(data, { species: 'cat', stage: 2, items: ['', '', '', ''] });
+  assert.deepEqual(bare, { w: 48, h: 48, origin: { x: 8, y: 12 }, feetX: 24, feetY: 42 });
+  assert.deepEqual(petLayout(data, { species: 'cat', stage: 2, items: ['', '', '', ''] }), petLayout({ items: {}, partSizes: [] }));
+  const crowned = { species: 'cat', stage: 2, items: ['jamiro', '', '', ''] };
+  const lay = petLayout(data, crowned);
+  assert.ok(lay.w * lay.h > bare.w * bare.h && lay.w * lay.h <= all.w * all.h);
+  for (const [part, px, py] of [...data.items.jamiro.worn['cat-adult'].rest, ...(data.items.jamiro.worn['cat-adult'].flap || [])]) {
+    const [w, h] = data.partSizes[part];
+    assert.ok(lay.origin.x + px >= 0 && lay.origin.y + py >= 0 && lay.origin.x + px + w <= lay.w && lay.origin.y + py + h <= lay.h, 'the worn crown fits its own canvas');
+  }
+  for (const key of Object.keys(data.items.jamiro.worn)) {                                // every look the crown is worn in fits the worst case canvas
+    const [species, stage] = key.split('-'), l = petLayout(data, { species, stage: data.stages.indexOf(stage), items: ['jamiro', '', '', ''] });
+    assert.ok(l.w <= all.w && l.h <= all.h);
+  }
+});
+
+test('parts.png fits a phone\'s texture limit and every part sits inside it, apart from the others', () => {
+  const data = JSON.parse(readFileSync(new URL('../assets/sprites.json', import.meta.url), 'utf8'));
+  const head = readFileSync(new URL('../assets/parts.png', import.meta.url));
+  const W = head.readUInt32BE(16), H = head.readUInt32BE(20);
+  assert.ok(W <= 4096 && H <= 4096, `${W}x${H}`);
+  assert.equal(data.partPos.length, data.partSizes.length);
+  const rects = data.partPos.map(([x, y], i) => ({ x, y, w: data.partSizes[i][0], h: data.partSizes[i][1] }));
+  for (const r of rects) assert.ok(r.x >= 0 && r.y >= 0 && r.x + r.w <= W && r.y + r.h <= H);
+  rects.sort((a, b) => a.y - b.y || a.x - b.x);
+  for (let i = 0; i < rects.length; i++) for (let j = i + 1; j < rects.length && rects[j].y < rects[i].y + rects[i].h; j++) {
+    const a = rects[i], b = rects[j];
+    assert.ok(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y, 'two parts overlap');
+  }
+});

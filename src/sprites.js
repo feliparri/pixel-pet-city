@@ -20,6 +20,9 @@ export async function loadSprites(base = 'assets/') {
 
 export const CELL = 32;
 
+/** Where a part's art is in parts.png: its top left corner (sprites.json partPos; the parts are packed tight, each at its partSizes size). */
+const partXY = (data, part) => data.partPos[part];
+
 /**
  * The part to draw for a placed part at time `now` (ms). An animated item (the Jamiro Crown, the "Automaton" helmet: sprites.json items.*.anim { tickMs, modeMs,
  * seq, sets }) is drawn for the width of the pet's head, so it has one set of frames per width: [[frame per tick-index] per colour mode]. A look is placed with the
@@ -35,20 +38,24 @@ export const partAt = (item, part, now) => {
 };
 
 /** How far any worn part reaches beyond the pet's CELL x CELL square, in px: { top, left, right } (0 when nothing does). A painter that draws a pet on a scratch
- * canvas needs this much room around the cell, or a tall hat (the Jamiro Crown's fins) is cut off. Animated items have one size per width, so the placed art stands for all frames. */
-export const wornReach = (data) => {
+ * canvas needs this much room around the cell, or a tall hat (the Jamiro Crown's fins) is cut off. Animated items have one size per width, so the placed art stands for all frames.
+ * With a `look` it is what that pet wears; without, the worst case over every item. */
+export const wornReach = (data, look) => {
   const r = { top: 0, left: 0, right: 0 };
-  for (const item of Object.values(data.items)) for (const worn of Object.values(item.worn)) for (const [part, px, py] of [...worn.rest, ...(worn.flap || [])]) {
+  const key = look && `${look.species}-${STAGES[look.stage]}`;
+  const items = look ? look.items.map((id) => id && data.items[id]).filter(Boolean) : Object.values(data.items);
+  for (const item of items) for (const worn of look ? [item.worn[key]].filter(Boolean) : Object.values(item.worn)) for (const [part, px, py] of [...worn.rest, ...(worn.flap || [])]) {
     const w = data.partSizes[part][0];
     r.top = Math.max(r.top, -py); r.left = Math.max(r.left, -px); r.right = Math.max(r.right, px + w - CELL);
   }
   return r;
 };
 
-const MARGIN = { top: 12, side: 8, below: 4 };                              // the scratch canvas keeps at least this much around the 32 px cell (the feet are 30 rows down)
-/** The scratch canvas for a sprite set: the cell plus the room its tallest / widest worn part needs, so no hat is cut off (the flat view has no such canvas). */
-export function petLayout(data) {
-  const r = wornReach(data), top = Math.max(MARGIN.top, r.top + 1), left = Math.max(MARGIN.side, r.left + 1), right = Math.max(MARGIN.side, r.right + 1);
+const MARGIN = { top: 12, side: 8, below: 4 };                              // the scratch canvas keeps at least this much around the 32 px cell (the feet are 30 rows down): 48 x 48 with nothing worn
+/** The scratch canvas for a pet: the cell plus the room its tallest / widest worn part needs, so no hat is cut off (the flat view has no such canvas). With a `look`
+ * only what that pet wears counts (no hat: the plain 48 x 48 canvas, not the crown's); without, every item of the sprite set. */
+export function petLayout(data, look) {
+  const r = wornReach(data, look), top = Math.max(MARGIN.top, r.top + 1), left = Math.max(MARGIN.side, r.left + 1), right = Math.max(MARGIN.side, r.right + 1);
   return { w: left + CELL + right, h: top + CELL + MARGIN.below, origin: { x: left, y: top }, feetX: left + CELL / 2, feetY: top + 30 };
 }
 
@@ -72,7 +79,7 @@ export function drawPet(ctx, sp, look, x, y, { frame = 'idle', flip = false, fla
         if (isBehind !== behind) continue;
         const part = partAt(data.items[id], placed, now);
         const [w, h] = data.partSizes[part];
-        const sx = (part % data.partCols) * data.partCell, sy = Math.floor(part / data.partCols) * data.partCell;
+        const [sx, sy] = partXY(data, part);
         if (mirror) {
           ctx.save();
           ctx.translate(px + w, py);
@@ -102,7 +109,7 @@ export function drawItemIcon(ctx, sp, key, size = 40, now) {
   for (const behind of [1, 0]) {
     for (const p of parts) {
       if (p.behind !== behind) continue;
-      const sx = (p.part % sp.data.partCols) * sp.data.partCell, sy = Math.floor(p.part / sp.data.partCols) * sp.data.partCell;
+      const [sx, sy] = partXY(sp.data, p.part);
       const dx = ox + (p.px - x0) * k, dy = oy + (p.py - y0) * k;
       if (p.mirror) { ctx.save(); ctx.translate(dx + p.w * k, dy); ctx.scale(-1, 1); ctx.drawImage(sp.parts, sx, sy, p.w, p.h, 0, 0, p.w * k, p.h * k); ctx.restore(); }
       else ctx.drawImage(sp.parts, sx, sy, p.w, p.h, dx, dy, p.w * k, p.h * k);

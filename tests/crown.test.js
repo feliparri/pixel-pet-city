@@ -18,7 +18,7 @@ test('the export carries the helmet\'s animation: a set of frames per head width
   for (const set of sets) {
     assert.equal(set.length, modes);
     const [w, h] = data.partSizes[set[0][0]];
-    assert.ok(w <= data.partCell && h <= data.partCell);
+    assert.ok(w <= 84 && h <= 84);
     widths.add(w);
     for (const m of set) { assert.equal(m.length, n); for (const f of m) assert.deepEqual(data.partSizes[f], [w, h]); }
   }

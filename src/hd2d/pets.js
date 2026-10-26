@@ -11,10 +11,21 @@ import { lightAt } from './light.js';
 import { grade } from './scene.js';
 
 export function createPetPainter(sprites) {
-  const tmp = document.createElement('canvas'), tctx = tmp.getContext('2d');
-  let laid = null, lay = null;                                                                 // the layout of the sprite set last drawn (resizing clears the canvas)
-  const layoutFor = (sp) => {
-    if (laid !== sp.data) { laid = sp.data; lay = petLayout(sp.data); tmp.width = lay.w; tmp.height = lay.h; }
+  // One scratch canvas per size (a pet is cleared, drawn, graded and copied in one go, so pets of one size share it): a canvas is never resized once made, since
+  // resizing clears it and reallocates. A pet's layout comes from what it wears, so the common bare or lightly dressed pet stays on the small 48 x 48 one.
+  const canvases = new Map(), layouts = new WeakMap();
+  const canvasFor = (w, h) => {
+    const k = `${w}x${h}`;
+    let c = canvases.get(k);
+    if (!c) { const tmp = document.createElement('canvas'); tmp.width = w; tmp.height = h; c = { tmp, tctx: tmp.getContext('2d') }; canvases.set(k, c); }
+    return c;
+  };
+  const layoutFor = (sp, look) => {
+    let byLook = layouts.get(sp.data);
+    if (!byLook) layouts.set(sp.data, byLook = new Map());
+    const k = `${look.species}${look.stage}${look.items.join()}`;
+    let lay = byLook.get(k);
+    if (!lay) byLook.set(k, lay = petLayout(sp.data, look));
     return lay;
   };
 
@@ -27,7 +38,7 @@ export function createPetPainter(sprites) {
     const g = project(cam, wx, wy);
     if (!g) return null;
     const s = snapScale(g.scale), cx = Math.round(g.x), cy = Math.round(g.y);
-    const { w: SIZE, feetY: FEET_Y } = layoutFor(e.sprites || sprites);
+    const { w: SIZE, feetY: FEET_Y } = layoutFor(e.sprites || sprites, e.look);
     if (cx < -SIZE * s || cx > view.w + SIZE * s || cy < 0 || cy > view.h + FEET_Y * s) return null;
     const k = e.walker.moving ? Math.min(1, e.walker.t / e.walker.stepMs()) : 0;
     const hop = e.walker.moving ? Math.round(Math.abs(Math.sin(k * Math.PI)) * 3) : 0;
@@ -46,7 +57,7 @@ export function createPetPainter(sprites) {
         }
         if (!(fx && flickers(e.fx.id, e.fx.phase, now - e.fx.t0))) {
           const flap = (e.walker.moving || lift > 0) && Math.floor(now / 140) % 2 === 1;
-          const L = layoutFor(e.sprites || sprites);
+          const L = layoutFor(e.sprites || sprites, e.look), { tmp, tctx } = canvasFor(L.w, L.h);
           tctx.clearRect(0, 0, L.w, L.h);
           drawPet(tctx, e.sprites || sprites, e.look, L.origin.x, L.origin.y - hop, { frame: lift > 0 ? 'happy' : headFrame(e, now, e.id), flip: e.walker.d === 'left', flap, now });
           if (n > 0.02) grade(tctx, tmp, n, lightAt(world.lights, wx, wy));                      // night: the veil, and the warm wash where a lamp reaches
