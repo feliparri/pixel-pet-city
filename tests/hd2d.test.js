@@ -317,7 +317,7 @@ test('parts.png fits a phone\'s texture limit and every part sits inside it, apa
   }
 });
 
-test('pets are about 2/3 of the world scale, whole pixels, and a phone camera frames 1.5 times more of the world', () => {
+test('pets are about 2/3 of the world scale, whole pixels, and a phone camera frames 1.25 times more of the world', () => {
   assert.deepEqual([1, 3, 6, 9].map(petScale), [1, 2, 4, 6]);
   const a = cameraFor(1000, 600, 400, 320, 1), b = cameraFor(1000, 600, 400, 320, 1, { out: PHONE_OUT });
   near(a.focal / b.focal, PHONE_OUT);

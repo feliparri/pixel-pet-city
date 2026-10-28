@@ -23,7 +23,7 @@ import { smooth } from '../show/rand.js';
 const SHOW_FOCUS = { x: 24 * TILE, y: 21.5 * TILE };                     // the show's own frame: its bursts and drones are placed as seen from here
 const BADGE_LIFT = 60;                                                  // a place's badge floats this high over the ground point under it
 
-/** The HD-2D renderer of the outdoor town. `compact` (a phone) frames the view tighter, but shows 1.5 times more of the world than it used to (PHONE_OUT). */
+/** The HD-2D renderer of the outdoor town. `compact` (a phone) frames the view tighter, but shows 1.25 times more of the world than it used to (PHONE_OUT). */
 const LEVEL_KEY = 'city.hd2d.level';
 const savedLevel = () => { try { return Math.max(0, Number(localStorage.getItem(LEVEL_KEY)) | 0); } catch { return 0; } };
 const saveLevel = (v) => { try { localStorage.setItem(LEVEL_KEY, String(v)); } catch { /* private mode */ } };
