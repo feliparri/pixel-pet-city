@@ -25,11 +25,12 @@ import { createCanasta } from './canasta.js';
 import { createFarmMemory, farmView, clockOf } from './farm-world.js';
 import { actionAt, perform, objectAt } from './farm-actions.js';
 import { dayOf } from './npc-world.js';
+import { createHold, villagerAtTap, talkSpot, faceToward } from './npc-hold.js';
 import { hearer, reactionTo, REPLY_WINDOW_MS, REPLY_DELAY_MS, REPLY_EMOTE_MS, REPLY_SAY_MS } from './npc-react.js';
 import { missionFor, missionText, missionRows, statusOf, thanksFor, doneLine, CAPPED_LINE, NOT_READY, GOLD_POP, claimErrorText } from './missions.js';
 
 const FADE_MS = 240;                                  // the fade-in after a door
-const TALK_DIST = 2;                                  // a pet can talk to a villager this many tiles away (A / E / the prompt)
+const TALK_DIST = 2, TALK_DIST_PHONE = 3;             // a pet can talk to a villager this many tiles away (A / E / the prompt; the phone's thumb is less exact, and its view shows more tiles)
 const TALK_SAY_MS = 5200;                             // how long a villager's answer to the pet stays up
 const KEY_DIRS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', w: 'up', s: 'down', a: 'left', d: 'right', W: 'up', S: 'down', A: 'left', D: 'right' };
 
@@ -60,6 +61,8 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   let devNpcT = search.get('dev') === '1' && Number.isFinite(Number(search.get('npct'))) && search.has('npct') ? Number(search.get('npct')) : null;      // development only: ?dev=1&npct=<ms> pins the villagers' clock
   let shopVisits = 0, shopNear = false, shopSayUntil = 0, modal = false, thankLine = null,   // modal: a panel is open (shop, backpack): the pet stands still
     storeVisits = 0, storeNear = false, clerkSayUntil = 0;
+  const talkDist = pad ? TALK_DIST_PHONE : TALK_DIST, hold = createHold();   // hold: the villagers that wait for this pet on this screen (src/npc-hold.js)
+  let talkGo = null, nearTalkId = null;                              // talkGo: { id } a tapped villager the pet is walking to; nearTalkId: the one the prompt offers (both stand still for the pet)
   let talkLine = null, npcsHere = [], claiming = false, voices = [], spokeAt = new Map(), reply = null, replies = 0, shopSpokeAt = -Infinity;
   // talkLine: a villager's answer to this pet (this screen only); npcsHere: the villagers of this area; claiming: a mission being handed in; voices/spokeAt: who spoke lately (the pet's emote is answered by one of them, src/npc-react.js)
   let farmAction = null, farmKey = '', farmAt = -Infinity, farmStamp = 0, farmSig = '', farmState = null;       // the farm: the action available now, and the crops as this pet sees them
@@ -191,9 +194,20 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     if (getArea(self.area).outdoor && !vision && !(gv.game && gv.game.play)) {         // the villagers live in the town and on the farm (the ones of this area are drawn); while a game is played they are not drawn at all
       const sn = devNpcT === null ? events.serverNow() : devNpcT;
       const all = npcs.update(sn, { night: state.amb.night > 0.6, show: !!state.show && state.show.cut == null, shows: showSpans(events.events), pet: { name: self.name, area: self.area, x: w.tileX, y: w.tileY } });
+      const wait = new Set(); if (talkGo) wait.add(talkGo.id); if (nearTalkId) wait.add(nearTalkId); if (talkLine && t < talkLine.until) wait.add(talkLine.id);
+      hold.step(all, wait, { x: w.tileX, y: w.tileY }, dt, self.area, (x0, y0, x1, y1) => findPath(x0, y0, x1, y1, self.area));      // the villagers waiting for this pet stand still facing it, then walk back to their routine
       npcsHere = all.filter((n) => n.area === self.area);
       state.others = [...state.others, ...npcsHere];
     } else npcsHere = [];
+    if (talkGo) {                                                  // the pet was sent to a tapped villager: talk when it has arrived
+      const n = npcsHere.find((e) => e.id === talkGo.id), id = talkGo.id;
+      if (!n || n.asleep || held.length || self.fx || modal || mv.closed) talkGo = null;
+      else if (!w.busy) {
+        const p = n.walker.pos();
+        talkGo = null;
+        if (Math.hypot(p.x - w.tileX, p.y - w.tileY) <= talkDist) { w.face(faceToward(w.tileX, w.tileY, p.x, p.y)); talk(id); }
+      }
+    }
     if (self.area === 'farm') {                                    // the crops (the same clock for everyone, what was picked is this pet's) and the action the pet can do here
       const sn = devNpcT === null ? events.serverNow() : devNpcT;
       if (t - farmAt > 500 || !farmState) {
@@ -206,6 +220,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       farmAction = !w.busy && !self.fx && !modal && !mv.closed ? actionAt('farm', w.tileX, w.tileY, w.d, { basket: canasta, mem: farmMemory, room: net.code || net.id, nowMs: devNpcT === null ? events.serverNow() : devNpcT, tools: tools() }) : null;
     } else { state.farm = null; farmAction = null; }
     const talkTo = !w.busy && !self.fx && !modal && !mv.closed && !claiming && missions && missions.enabled() ? talkTarget() : null;
+    nearTalkId = talkTo ? talkTo.id : null;
     const atStore = self.area === 'farm' && !w.busy && !self.fx && !modal && !mv.closed && nearStore(w.tileX, w.tileY);
     if (atStore && (!farmAction || farmAction.id === 'hint')) farmAction = { id: 'store', label: 'Ver Almacén', target: 'store' };       // the stall's counter: the prompt opens the store
     if (talkTo && (!farmAction || farmAction.id === 'hint')) farmAction = { id: 'talk', label: `Hablar con ${talkTo.name}`, target: talkTo.id };      // a villager next to the pet: A talks (its mission)
@@ -264,7 +279,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   /** The nearest villager that is awake and within TALK_DIST of the pet, or null. */
   function talkTarget() {
     const w = self.walker;
-    let best = null, bd = TALK_DIST + 1e-9;
+    let best = null, bd = talkDist + 1e-9;
     for (const n of npcsHere) {
       if (n.asleep || n.clerk) continue;
       const p = n.walker.pos(), d = Math.hypot(p.x - w.tileX, p.y - w.tileY);
@@ -339,10 +354,28 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     if (best && best.length) { w.setPath(best); state.marker = { x: tile[0], y: tile[1], until: performance.now() + 500 }; return true; }
     return false;
   }
+  /** A tap on (or just behind, for a head in the HD-2D view) an awake villager: walk to a free tile beside it and talk on arrival, or talk at once when already within talkDist. Not a map walk, so it works with the stick on screen too. */
+  function tapVillager(tile) {
+    if (!missions || !missions.enabled() || claiming || !npcsHere.length) return false;
+    const w = self.walker, mv = games.movement();
+    if (mv.frozen || mv.zone || mv.closed) return false;
+    const n = villagerAtTap(tile, npcsHere.map((e) => { const p = e.walker.pos(); return { id: e.id, x: p.x, y: p.y, asleep: e.asleep, clerk: e.clerk }; }));
+    if (!n) return false;
+    const v = npcsHere.find((e) => e.id === n.id), vx = v.walker.tileX, vy = v.walker.tileY;
+    w.queue = [];
+    if (!w.busy && Math.hypot(n.x - w.tileX, n.y - w.tileY) <= talkDist) { w.face(faceToward(w.tileX, w.tileY, n.x, n.y)); talkGo = null; talk(n.id); return true; }
+    const spot = talkSpot(vx, vy, [w.tileX, w.tileY], { walkable: (x, y) => isWalkable(x, y, self.area) && !doorAt(x, y, self.area), taken: (x, y) => npcsHere.some((e) => e.walker.tileX === x && e.walker.tileY === y), path: (x0, y0, x1, y1) => findPath(x0, y0, x1, y1, self.area) });
+    if (!spot) return false;
+    talkGo = { id: n.id };
+    if (spot.path.length) { w.setPath(spot.path); state.marker = { x: spot.x, y: spot.y, until: performance.now() + 500 }; }
+    return true;
+  }
   function onPointer(ev) {
     if (ev.button > 0 || self.fx || self.gone || modal) return;
     const tile = renderer.pointToTile(ev.clientX, ev.clientY);
     if (!tile) return;
+    talkGo = null;
+    if (tapVillager(tile)) { ev.preventDefault(); return; }
     if (farmTap(tile, tapWalks(ev.pointerType, !!pad))) { ev.preventDefault(); return; }
     if (!tapWalks(ev.pointerType, !!pad)) return;      // with the stick on screen a finger on the map does not walk the pet
     ev.preventDefault();
