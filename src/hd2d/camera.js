@@ -132,6 +132,12 @@ export function focusBounds(cam, viewW, viewH, mapW, mapH, northSlack = 48) {
   return { x0, x1, y0, y1 };
 }
 
+/** The follow margins (fractions of the view) once things float over its top and bottom (the bar, the emotes row): `top` / `bottom` css px of the view they cover, `viewH` its css height; a little room stays beyond them. */
+export function followMargin(viewH, top = 0, bottom = 0, base = { x: 0.1, top: 0.06, bottom: 0.1 }) {
+  const room = 0.03, frac = (px) => (viewH > 0 && px > 0 ? px / viewH + room : 0);
+  return { x: base.x, top: Math.max(base.top, frac(top)), bottom: Math.max(base.bottom, frac(bottom)) };
+}
+
 /**
  * Where the camera's focus goes to follow a player standing at world (px, py) (the feet): inside `focusBounds` so the view stays on the
  * map, except where that would push the player toward the edge of the screen: then the focus moves back toward the player just far enough

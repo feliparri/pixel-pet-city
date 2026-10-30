@@ -170,12 +170,19 @@ async function enter(code, { transport = mode, arrival = null, solo = false } = 
   canasta = visit ? visit.canasta : (canasta || createCanasta());       // dev only: a basket that lives for this page
   if (!visit && !devFarm) devFarm = farmMemoryFor('dev');
   window.cityDebug = () => ({ town, net, canasta });                    // handy in the console when testing with two tabs
-  town = startTown({ canvas: $('view'), stage: $('stage'), pad: touch ? { stick: $('stick'), a: $('pad-a'), b: $('pad-b') } : null, sprites, font, net, me, entrance: arrival, stars: counter, canasta, farmMemory: visit ? visit.farm : devFarm, tools: () => (shopSource && shopSource.shop ? shopSource.shop.tools : []), onStore: () => shopUi && shopUi.openStore(), missions: missionsApi, onFarm: paintFarmPrompt, onFarmDone: farmPop, onHud: (info) => hud && hud.update(info), onHdMode: () => paintFx(), onShow: (on) => { $('show-back').hidden = !on; }, onShop: () => shopUi && shopUi.openShop() });
+  town = startTown({ canvas: $('view'), stage: $('stage'), pad: touch ? { stick: $('stick'), a: $('pad-a'), b: $('pad-b') } : null, sprites, font, net, me, entrance: arrival, stars: counter, canasta, farmMemory: visit ? visit.farm : devFarm, tools: () => (shopSource && shopSource.shop ? shopSource.shop.tools : []), onStore: () => shopUi && shopUi.openStore(), missions: missionsApi, onFarm: paintFarmPrompt, onFarmDone: farmPop, onHud: (info) => hud && hud.update(info), onHdMode: () => paintFx(), onShow: (on) => { $('show-back').hidden = !on; }, onShop: () => shopUi && shopUi.openShop(), insets: stageInsets });
   if (!town.hd.locked) town.hd.set(hdPref);
   paintFx();
   setStatus('connected');
   if (visit) visit.radar.now();                                 // the room changed: tell the phone's radar now
   return true;
+}
+
+/** How many css px of the stage the bar (top) and the emotes row (bottom, when it is a row over the stage) cover: the camera keeps the pet clear of them at the map's edges. */
+function stageInsets() {
+  const s = $('stage').getBoundingClientRect();
+  const over = (el, atTop) => { const r = el.getBoundingClientRect(); if (!r.height || !r.width) return 0; return atTop ? Math.max(0, r.bottom - s.top) : r.top > s.top + s.height / 2 ? Math.max(0, s.bottom - r.top) : 0; };
+  return { top: over($('bar'), true), bottom: over($('emotes'), false) };
 }
 
 /** What the town needs of the missions (src/town.js): on while the pet's board can spend (a real trip, or the dev mock), handed in through the shop source. */

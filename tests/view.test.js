@@ -40,6 +40,16 @@ test('the camera uses the view it is given: centred on the player, clamped to th
   assert.deepEqual(cameraFor(96, 80, 192, 160, 192, 160), { x: 0, y: 0 });
 });
 
+test('an inset lets the flat camera follow past the north and south edges, so a pet at the edge stands clear of the bar', () => {
+  const inset = { top: 20, bottom: 14 };
+  assert.deepEqual(cameraFor(10, 10, 768, 640, 400, 180, inset), { x: 0, y: -20 });           // the pet at the top edge: its row is the bar's height below the top
+  assert.deepEqual(cameraFor(10, 630, 768, 640, 400, 180, inset), { x: 0, y: 474 });          // and at the bottom edge: 14 px past the map's last row
+  assert.deepEqual(cameraFor(400, 300, 768, 640, 400, 180, inset), { x: 200, y: 210 });       // away from the edges nothing changes
+  assert.deepEqual(cameraFor(96, 80, 192, 160, 400, 180, inset), { x: -104, y: -10 });        // a small interior stays centred
+  const cam = cameraFor(10, 10, 768, 640, 400, 180, inset);
+  assert.ok(10 - cam.y >= inset.top);                                                          // the pet's row on screen is below the bar
+});
+
 test('a wide desktop window keeps the old pixel size: the minimum height is the portrait view, not the phone one', () => {
   const v = viewFor(1920, 1000, Infinity, Infinity, VIEW_H);
   assert.equal(v.scale, Math.floor(1000 / VIEW_H));

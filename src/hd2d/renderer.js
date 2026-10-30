@@ -5,7 +5,7 @@ import { TILE, SIGNS, PLACES, getArea } from '../map.js';
 import { createRenderer, drawBubble, MIN_VIEW_H, VIEW_H } from '../render.js';
 import { drawText, textWidth, textCanvas } from '../font.js';
 import { badge, bobY, BADGE } from '../art/icons.js';
-import { cameraFor, PHONE_OUT, followFocus, snapFocus, sortBackToFront, screenToTile, standAt, project } from './camera.js';
+import { cameraFor, PHONE_OUT, followFocus, followMargin, snapFocus, sortBackToFront, screenToTile, standAt, project } from './camera.js';
 import { groundMult, approach } from './light.js';
 import { buildWorld, bakeGround, drawGround, standingItems, drawGlows, fountainItem, paintFarm, decorItems, drawDecorGlows } from './scene.js';
 import { createFx } from './fx.js';
@@ -38,6 +38,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
   const worlds = new Map();                                                         // one baked world per outdoor area, built the first time it is visited
   let view = { w: 0, h: 0 }, cam = null, focus = null, last = null, ui = 2, hits = [];
   let groundKey = '', waterFrame = -1;
+  let inset = { top: 0, bottom: 0 };                                                // css px the bar (top) and the emotes row (bottom) cover: the pet is kept clear of them
   let showFx = null, kShow = 0, stars = null, starsSeed = null;
   const gov = createGovernor({ start: savedLevel() });
   const stat = { ms: 0, dt: 33, build: 0 };                                         // moving averages: the cost of drawing a frame, and the time between frames
@@ -87,7 +88,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
 
     const mp = state.me.walker.pos();                                   // the camera follows the player (see followFocus for the edges of the map)
     const probe = cameraFor(view.w, view.h, MAP_W / 2, MAP_H / 2, 1, { ref, out });
-    const t = followFocus(view.w, view.h, mp.x * TILE + TILE / 2, mp.y * TILE + TILE, MAP_W, MAP_H, { ref, out });
+    const t = followFocus(view.w, view.h, mp.x * TILE + TILE / 2, mp.y * TILE + TILE, MAP_W, MAP_H, { ref, out }, followMargin(box ? box.h : 0, inset.top, inset.bottom));
     const tx = t.x, ty = t.y;
     if (!focus) focus = { x: tx, y: ty };
     else { const kf = 1 - Math.exp(-dt / 140); focus.x += (tx - focus.x) * kf; focus.y += (ty - focus.y) * kf; }
@@ -233,7 +234,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
   }
 
   return {
-    resize, draw, pointToTile, activate,
+    resize, draw, pointToTile, activate, setInset(i) { inset = { top: i.top || 0, bottom: i.bottom || 0 }; },
     /** The player turned it back on after the automatic fallback: keep the cheapest level and do not fall back again. */
     pin() { gov.allowFlat = false; },
     /** For the console: { level, res, ms (drawing a frame), fps (frames per second as the screen got them), w, h }. */
@@ -274,6 +275,8 @@ export function createTownRenderer({ canvas, sprites, font, minH = MIN_VIEW_H, m
       }
       flatR.draw(state, now);
     },
+    /** css px of the view the bar (top) and the emotes row (bottom) float over: both renderers keep the pet clear of them at the map's edges. */
+    setInset(i) { hdR.setInset(i); flatR.setInset(i); },
     pointToTile: (x, y) => (kind === 'hd' ? hdR.pointToTile(x, y) : flatR.pointToTile(x, y)),
     get hd() { return hdOn && !failed; },
     stats: () => ({ mode: kind, ...hdR.stats() }),

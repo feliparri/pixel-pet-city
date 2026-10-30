@@ -46,11 +46,16 @@ export function viewFor(devW, devH, areaW = Infinity, areaH = Infinity, minH = M
   return { scale, pet: petScaleFor(scale), w: Math.max(1, Math.min(Math.floor(devW / scale), areaW)), h: Math.max(1, Math.min(Math.floor(devH / scale), areaH)) };
 }
 
-/** The camera's top left in map pixels: centred on the player, never showing outside the map; a map smaller than the view is centred. */
-export function cameraFor(px, py, mapW, mapH, viewW = VIEW_W, viewH = VIEW_H) {
-  const axis = (p, map, view) => Math.round(map <= view ? (map - view) / 2 : Math.min(Math.max(p - view / 2, 0), map - view));
-  return { x: axis(px, mapW, viewW), y: axis(py, mapH, viewH) };
+/**
+ * The camera's top left in map pixels: centred on the player, never showing outside the map; a map smaller than the view is centred.
+ * `inset` { top, bottom } (game px of the view that float UI covers) lets the camera follow past the north and south edges by that much,
+ * so a pet at the edge still stands clear of the bar; what shows beyond the map is the dark void the frame is filled with.
+ */
+export function cameraFor(px, py, mapW, mapH, viewW = VIEW_W, viewH = VIEW_H, inset = NO_INSET) {
+  const axis = (p, map, view, lo = 0, hi = 0) => Math.round(map <= view ? (map - view) / 2 : Math.min(Math.max(p - view / 2, 0 - lo), map - view + hi)) + 0;
+  return { x: axis(px, mapW, viewW), y: axis(py, mapH, viewH, inset.top, inset.bottom) };
 }
+const NO_INSET = { top: 0, bottom: 0 };
 
 export const headFrame = (e, now, id) => {
   const emote = e.emote && now < e.emote.until && HAPPY_EMOTES.has(e.emote.e);
@@ -256,6 +261,7 @@ export function createRenderer({ canvas, sprites, font, minH = MIN_VIEW_H, minW 
   let scale = 1, petScale = 1, viewW = VIEW_W, viewH = VIEW_H;
   let cam = { x: 0, y: 0 };
   let areaName = 'town';
+  let inset = NO_INSET;                              // css px of the view the bar (top) and the emotes row (bottom) cover
   let box = null, laidOut = null;                   // the last box (css size and pixel ratio) and the area the view was fitted to
 
   function layout() {
@@ -291,13 +297,14 @@ export function createRenderer({ canvas, sprites, font, minH = MIN_VIEW_H, minW 
     if (box && laidOut !== areaName) layout();      // another area (a small interior): the view is fitted to it
     const a = getArea(areaName);
     const mp = state.me.walker.pos();
-    cam = cameraFor(mp.x * TILE + TILE / 2, mp.y * TILE + TILE / 2, a.w * TILE, a.h * TILE, viewW, viewH);
+    const gameInset = { top: Math.ceil(inset.top * box.dpr / scale), bottom: Math.ceil(inset.bottom * box.dpr / scale) };      // css px -> game px
+    cam = cameraFor(mp.x * TILE + TILE / 2, mp.y * TILE + TILE / 2, a.w * TILE, a.h * TILE, viewW, viewH, gameInset);
     const bubbles = drawScene(ctx, { area: areaName, cam, vw: viewW, vh: viewH, entities: state.others, me: state.me, now, amb: state.amb, sprites, font, marker: state.marker, fade: state.fade || 0, chicken: state.chicken || null, dark: state.dark || null, life: state.life || null, ball: state.ball || null, talk: state.talk || null, farm: state.farm || null, halloween: !!state.halloween, zoom: scale, petZoom: petScale });
     ctx.setTransform(1, 0, 0, 1, 0, 0);                                         // the bubbles are drawn at the final size
     for (const b of bubbles) drawBubble(ctx, b, scale, canvas.width, scale);
   }
 
-  return { resize, draw, pointToTile, invalidate() { laidOut = null; }, get scale() { return scale; }, get petScale() { return petScale; } };
+  return { resize, draw, pointToTile, setInset(i) { inset = { top: i.top || 0, bottom: i.bottom || 0 }; }, invalidate() { laidOut = null; }, get scale() { return scale; }, get petScale() { return petScale; } };
 }
 
 /** Draws a bubble from the list drawScene returns: an emote or a line. `x`, `y` are multiplied by `mul` (flat: the view's zoom; HD-2D: already final). */

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { makeCamera, cameraFor, MAX_REACH, PHONE_OUT, petScale, petScaleOf, focusBounds, followFocus, snapScale, snapFocus, visibleTiles, project, unproject, groundRow, depthOf, billboardScale, standAt, tileToScreen, screenToTile, sortBackToFront, TILE } from '../src/hd2d/camera.js';
+import { followMargin, makeCamera, cameraFor, MAX_REACH, PHONE_OUT, petScale, petScaleOf, focusBounds, followFocus, snapScale, snapFocus, visibleTiles, project, unproject, groundRow, depthOf, billboardScale, standAt, tileToScreen, screenToTile, sortBackToFront, TILE } from '../src/hd2d/camera.js';
 import { groundMult, NIGHT_TINT, falloff, lightAt, nightMultiply, spriteGrade, approach, LAMP_RADIUS } from '../src/hd2d/light.js';
 import { createGovernor, LEVELS, SLOW_MS } from '../src/hd2d/quality.js';
 import { Wanderer, rng } from '../src/hd2d/wander.js';
@@ -255,6 +255,31 @@ test('the player stays on screen with a margin on every walkable tile, also alon
       checked++; if (tx <= 1 || ty <= 1 || tx >= town.w - 2 || ty >= town.h - 2) atEdge++;
     }
     assert.ok(checked > 1000 && atEdge > 20, `${checked} tiles, ${atEdge} on the edge`);
+  }
+});
+
+test('followMargin widens the margins to what floats over the view, and never below the base', () => {
+  assert.deepEqual(followMargin(800), { x: 0.1, top: 0.06, bottom: 0.1 });
+  const m = followMargin(800, 60, 40);
+  near(m.top, 60 / 800 + 0.03); assert.equal(m.bottom, 0.1);                                  // the bar is taller than the base margin; a thin row at the bottom is not
+  near(followMargin(800, 0, 120).bottom, 120 / 800 + 0.03);
+  assert.deepEqual(followMargin(0, 60, 60), { x: 0.1, top: 0.06, bottom: 0.1 });              // no view yet: the base
+});
+
+test('with the bar over the top of the view the pet stays clear of it on every walkable tile, also at the top edge of the map', () => {
+  const town = getArea('town'), W = town.w * TILE, H = town.h * TILE;
+  for (const [vw, vh, ref, bar, row] of [[1280, 720, 230, 52, 0], [750, 1136, 230, 70, 96], [1266, 585, 170, 40, 0]]) {
+    const opts = { ref }, margin = followMargin(vh, bar, row);
+    let atTop = 0;
+    for (let ty = 0; ty < town.h; ty++) for (let tx = 0; tx < town.w; tx++) {
+      if (!isWalkable(tx, ty)) continue;
+      const px = tx * TILE + TILE / 2, py = ty * TILE + TILE;
+      const f = followFocus(vw, vh, px, py, W, H, opts, margin), p = project(cameraFor(vw, vh, f.x, f.y, 1, opts), px, py);
+      assert.ok(p.y - 34 * p.scale >= bar - 1e-6, `${vw}x${vh} tile ${tx},${ty}: the pet's head ${(p.y - 34 * p.scale).toFixed(0)} is under the ${bar}px bar`);
+      assert.ok(p.y <= vh - row + 1e-6, `${vw}x${vh} tile ${tx},${ty}: the pet's feet ${p.y.toFixed(0)} are under the bottom row`);
+      if (ty <= 1) atTop++;
+    }
+    assert.ok(atTop > 5);
   }
 });
 

@@ -48,7 +48,7 @@ function spawnFor(id) {
  * (src/tools.js); onStore(): the pet asked for the Almacén (the farm store); missions: null (villagers just chat) or { enabled(), ledger() ({ day, cap, earned,
  * done }, what the server paid today), claim(m) (hands a mission in: the server pays real gold, src/trip.js claimMission) }; onFarm({ action, prompt }) says which action is available (or null) when it changes, onFarmDone(result) reports an action's outcome (the pop) and onFarmAction(event) every action done (missions).
  * Returns { onNetEvent, emote, playExit, games: { play, join, seek, leave, dismiss }, farm: { act }, destroy }. */
-export function startTown({ canvas, stage, pad = null, sprites, font, net, me, entrance = null, stars = { add() {} }, canasta = createCanasta(), farmMemory = createFarmMemory(), tools = () => [], onStore = () => {}, missions = null, onHud = () => {}, onHdMode = () => {}, onShow = () => {}, onShop = () => {}, onFarm = () => {}, onFarmDone = () => {}, onFarmAction = () => {} }) {
+export function startTown({ canvas, stage, pad = null, sprites, font, net, me, entrance = null, stars = { add() {} }, canasta = createCanasta(), farmMemory = createFarmMemory(), tools = () => [], onStore = () => {}, missions = null, onHud = () => {}, onHdMode = () => {}, onShow = () => {}, onShop = () => {}, insets = () => ({ top: 0, bottom: 0 }), onFarm = () => {}, onFarmDone = () => {}, onFarmAction = () => {} }) {
   const [sx, sy] = spawnFor(net.id);
   const self = { id: net.id, name: me.name, look: me.look, stats: me.stats || null, act: 'idle', walker: new Walker(sx, sy), emote: null, jumpAt: null, area: 'town' };
   if (entrance) self.fx = { id: entrance, phase: 'arrive', t0: performance.now(), resolve: null };
@@ -117,6 +117,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
 
   function resize() {
     const r = stage.getBoundingClientRect();
+    renderer.setInset(insets());
     renderer.resize(r.width, r.height, window.devicePixelRatio || 1);
   }
   const ro = new ResizeObserver(resize);
