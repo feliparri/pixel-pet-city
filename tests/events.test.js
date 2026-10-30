@@ -266,3 +266,12 @@ test('season-save validates the season, year, mode and dates', async () => {
   assert.equal(w.db.townSeasons.size, 1);
   assert.equal(iso(w.db.townSeasons.get('halloween|2027').starts_at), '2027-10-20T00:00:00.000Z');
 });
+
+test('events still answers when the seasons cannot be read (no table, a db error): seasons is empty', async () => {
+  const w = world({ adminKey: KEY });
+  w.db.listSeasons = async () => { throw new Error('db 404'); };
+  await save(w);
+  const a = await w.web().call('events', {});
+  assert.equal(a.status, 200);
+  assert.deepEqual([a.body.seasons, a.body.events.length], [[], 1]);
+});

@@ -185,8 +185,8 @@ time, so a season goes live by itself. Table `town_seasons` (migration `20261030
 one row per (`season`, `year`), `year` being the year the window starts in. No row means the default window. Known `season` keys: `halloween`.
 
 * `events` also returns `seasons`: the overrides whose `year` is last, this or next year (UTC year of the server's clock): `{ season, year, mode, starts_ms, ends_ms }`,
-  `mode` being `dates` (the season runs from `starts_ms` to `ends_ms` instead of its default window), `on` (forced on for that year) or `off` (forced off for that year);
-  the dates are `null` unless the mode is `dates`. A client without a row, or without an answer, uses the default window.
+  `mode` being `dates` (the season runs from `starts_ms` to `ends_ms` instead of its default window), `on` (legacy: on from New Year of that year until the end of that year's default window; the admin page sends `dates` instead, from now to that end) or `off` (forced off for that year);
+  the dates are `null` unless the mode is `dates`. A client without a row, or without an answer, uses the default window. If the overrides cannot be read, `events` still answers with `seasons: []`.
 * `season-save` (POST, header `x-admin-key`): body `{ season, year, mode, starts_at?, ends_at? }`; `starts_at` and `ends_at` (ISO 8601 with a time zone) are required for
   `dates` (the end after the start, at most 400 days) and ignored otherwise; `year` is from last year to 5 years ahead; replaces the row; `200 { season: { season, year, mode, starts_ms, ends_ms } }`.
 * `season-clear` (POST, header `x-admin-key`): body `{ season, year }`; deletes the row; `200 { season, year, cleared: true, replayed }` (`replayed`: there was none).

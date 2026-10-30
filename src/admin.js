@@ -5,7 +5,7 @@ import { createEventsApi, adminErrorText } from './events-client.js';
 import { zonedToMs, msToZoned, labelZoned, untilText, zoneOffset, parseDuration, durationText } from './admin-time.js';
 import { SHOWS } from './show/timeline.js';
 import { LAUNCH_NOW_MS } from './town-events.js';
-import { SEASONS, SEASON_KEYS, seasonStatus, defaultWindow } from './seasons.js';
+import { SEASONS, SEASON_KEYS, seasonStatus, defaultWindow, launchWindow } from './seasons.js';
 
 const $ = (id) => document.getElementById(id);
 const KEY_STORE = 'town.adminKey';
@@ -73,7 +73,7 @@ function paintSeasons() {
     const st = seasonStatus(k, now, seasonRows), dflt = defaultWindow(k, st.year), w = st.window || dflt;
     const li = el('li'), head = el('div', 'season-head');
     head.append(el('h3', '', SEASONS[k].label), el('span', `badge ${st.state}`, STATE_TEXT[st.state]));
-    const how = st.mode === 'on' ? `Lanzada a mano: encendida durante todo ${st.year}.` : st.mode === 'off' ? `Apagada a mano durante ${st.year}.` : st.mode === 'dates' ? `Fechas cambiadas para ${st.year}: ${span(w)}.` : `Usa las fechas por defecto de ${st.year}.`;
+    const how = st.mode === 'on' ? `Lanzada a mano hasta el fin de sus fechas por defecto de ${st.year}.` : st.mode === 'off' ? `Apagada a mano durante ${st.year}.` : st.mode === 'dates' ? `Fechas cambiadas para ${st.year}: ${span(w)}.` : `Usa las fechas por defecto de ${st.year}.`;
     const info = el('p', 'season-when', `Por defecto: ${span(dflt)}. ${how}`);
     const a = msToZoned(w[0]), z = msToZoned(w[1]);
     const from = input('date', a.date), fromT = input('time', a.time), to = input('date', z.date), toT = input('time', z.time);
@@ -90,7 +90,10 @@ function paintSeasons() {
     const now_ = el('button', 'btn primary', 'Lanzar ahora'), off = el('button', 'btn danger', 'Apagar'), back = el('button', 'btn', 'Volver a las fechas por defecto');
     for (const x of [now_, off, back]) x.type = 'button';
     back.disabled = st.mode === 'default';
-    now_.addEventListener('click', () => seasonAct(now_, () => api.seasonSave({ season: k, year: st.year, mode: 'on' }, key), `${SEASONS[k].label}: lanzada. Todos la ven en unos 25 segundos.`));
+    now_.addEventListener('click', () => {
+      const l = launchWindow(k, serverNow());                          // from now to the end of the default window (or for its default length); the owner can edit the end after
+      seasonAct(now_, () => api.seasonSave({ season: k, year: l.year, mode: 'dates', starts_at: new Date(l.startsMs).toISOString(), ends_at: new Date(l.endsMs).toISOString() }, key), `${SEASONS[k].label}: lanzada hasta el ${labelZoned(l.endsMs)} (Chile). Todos la ven en unos 25 segundos; puedes cambiar el término abajo.`);
+    });
     off.addEventListener('click', () => seasonAct(off, () => api.seasonSave({ season: k, year: st.year, mode: 'off' }, key), `${SEASONS[k].label}: apagada.`));
     back.addEventListener('click', () => seasonAct(back, () => api.seasonClear(k, st.year, key), `${SEASONS[k].label}: de vuelta a las fechas por defecto.`));
     const prev = el('a', 'btn', 'Vista previa'); prev.href = `index.html?dev=1&season=${encodeURIComponent(k)}`; prev.target = '_blank'; prev.rel = 'noopener';

@@ -64,7 +64,8 @@ export async function events(req, deps) {
   const longest = DURATION_MAX_S * 1000;                                     // a running show may be the longest one
   const rows = await deps.db.listEvents(iso(t - longest), iso(t + ahead * 1000));
   const list = rows.map(publicEvent).filter((e) => e.start_ms + e.duration_ms > t).sort((x, y) => x.start_ms - y.start_ms).slice(0, limit);
-  const y = yearOf(deps), seasons = (await deps.db.listSeasons(y - 1, y + 1)).map(publicSeason);
+  let seasons = [];                                                          // the overrides are a bonus: if they cannot be read (no table yet, a db error) the shows still come and the town uses the defaults
+  try { const y = yearOf(deps); seasons = (await deps.db.listSeasons(y - 1, y + 1)).map(publicSeason); } catch (e) { deps.log?.('events/seasons', e); }
   return reply(200, { now: t, events: list, seasons });
 }
 

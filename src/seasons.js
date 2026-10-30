@@ -48,14 +48,14 @@ function isOn(key, ms, cy, by, registry) {
     if (r?.mode === 'off') continue;
     const w = effective(key, y, by, registry);
     if (w && ms >= w[0] && ms < w[1]) return true;
-    if (r?.mode === 'on' && (y === cy || (y === cy - 1 && ms < defaultWindow(key, y, registry)[1]))) return true;     // forced on: for that year (and a window that runs past New Year)
+    if (r?.mode === 'on' && ms < defaultWindow(key, y, registry)[1]) return true;     // legacy forced on: from New Year's day of that year to the end of its default window (the admin sends dates now)
   }
   return false;
 }
 
 /**
  * The seasons that are on at server time `ms`: a Set of keys. `overrides` are the rows of the `events` answer (none: the defaults). `registry` is for tests.
- * Per override: mode 'dates' replaces that year's window, 'on' is on for that Chile year, 'off' turns that year's window off.
+ * Per override: mode 'dates' replaces that year's window, 'on' (legacy) is on until the end of that year's default window, 'off' turns that year's window off.
  */
 export function activeSeasons(ms, overrides = [], registry = SEASONS) {
   const out = new Set();
@@ -63,6 +63,12 @@ export function activeSeasons(ms, overrides = [], registry = SEASONS) {
   const by = indexRows(overrides, registry), cy = chileYear(ms);
   for (const key of Object.keys(registry)) if (isOn(key, ms, cy, by, registry)) out.add(key);
   return out;
+}
+
+/** "Lanzar ahora" at `ms`: { year, startsMs, endsMs } to save as an override of dates: from now to the end of this Chile year's default window, or, when that is already over, for the season's default length. */
+export function launchWindow(key, ms, registry = SEASONS) {
+  const year = chileYear(ms), [s, e] = defaultWindow(key, year, registry);
+  return { year, startsMs: ms, endsMs: e > ms ? e : ms + (e - s) };
 }
 
 /**

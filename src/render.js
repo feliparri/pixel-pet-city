@@ -19,6 +19,7 @@ import { ball as drawBall } from './art/places.js';
 import { drawBird, drawButterfly, drawFirefly, drawDuck, drawRing, drawSpray } from './art/life.js';
 import { drawAnimal, plotTile } from './art/farm.js';
 import { halloweenDecor, ghostFrames } from './art/halloween.js';
+import { GHOST_SCALE } from './ghosts.js';
 
 export const VIEW_W = 224;              // the portrait reference view; a box taller than wide is fitted to it (and the dev previews use it)
 export const VIEW_H = 288;
@@ -189,11 +190,11 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
   if (ghosts && ghosts.length) {                                               // Halloween's wandering ghosts float over everything, translucent (after the tint, so they stay visible at night)
     const fr = ghostFrames();
     for (const g of ghosts) {
-      const spr = fr[g.frame], x = Math.round(g.x - 5 - cam.x), y = Math.round(g.y - g.lift - 12 - cam.y);
-      if (x > vw || x + 10 < 0 || y > vh || y + 12 < 0) continue;
-      sctx.fillStyle = 'rgba(24,28,44,0.22)'; sctx.fillRect(Math.round(g.x - 4 - cam.x), Math.round(g.y - cam.y), 8, 2);
+      const spr = fr[g.frame], w = 10 * GHOST_SCALE, h = 12 * GHOST_SCALE, x = Math.round(g.x - w / 2 - cam.x), y = Math.round(g.y - g.lift - h - cam.y);
+      if (x > vw || x + w < 0 || y > vh || y + h < 0) continue;
+      sctx.fillStyle = 'rgba(24,28,44,0.22)'; sctx.fillRect(Math.round(g.x - 7 - cam.x), Math.round(g.y - cam.y), 14, 3);
       sctx.globalAlpha = g.a;
-      if (g.flip) { sctx.save(); sctx.translate(x + 10, y); sctx.scale(-1, 1); sctx.drawImage(spr, 0, 0); sctx.restore(); } else sctx.drawImage(spr, x, y);
+      if (g.flip) { sctx.save(); sctx.translate(x + w, y); sctx.scale(-1, 1); sctx.drawImage(spr, 0, 0, w, h); sctx.restore(); } else sctx.drawImage(spr, x, y, w, h);
       sctx.globalAlpha = 1;
     }
   }

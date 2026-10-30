@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SEASONS, SEASON_KEYS, activeSeasons, seasonStatus, defaultWindow, parseDevSeasons } from '../src/seasons.js';
+import { SEASONS, SEASON_KEYS, activeSeasons, launchWindow, seasonStatus, defaultWindow, parseDevSeasons } from '../src/seasons.js';
 import { zonedToMs } from '../src/admin-time.js';
 import { SEASON_KEYS as SERVER_KEYS } from '../supabase/functions/trip/events.js';
 
@@ -37,13 +37,26 @@ test('override dates replace the default window of that year only', () => {
   assert.deepEqual(on(at('2027-10-30'), rows), ['halloween'], 'next year is the default again');
 });
 
-test('forced on lasts the whole year; forced off silences that year\'s window', () => {
+test('legacy forced on lasts until the end of that year\'s default window; forced off silences that year\'s window', () => {
   const force = (mode) => [{ season: 'halloween', year: 2026, mode, starts_ms: null, ends_ms: null }];
   assert.deepEqual(on(at('2026-03-10'), force('on')), ['halloween']);
-  assert.deepEqual(on(at('2026-12-31', '23:00'), force('on')), ['halloween']);
-  assert.deepEqual(on(at('2027-03-10'), force('on')), [], 'not into the next year');
+  assert.deepEqual(on(at('2026-11-01', '05:59'), force('on')), ['halloween']);
+  assert.deepEqual(on(at('2026-11-01', '06:00'), force('on')), [], 'not for the rest of the year');
+  assert.deepEqual(on(at('2026-12-31', '23:00'), force('on')), []);
+  assert.deepEqual(on(at('2027-03-10'), force('on')), []);
   assert.deepEqual(on(at('2026-10-30'), force('off')), []);
   assert.deepEqual(on(at('2027-10-30'), force('off')), ['halloween'], 'only that year');
+});
+
+test('launchWindow: from now to the end of this year\'s default window, or for the default length when that is over', () => {
+  const now = at('2026-06-01'), w = launchWindow('halloween', now);
+  assert.deepEqual([w.year, w.startsMs, w.endsMs], [2026, now, defaultWindow('halloween', 2026)[1]]);
+  const late = at('2026-11-20'), l = launchWindow('halloween', late), [s, e] = defaultWindow('halloween', 2026);
+  assert.deepEqual([l.year, l.startsMs, l.endsMs], [2026, late, late + (e - s)]);
+  const rows = [{ season: 'halloween', year: w.year, mode: 'dates', starts_ms: w.startsMs, ends_ms: w.endsMs }];
+  assert.deepEqual(on(now, rows), ['halloween']);
+  assert.deepEqual(on(w.endsMs, rows), []);
+  assert.deepEqual(on(now - 1, rows), []);
 });
 
 test('a window that runs over New Year belongs to the year it starts in', () => {
@@ -55,7 +68,7 @@ test('a window that runs over New Year belongs to the year it starts in', () => 
   assert.deepEqual(on(at('2027-01-03'), off, REG), [], 'forced off for 2026 also covers its January');
   assert.deepEqual(on(at('2026-12-25'), off, REG), []);
   assert.deepEqual(on(at('2027-01-03'), on26, REG), ['navidad']);
-  assert.deepEqual(on(at('2027-02-03'), on26, REG), [], 'forced on ends with its window when it runs into the next year');
+  assert.deepEqual(on(at('2027-02-03'), on26, REG), [], 'legacy forced on ends with its default window');
   const dates = [{ season: 'navidad', year: 2027, mode: 'dates', starts_ms: at('2026-12-20', '00:00'), ends_ms: at('2027-01-02', '00:00') }];
   assert.deepEqual(on(at('2026-12-21'), dates, REG), ['navidad'], 'dates of a year may start the year before');
   assert.deepEqual(on(at('2026-12-31'), [], REG).concat(on(at('2026-12-31'), [{ season: 'navidad', year: 2026, mode: 'off' }, ...dates], REG)), ['navidad', 'navidad']);

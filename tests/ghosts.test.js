@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ghostsAt, GHOST_HOMES, ROAM } from '../src/ghosts.js';
+import { ghostsAt, GHOST_ZONES } from '../src/ghosts.js';
 import { getArea, tileAt, TILE } from '../src/map.js';
 
 test('ghosts: 4 in the town, 2 in the farm, none indoors', () => {
@@ -15,15 +15,21 @@ test('ghosts: the same place for everybody (a pure function of area and time)', 
   assert.notDeepEqual(ghostsAt('town', 1e12).map((g) => g.x), ghostsAt('town', 1e12 + 20_000).map((g) => g.x), 'they drift');
 });
 
-test('ghosts: homes are open ground and they stay near home, inside the map', () => {
-  for (const [name, homes] of Object.entries(GHOST_HOMES)) {
+test('ghosts: all the zones are open ground and every ghost, all day long, hovers over open walkable tiles of its area (never a building, a tree or water)', () => {
+  const open = (x, y, name) => '.,+'.includes(tileAt(Math.floor(x / TILE), Math.floor(y / TILE), name));
+  for (const [name, zones] of Object.entries(GHOST_ZONES)) {
+    for (const z of zones) for (let j = 0; j < z.h; j++) for (let i = 0; i < z.w; i++) assert.ok('.,+'.includes(tileAt(z.x + i, z.y + j, name)), `${name} zone tile ${z.x + i},${z.y + j} is '${tileAt(z.x + i, z.y + j, name)}'`);
     const a = getArea(name);
-    for (const [x, y] of homes) assert.ok('.,+'.includes(tileAt(x, y, name)), `${name} home ${x},${y} is on '${tileAt(x, y, name)}'`);
-    for (let k = 0; k < 400; k++) ghostsAt(name, 1e12 + k * 7919).forEach((g, i) => {
-      assert.ok(Math.abs(g.x - (homes[i][0] + 0.5) * TILE) <= (ROAM.x + 0.3) * TILE + 1 && Math.abs(g.y - (homes[i][1] + 0.5) * TILE) <= ROAM.y * TILE + 1);
+    for (let ms = 1e12; ms < 1e12 + 86_400_000; ms += 20_000) ghostsAt(name, ms).forEach((g) => {
+      for (const [dx, dy] of [[0, 0], [-8, 0], [8, 0], [0, -8], [0, 8]]) assert.ok(open(g.x + dx, g.y + dy, name), `${name} ghost at ${g.x},${g.y} (${dx},${dy})`);
       assert.ok(g.x > 0 && g.y > 0 && g.x < a.w * TILE && g.y < a.h * TILE);
     });
   }
+});
+
+test('ghosts: they actually wander across their zone', () => {
+  const xs = []; for (let ms = 1e12; ms < 1e12 + 86_400_000; ms += 20_000) xs.push(ghostsAt('town', ms)[0].x);
+  assert.ok(Math.max(...xs) - Math.min(...xs) > 3 * TILE);
 });
 
 test('ghosts: more visible at night, always translucent', () => {
