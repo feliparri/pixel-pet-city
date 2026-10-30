@@ -81,7 +81,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
     const amb = state.amb || { tint: [255, 255, 255], night: 0 };
 
     const sh = state.show || null;                                        // a scheduled sky show: the camera tilts up, the town goes night, the show fills the sky
-    const dur = sh ? SHOWS[sh.kind].dur : 0, cutS = sh && sh.cut != null ? sh.cut : Infinity;
+    const dur = sh ? sh.dur ?? SHOWS[sh.kind].dur : 0, cutS = sh && sh.cut != null ? sh.cut : Infinity;
     kShow = approach(kShow, sh ? tiltAt(sh.ts, dur, cutS) : 0, dt, 1 / RISE);   // a player who joins mid-show sees the camera rise, not jump
     const k = kShow, alpha = sh && cutS !== Infinity ? 1 - smooth((sh.ts - cutS) / FALL) : 1;
     const n = Math.max(amb.night, k), mult = groundMult({ tint: amb.tint, night: n });
@@ -99,7 +99,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
     const u = pixelUnit(view.h), hy = horizonY(cam);
     if (sh && (!stars || starsSeed !== sh.seed)) { stars = makeStars(sh.seed); starsSeed = sh.seed; }
     if (k > 0.001 && !stars) stars = makeStars(7);
-    const sky = sh ? skyAt(sh.kind, sh.seed, sh.ts) : skyAt('', 0, 0);
+    const sky = sh ? skyAt(sh.kind, sh.seed, sh.ts, dur) : skyAt('', 0, 0);
     const flashes = sky.fw.flashes.filter((f) => f.k > 0.02);
 
     if (state.area === 'farm' && paintFarm(world, state.farm)) groundKey = '';        // a plot's soil changed (watered, or a new day): bake the ground again

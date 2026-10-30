@@ -2,7 +2,7 @@
 // shortly before the next start so a cancellation is noticed), keeps the offset between the server's clock and this device's, and every frame
 // answers "which show is running, and how many seconds into it?". The same moment on every screen is what makes the show a shared one.
 // The pure parts (showAt, warningsAt, nextPollDelay, parseDevEvent) are tested; the controller takes its clock, timers and server as parameters.
-import { SHOWS, showEnd } from './show/timeline.js';
+import { SHOWS, showEnd, durationOf, MIN_DUR, MAX_DUR } from './show/timeline.js';
 import { clockOffset } from './events-client.js';
 
 export const WARN_MS = 60_000;          // "in 1 minute" toast
@@ -17,7 +17,7 @@ const valid = (e) => !!e && typeof e.id === 'string' && Object.hasOwn(SHOWS, e.k
 export function showAt(events, sn, cuts = {}) {
   for (const e of events) {
     if (!valid(e)) continue;
-    const dur = SHOWS[e.kind].dur, cut = cuts[e.id] ?? null, ts = (sn - e.start_ms) / 1000;
+    const dur = durationOf(e), cut = cuts[e.id] ?? null, ts = (sn - e.start_ms) / 1000;
     if (ts >= 0 && ts < showEnd(dur, cut == null ? Infinity : cut)) return { event: e, ts, cut, dur };
   }
   return null;
@@ -35,14 +35,16 @@ export function nextPollDelay(events, sn) {
   return d;
 }
 
-/** The development shortcut ?dev=1&event=fireworks:5[:seed]: a fake show that starts in N seconds. Needs dev=1. */
+/** The development shortcut ?dev=1&event=fireworks:5[:seed[:dur]]: a fake show that starts in N seconds and runs `dur` seconds (default: the kind's). Needs dev=1. */
 export function parseDevEvent(search, nowMs) {
   const p = new URLSearchParams(search);
   if (p.get('dev') !== '1' || !p.has('event')) return [];
-  const [kind, secs, seed] = p.get('event').split(':');
-  const n = Number(secs === undefined || secs === '' ? 10 : secs), s = seed === undefined ? 7 : Number(seed);
+  const [kind, secs, seed, dur] = p.get('event').split(':');
+  const n = Number(secs === undefined || secs === '' ? 10 : secs), s = seed === undefined || seed === '' ? 7 : Number(seed);
+  const d = dur === undefined || dur === '' ? undefined : Number(dur);
   if (!Object.hasOwn(SHOWS, kind) || !Number.isFinite(n) || !Number.isInteger(s) || s < 0) return [];
-  return [{ id: 'dev-show', kind, seed: s, start_at: new Date(nowMs + n * 1000).toISOString(), start_ms: nowMs + n * 1000, duration_ms: SHOWS[kind].dur * 1000 }];
+  if (d !== undefined && !(d >= MIN_DUR && d <= MAX_DUR)) return [];
+  return [{ id: 'dev-show', kind, seed: s, start_at: new Date(nowMs + n * 1000).toISOString(), start_ms: nowMs + n * 1000, duration_ms: (d ?? SHOWS[kind].dur) * 1000 }];
 }
 
 /**
@@ -78,7 +80,7 @@ export function createTownEvents({ api, nowMs = () => Date.now(), devEvents = nu
     },
     stop() { alive = false; clearTimer(timer); },
     serverNow,
-    /** Per frame: sends the toasts that are due and returns the show to draw ({ kind, seed, ts, cut }) or null. */
+    /** Per frame: sends the toasts that are due and returns the show to draw ({ kind, seed, ts, cut, dur }) or null. */
     tick(where = 'hd') {
       const sn = serverNow();
       for (const w of warningsAt(events, sn, warned)) { warned.add(w.event.id); notify(w.text); }
@@ -89,7 +91,7 @@ export function createTownEvents({ api, nowMs = () => Date.now(), devEvents = nu
         invited.add(cur.event.id);
         notify(where === 'inside' ? '¡Hay un show en el cielo! Sal a la calle para verlo.' : '¡Hay un show en el cielo! Activa «Efectos» para verlo.');
       }
-      return cur ? { kind: cur.event.kind, seed: cur.event.seed, ts: cur.ts, cut: cur.cut } : null;
+      return cur ? { kind: cur.event.kind, seed: cur.event.seed, ts: cur.ts, cut: cur.cut, dur: cur.dur } : null;
     },
     /** The player's "Volver": the show winds down on this screen only. */
     cut() {

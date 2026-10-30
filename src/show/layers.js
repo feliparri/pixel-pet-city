@@ -7,10 +7,10 @@ import { halloweenAt } from './halloween.js';
 const NONE = { rockets: [], sparks: [], flashes: [] };
 
 /** { fw: { rockets, sparks, flashes }, meteors, drones, hw } (empty lists for an unknown kind; hw is the Halloween sky or null). */
-export function skyAt(kind, seed, ts) {
-  if (kind === 'fireworks') return { fw: fireworksAt(seed, ts), meteors: [], drones: [], hw: null };
-  if (kind === 'meteors') return { fw: NONE, meteors: meteorsAt(seed, ts), drones: [], hw: null };
-  if (kind === 'drones') return { fw: NONE, meteors: [], drones: dronesAt(seed, ts), hw: null };
-  if (kind === 'halloween') return { fw: NONE, meteors: [], drones: [], hw: halloweenAt(seed, ts) };
+export function skyAt(kind, seed, ts, dur) {                      // `dur`: the show's length in seconds (omitted: the kind's own length)
+  if (kind === 'fireworks') return { fw: fireworksAt(seed, ts, dur), meteors: [], drones: [], hw: null };
+  if (kind === 'meteors') return { fw: NONE, meteors: meteorsAt(seed, ts, dur), drones: [], hw: null };
+  if (kind === 'drones') return { fw: NONE, meteors: [], drones: dronesAt(seed, ts, dur), hw: null };
+  if (kind === 'halloween') return { fw: NONE, meteors: [], drones: [], hw: halloweenAt(seed, ts, dur) };
   return { fw: NONE, meteors: [], drones: [], hw: null };
 }

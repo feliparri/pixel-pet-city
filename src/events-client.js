@@ -35,6 +35,7 @@ export function adminErrorText(error) {
     case 'admin_disabled': return 'El servidor todavía no tiene configurada la clave de administrador (ADMIN_KEY).';
     case 'too_many_attempts': return 'Demasiados intentos con clave incorrecta. Espera unos minutos.';
     case 'bad_kind': return 'Elige un tipo de show.';
+    case 'bad_duration': return 'La duración debe estar entre 20 segundos y 10 minutos.';
     case 'bad_seed': return 'La semilla debe ser un número entero entre 0 y 2147483647.';
     case 'bad_start': case 'start_in_the_past': return 'La fecha y la hora deben estar en el futuro.';
     case 'start_too_far': return 'Solo se puede programar hasta 60 días hacia adelante.';

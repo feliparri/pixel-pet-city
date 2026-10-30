@@ -1,7 +1,7 @@
 // Sky show demo page (show.html): the HD-2D plaza at night, and when a show starts the camera tilts up until a horizon band of night sky
 // appears at the top of the screen. The show itself is a pure function of (seed, t) (see fireworks.js, meteors.js, drones.js).
 //   ?show=fireworks|meteors|drones|halloween   start a show      &t=3.2   show time in seconds (with still=1: that exact frame)
-//   &seed=5   the show's seed       &still=1   one deterministic frame, then stop (document.title becomes "ready")
+//   &seed=5   the show's seed       &dur=90   the show's length in seconds (20 to 600; default: the kind's own)          &still=1   one deterministic frame, then stop (document.title becomes "ready")
 //   &bench=1  time 120 frames       &res=0.75  scales the internal resolution
 import { TILE } from '../map.js';
 import { drawPet, loadSprites } from '../sprites.js';
@@ -10,7 +10,7 @@ import { approach, lightAt, nightMultiply } from '../hd2d/light.js';
 import { buildWorld, bakeGround, drawGround, standingItems, drawGlows, fountainItem, grade } from '../hd2d/scene.js';
 import { Wanderer, rng } from '../hd2d/wander.js';
 import { createShowFx } from './fx.js';
-import { SHOWS, tiltAt, showEnd, showCamera, horizonY, FALL } from './timeline.js';
+import { SHOWS, tiltAt, showEnd, showCamera, horizonY, FALL, MIN_DUR, MAX_DUR } from './timeline.js';
 import { makeStars, drawSky, pixelUnit, LAND } from './sky.js';
 import { skyAt } from './layers.js';
 import { drawBursts, drawRockets, drawMeteors, drawDrones, drawHalloween } from './draw.js';
@@ -20,6 +20,8 @@ import { burstTint } from './tint.js';
 const q = new URLSearchParams(location.search);
 const still = q.get('still') === '1', bench = q.get('bench') === '1';
 const SEED = Number(q.get('seed')) || 7;
+const DUR = Number(q.get('dur'));
+const durFor = (kind) => (DUR >= MIN_DUR && DUR <= MAX_DUR ? DUR : SHOWS[kind].dur);
 const $ = (id) => document.getElementById(id);
 const canvas = $('c'), ctx = canvas.getContext('2d');
 const RES = Math.min(1.5, Math.max(0.4, Number(q.get('res')) || 1));
@@ -28,7 +30,7 @@ const BOX = { x0: 14, y0: 13, x1: 33, y1: 29 };
 const FOLLOW_BOX = { x0: 20, y0: 20, x1: 28, y1: 24 };
 
 let sprites, world, ground, fx, stars, view = { w: 0, h: 0 }, groundKey = '', pets = [], focus = { x: 24 * TILE, y: 21.5 * TILE };
-let show = null;                                                        // { kind, start (ms on the page clock), cut (show seconds) }
+let show = null;                                                        // { kind, start (ms on the page clock), cut (show seconds), dur (seconds) }
 const tmp = Object.assign(document.createElement('canvas'), { width: 48, height: 48 }), tctx = tmp.getContext('2d');
 const stat = { ema: 0, frames: 0, last: 0 };
 
@@ -88,7 +90,7 @@ function stepPets(dt, watching) {
 
 /** Draws one frame at page time `now` ms, the show being at `ts` seconds (null: no show). Returns the number of bursts on screen. */
 function frame(now, ts) {
-  const dur = show ? SHOWS[show.kind].dur : 0, cut = show && show.cut != null ? show.cut : Infinity;
+  const dur = show ? show.dur : 0, cut = show && show.cut != null ? show.cut : Infinity;
   const k = show ? tiltAt(ts, dur, cut) : 0;
   const alpha = show && cut !== Infinity ? 1 - smooth((ts - cut) / FALL) : 1;
   const cam = showCamera(view.w, view.h, focus.x, focus.y, k), u = pixelUnit(view.h), hy = horizonY(cam);
@@ -96,7 +98,7 @@ function frame(now, ts) {
   if (key !== groundKey) { bakeGround(world, 1, nightMultiply(1), wf, ground); groundKey = key; }
   ctx.imageSmoothingEnabled = false;
   ctx.fillStyle = `rgb(${LAND})`; ctx.fillRect(0, 0, view.w, view.h);
-  const sky = show ? skyAt(show.kind, SEED, ts) : skyAt('', SEED, 0);
+  const sky = show ? skyAt(show.kind, SEED, ts, dur) : skyAt('', SEED, 0);
   drawSky(ctx, view, hy, now / 1000, stars, u, project(cam, focus.x, 0, 0)?.y, !sky.hw?.moon);
   if (show) {
     drawMeteors(ctx, sky.meteors, view, hy, u, alpha);
@@ -140,7 +142,7 @@ function setUi() {
   $('back').disabled = !show || show.cut != null;
 }
 
-function start(kind, now) { show = { kind, start: now, cut: null }; setUi(); }
+function start(kind, now) { show = { kind, start: now, cut: null, dur: durFor(kind) }; setUi(); }
 const showTime = (now) => (now - show.start) / 1000;
 
 async function main() {
@@ -159,7 +161,7 @@ async function main() {
   if (still || bench) {
     for (let i = 0; i < 270; i++) { follow(33); stepPets(33, false); }
     follow(33, true);
-    if (SHOWS[kind]) { show = { kind, start: 0, cut: q.get('cut') != null ? Number(q.get('cut')) : null }; }
+    if (SHOWS[kind]) { show = { kind, start: 0, cut: q.get('cut') != null ? Number(q.get('cut')) : null, dur: durFor(kind) }; }
     setUi();
   }
   if (still) {
@@ -184,8 +186,7 @@ async function main() {
     let ts = 0;
     if (show) {
       ts = showTime(now);
-      const dur = SHOWS[show.kind].dur;
-      if (ts >= showEnd(dur, show.cut == null ? Infinity : show.cut)) { show = null; setUi(); ts = 0; }
+      if (ts >= showEnd(show.dur, show.cut == null ? Infinity : show.cut)) { show = null; setUi(); ts = 0; }
     }
     follow(dt); stepPets(dt, !!show);
     const a = performance.now();

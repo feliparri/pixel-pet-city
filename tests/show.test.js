@@ -162,3 +162,106 @@ test('halloween: the same length as the drones, deterministic, empty outside the
   assert.equal(H.halloweenAt(7, 34).bats.filter((b) => b.lit > 0.99).length, H.FINALE.count, 'the finale: every bat is in the pumpkin and glowing');
   for (let t = 0; t <= 40; t += 0.5) for (const b of H.halloweenAt(3, t).bats) assert.ok(b.a >= 0 && b.a <= 1 && b.lit >= 0 && b.lit <= 1);
 });
+
+// ---- a show's own length (the admin picks it per event) ------------------------------------------------------------------------------------
+import { createHash } from 'node:crypto';
+import { MIN_DUR, MAX_DUR, durationOf } from '../src/show/timeline.js';
+import { plan } from '../src/show/drones.js';
+import * as H from '../src/show/halloween.js';
+import { DURATION as FW_DUR } from '../src/show/fireworks.js';
+import { DURATION as MET_DUR } from '../src/show/meteors.js';
+
+test('a show at its default length is exactly what it was before lengths existed (hashes of the old output)', () => {
+  const sky = (kind, dur, explicit) => {
+    const h = createHash('sha256');
+    for (const seed of [7, 42, 12345]) for (let t = -1; t <= dur + 1; t += 0.25) h.update(JSON.stringify(skyAt(kind, seed, t, explicit ? dur : undefined)));
+    return h.digest('hex').slice(0, 16);
+  };
+  const was = { fireworks: '9d8094d10973c8dc', meteors: '382e47a3845e651b', drones: '180b8df8456f30c9', halloween: 'a02863fab937dbb7' };
+  for (const [kind, s] of Object.entries(SHOWS)) {
+    assert.equal(sky(kind, s.dur, false), was[kind], `${kind} with no length`);
+    assert.equal(sky(kind, s.dur, true), was[kind], `${kind} with its own length`);
+  }
+  assert.deepEqual([FW_DUR, MET_DUR, H.DURATION], [SHOWS.fireworks.dur, SHOWS.meteors.dur, SHOWS.halloween.dur]);
+  assert.equal(dronesDuration(), plan().end);
+  assert.deepEqual([plan().n, plan().hold], [FORMATIONS.length, T.hold]);
+});
+
+test('durationOf: the event\'s own length when it is within the bounds, else the kind\'s', () => {
+  assert.equal(durationOf({ kind: 'drones', duration_ms: 90_000 }), 90);
+  assert.equal(durationOf({ kind: 'drones', duration_ms: MIN_DUR * 1000 }), MIN_DUR);
+  assert.equal(durationOf({ kind: 'drones', duration_ms: MAX_DUR * 1000 }), MAX_DUR);
+  for (const bad of [undefined, null, 0, 5_000, 601_000, NaN, '40000x']) assert.equal(durationOf({ kind: 'fireworks', duration_ms: bad }), 38, String(bad));
+  assert.equal(durationOf({ kind: 'meteors' }), 28);
+});
+
+test('a longer show has more of its main part, the intro and the finale keep their length', () => {
+  const nb = (d) => schedule(7, d).length, nm = (d) => meteorSchedule(7, d).length;
+  assert.ok(nb(120) > nb(38) && nb(38) > nb(20));                                              // more bursts in the main part
+  assert.ok(nm(120) > nm(28) && nm(28) > nm(20));
+  const finale = (d) => schedule(7, d).slice(-8);                                              // the finale: 8 bursts, 0.34 s apart, ending 13.8 s before the show does
+  for (const d of [20, 38, 90, 600]) {
+    const f = finale(d);
+    near(f[0].tl - (d - 13.8), 0, 0.2); near(f[7].tl - f[0].tl, 7 * 0.34, 0.15);
+    for (const b of schedule(7, d)) assert.ok(b.tb + 2.6 <= d + 0.01 || d < 24, `${d}: a burst is still going at the end`);
+  }
+  const shower = (d) => meteorSchedule(7, d).slice(-18);                                       // the shower: 18 streaks over 8.5 s, ending 13 s before the show does
+  for (const d of [20, 28, 300]) { const m = shower(d); near(m[0].t0 - (d - 13), 0, 0.31); near(m[17].t0 - m[0].t0, 8.5, 0.31); }
+  const first = (d) => schedule(7, d)[0];
+  assert.deepEqual(first(38), first(120));                                                      // the opening is the same whatever the length
+});
+
+test('a longer show is still a pure function of (seed, t, dur): the same lists every time, other seeds and lengths differ', async () => {
+  const fresh = await import('../src/show/layers.js?fresh-instance-dur');
+  for (const [kind, dur] of [['fireworks', 150], ['meteors', 75], ['drones', 200], ['halloween', 300]]) {
+    for (const t of [3.3, 40, 61.5, dur - 8, dur - 1]) {
+      assert.deepEqual(skyAt(kind, 9, t, dur), skyAt(kind, 9, t, dur), `${kind} ${t}`);
+      assert.deepEqual(skyAt(kind, 9, t, dur), fresh.skyAt(kind, 9, t, dur), `${kind} ${t} in a fresh module`);
+    }
+    assert.notDeepEqual(skyAt(kind, 9, 4, dur), skyAt(kind, 10, 4, dur), kind);              // another seed: another show (at 4 s every kind has something that depends on it)
+  }
+});
+
+test('fireworks and meteors fill a long show: there is something in the sky all along, until near the end', () => {
+  for (const d of [90, 300, 600]) {
+    for (let t = 2; t < d - 14; t += 1) {
+      const fw = fireworksAt(7, t, d);
+      assert.ok(fw.rockets.length + fw.sparks.length > 0, `fireworks ${d}s at ${t}`);
+    }
+  }
+  const idle = (d) => { let n = 0; for (let t = 3; t < d - 14; t += 0.5) if (!meteorsAt(7, t, d).length) n++; return n * 0.5; };
+  assert.ok(idle(120) < 6, 'the meteors of a 2 minute show leave no long gaps');
+});
+
+test('drones: a longer show flies more formations (the three in turn), each holds 4.5 to 10.5 s, and lift off and the descent keep their length', () => {
+  for (const d of [20, 25, 40, 60, 120, 600]) {
+    const p = plan(d);
+    assert.ok(p.hold >= 4.4 && p.hold <= 10.6, `${d}: hold ${p.hold}`);
+    near(T.lift + p.n * p.hold + (p.n - 1) * T.morph + T.descend, p.end, 1e-9);
+    assert.ok(p.end < d, 'the lights are down before the show is over');
+    assert.equal(phaseAt(p.end, d).from, p.n - 1);
+    assert.equal(dronesAt(3, p.end + 1, d).length, 0);
+    assert.equal(dronesAt(3, 0, d).length, COUNT);
+    const landed = dronesAt(3, p.end, d);
+    landed.forEach((l, i) => near(l.z, pad(i)[2] + 0, 40));
+  }
+  assert.equal(plan(120).n, 11);
+  assert.deepEqual([0, 1, 2, 3, 4].map((f) => slot(f, 5)[0] - slot(f % 3, 5)[0]), [0, 0, 0, 0, 0], 'the formations repeat in turn');
+  assert.deepEqual(phaseAt(T.lift + plan(120).hold + 1, 120), { from: 0, to: 1, k: 1 / T.morph });
+});
+
+test('halloween: more witches, ghosts and bat swarms in a longer show; the pumpkin finale comes at the end, whole, and the moon sets with the show', () => {
+  assert.deepEqual([H.witchesOf(40), H.ghostsOf(40), H.swarmsOf(40).length], [7, 6, 3]);
+  assert.ok(H.witchesOf(120) > 7 && H.ghostsOf(120) > 6 && H.swarmsOf(120).length > 3);
+  assert.ok(H.witchesOf(20) >= 2 && H.ghostsOf(20) >= 1 && H.swarmsOf(20).length >= 1);
+  assert.equal(H.finaleOf().at, H.FINALE.at);
+  for (const d of [20, 40, 90, 300]) {
+    const fin = H.finaleOf(d);
+    assert.equal(H.halloweenAt(7, fin.at + 6.5, d).bats.filter((b) => b.lit > 0.99).length, H.FINALE.count, `${d}s: every bat is in the pumpkin and glowing`);
+    assert.deepEqual(H.halloweenAt(7, d + 0.5, d).bats, []);
+    assert.equal(H.halloweenAt(7, d - 0.01, d).moon === null || H.halloweenAt(7, d - 0.01, d).moon.a < 0.01, true);
+    assert.ok(H.halloweenAt(7, 5, d).moon.a > 0.5, 'the moon is up near the start');
+    for (let t = 0; t <= d; t += 0.5) for (const b of H.halloweenAt(3, t, d).bats) assert.ok(b.a >= 0 && b.a <= 1 && b.lit >= 0 && b.lit <= 1);
+  }
+  for (let t = 5; t < 280; t += 7) { const r = H.halloweenAt(7, t, 300); assert.ok(r.witches.length + r.ghosts.length + r.bats.length > 0, `something in the sky at ${t}`); }
+});

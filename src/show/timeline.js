@@ -9,7 +9,14 @@ export const SHOWS = {
   drones: { dur: 40, label: 'Drones' },
   halloween: { dur: 40, label: 'Noche de Halloween' },
 };
+export const MIN_DUR = 20, MAX_DUR = 600;                       // the bounds, in seconds, of a scheduled show's length (the server checks the same)
 export const RISE = 2.6, FALL = 2.4;
+
+/** The length in seconds of a scheduled event: the `duration_ms` the server sent when it is within the bounds, else the kind's own length. */
+export function durationOf(e) {
+  const s = Number(e && e.duration_ms) / 1000;
+  return Number.isFinite(s) && s >= MIN_DUR && s <= MAX_DUR ? s : SHOWS[e.kind].dur;
+}
 export const SKY = { cy: 0.82, horizon: 0.4, zoom: 0.92 };     // at full tilt: the focus sits at 82% of the height, the horizon at 40%
 const RAD = Math.PI / 180;
 

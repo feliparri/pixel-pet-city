@@ -136,3 +136,31 @@ test('flat mode and interiors only get a toast inviting them, once per show', as
   h.now = T0 + 5_000; h.ctl.tick('hd');
   assert.deepEqual(h.toasts, [], 'the HD-2D town just draws the show');
 });
+
+test('a show runs for the length it was saved with: showAt, the cut and the dev shortcut use it', () => {
+  const long = { ...ev('l', 'fireworks', 0), duration_ms: 120_000 }, short = { ...ev('s', 'drones', 0), duration_ms: 30_000 };
+  const mid = showAt([long], T0 + 90_000);
+  assert.deepEqual([mid.dur, mid.ts], [120, 90]);                                     // fireworks used to be over after 38 s
+  assert.equal(showAt([long], T0 + 120_000), null);
+  assert.equal(showAt([short], T0 + 31_000), null);                                   // drones used to run 40 s
+  assert.ok(showAt([short], T0 + 29_999));
+  assert.equal(showAt([{ ...short, duration_ms: undefined }], T0 + 39_000).dur, 40, 'an event with no length runs as its kind always did');
+  assert.equal(showAt([{ ...short, duration_ms: 1_000 }], T0 + 39_000).dur, 40, 'a length out of the bounds is not trusted');
+  const cut = showAt([long], T0 + 60_000 + (FALL - 0.1) * 1000, { l: 60 });
+  assert.equal(cut.dur, 120);
+  assert.equal(showAt([long], T0 + 60_000 + FALL * 1000, { l: 60 }), null, 'Volver winds a long show down just the same');
+  assert.equal(parseDevEvent('?dev=1&event=fireworks:5:42:90', T0)[0].duration_ms, 90_000);
+  assert.equal(parseDevEvent('?dev=1&event=fireworks:5:42', T0)[0].duration_ms, 38_000);
+  assert.equal(parseDevEvent('?dev=1&event=fireworks:5::90', T0)[0].seed, 7);
+  assert.deepEqual(parseDevEvent('?dev=1&event=fireworks:5:42:10', T0), []);
+  assert.deepEqual(parseDevEvent('?dev=1&event=fireworks:5:42:601', T0), []);
+});
+
+test('the controller hands the renderer the length of the show that runs', async () => {
+  const e = { ...ev('l', 'meteors', 0), duration_ms: 75_000 };
+  const r = rig({ events: [e] });
+  r.ctl.start(); await new Promise((x) => setImmediate(x));
+  r.now = T0 + 50_000;
+  const w = r.ctl.tick('hd');
+  assert.deepEqual([w.kind, w.dur, w.ts], ['meteors', 75, 50]);
+});

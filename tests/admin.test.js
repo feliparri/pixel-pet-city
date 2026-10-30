@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { zonedToMs, msToZoned, zoneOffset, untilText } from '../src/admin-time.js';
+import { zonedToMs, msToZoned, zoneOffset, untilText, parseDuration, durationText, DURATION_PRESETS } from '../src/admin-time.js';
 import { createEventsApi, clockOffset, adminErrorText } from '../src/events-client.js';
 import { createMockFetch } from '../src/admin-mock.js';
 
@@ -57,7 +57,7 @@ test('the events client: posts JSON, sends the admin key only when given, and re
 });
 
 test('every error code the server can answer has a Spanish text, and the fallback is polite', () => {
-  for (const e of ['bad_admin_key', 'admin_disabled', 'too_many_attempts', 'bad_kind', 'bad_seed', 'bad_start', 'start_in_the_past', 'start_too_far', 'too_many_events', 'unknown_event', 'network']) assert.match(adminErrorText(e), /[a-záéíóú]/i);
+  for (const e of ['bad_admin_key', 'admin_disabled', 'too_many_attempts', 'bad_kind', 'bad_seed', 'bad_start', 'start_in_the_past', 'start_too_far', 'too_many_events', 'unknown_event', 'network', 'bad_duration']) assert.match(adminErrorText(e), /[a-záéíóú]/i);
   assert.match(adminErrorText('whatever'), /Inténtalo/);
 });
 
@@ -72,4 +72,28 @@ test('the page\'s development server stand-in behaves like the function: key, pa
   assert.equal((await api.list()).body.events.length, 1);
   assert.equal((await api.cancel(s.body.event.id, 'prueba')).ok, true);
   assert.equal((await api.list()).body.events.length, 0);
+});
+
+test('the length the owner picks: the show\'s own, a preset, or minutes and seconds, from 20 s to 10 min', () => {
+  assert.deepEqual(parseDuration('', 1, 30), { secs: null });
+  assert.deepEqual(DURATION_PRESETS, [30, 60, 120, 300]);
+  for (const p of DURATION_PRESETS) assert.deepEqual(parseDuration(String(p)), { secs: p });
+  assert.deepEqual(parseDuration('custom', '1', '30'), { secs: 90 });
+  assert.deepEqual(parseDuration('custom', '', '45'), { secs: 45 });
+  assert.deepEqual(parseDuration('custom', '10', '0'), { secs: 600 });
+  assert.deepEqual(parseDuration('custom', '0', '20'), { secs: 20 });
+  for (const [c, m, s] of [['custom', '0', '19'], ['custom', '10', '1'], ['custom', '', ''], ['custom', '0', '30.5'], ['custom', '-1', '30'], ['custom', 'x', '0'], ['5'], ['3600']]) assert.deepEqual(parseDuration(c, m, s), { error: 'bad_duration' }, `${c} ${m} ${s}`);
+});
+
+test('a length in words', () => {
+  assert.deepEqual([20, 30, 60, 90, 120, 600].map(durationText), ['20 s', '30 s', '1 min', '1 min 30 s', '2 min', '10 min']);
+});
+
+test('the stand-in server keeps the length it is given and checks its bounds, like the function', async () => {
+  const t0 = 1_800_000_000_000;
+  const api = createEventsApi({ base: 'x', fetch: createMockFetch(() => t0) });
+  const start_at = new Date(t0 + 60_000).toISOString();
+  assert.equal((await api.save({ kind: 'fireworks', start_at, duration_s: 120 }, 'prueba')).body.event.duration_ms, 120000);
+  assert.equal((await api.save({ kind: 'fireworks', start_at }, 'prueba')).body.event.duration_ms, 38000);
+  assert.equal((await api.save({ kind: 'fireworks', start_at, duration_s: 5 }, 'prueba')).error, 'bad_duration');
 });

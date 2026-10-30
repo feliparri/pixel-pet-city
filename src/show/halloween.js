@@ -5,57 +5,73 @@
 import { hash, smooth, lerp } from './rand.js';
 import { gridPoints, resample } from './drones.js';
 
-export const DURATION = 40;                                         // seconds; the same number as SHOWS.halloween.dur (a test keeps them equal)
+export const DURATION = 40;                                         // seconds by default (the same number as SHOWS.halloween.dur; a test keeps them equal)
 export const MOON = { u: 0.74, v0: 0.62, v1: 0.26, from: 0.5, to: 9.5, fadeIn: 3, fadeOut: 3.5 };
-export const FINALE = { at: 27.8, form: 3.2, hold: 36, scatter: 3, u: 0.3, v: 0.55, size: 24, count: 64 };
+export const FINALE = { at: 27.8, form: 3.2, hold: 36, scatter: 3, u: 0.3, v: 0.55, size: 24, count: 64 };       // at the default length; see `finaleOf`
+/** The finale for a show of `dur` seconds: it keeps its length and ends with the show (the default is FINALE as it is). */
+export const finaleOf = (dur = DURATION) => ({ ...FINALE, at: FINALE.at + (dur - DURATION), hold: FINALE.hold + (dur - DURATION) });
 const PUMPKIN = [
   '......XX........', '.....XXX........', '..XXXXXXXXXXXX..', '.XXXXXXXXXXXXXX.', 'XXXXXXXXXXXXXXXX', 'XXX..XXXXXX..XXX', 'XXXX.XXXXXXX.XXX', 'XXXXXXXXXXXXXXXX',
   'XXXXXXXXXXXXXXXX', 'XXX.XXX..XXX.XXX', 'XXXX.XXXXXX.XXXX', 'XXXXXXXXXXXXXXXX', '.XXXXXXXXXXXXXX.', '..XXXXXXXXXXXX..',
 ];
 export const PUMPKIN_PTS = resample(gridPoints(PUMPKIN), FINALE.count);          // [-1, 1] x [-1, 1] (x right, z up), one bat per point
-export const WITCHES = 7, GHOSTS = 6;
+export const WITCHES = 7, GHOSTS = 6;                               // at the default length: a longer show has more (see witchesOf, ghostsOf)
+export const witchesOf = (dur = DURATION) => Math.max(2, Math.round(WITCHES + (dur - DURATION) / 3.7));
+export const ghostsOf = (dur = DURATION) => Math.max(1, Math.round(GHOSTS + (dur - DURATION) / 4.2));
 const SWARMS = [{ t0: 3, dur: 10, dir: 1, v: 0.42, n: 14 }, { t0: 12.5, dur: 10, dir: -1, v: 0.58, n: 16 }, { t0: 19.5, dur: 9, dir: 1, v: 0.3, n: 12 }];
+const SWARM_ROUND = 20;                                              // a longer show repeats the three swarms, each round this much later
+
+/** The bat swarms of a show: the three of the show, then more rounds of them while they still end before the finale (about). */
+export function swarmsOf(dur = DURATION) {
+  const last = finaleOf(dur).at + 1, out = [];
+  for (let k = 0; ; k++) {
+    const base = SWARMS[k % SWARMS.length], t0 = base.t0 + Math.floor(k / SWARMS.length) * SWARM_ROUND;
+    if (k > 0 && t0 + base.dur > last) break;
+    out.push({ ...base, t0 });
+  }
+  return out;
+}
 
 /** Where the moon is at time t: { u, v, a } (a = 0..1 brightness), or null before it appears and after it has set. */
-export function moonAt(t) {
-  const a = smooth(t / MOON.fadeIn) * (1 - smooth((t - (DURATION - MOON.fadeOut)) / MOON.fadeOut));
+export function moonAt(t, dur = DURATION) {
+  const a = smooth(t / MOON.fadeIn) * (1 - smooth((t - (dur - MOON.fadeOut)) / MOON.fadeOut));
   return a > 0.001 ? { u: MOON.u, v: lerp(MOON.v0, MOON.v1, smooth((t - MOON.from) / (MOON.to - MOON.from))), a } : null;
 }
 
 /** The witches of a seed: { t0, dur, dir (1 flies to the right), v (height), hero (flies across the moon) }. */
-export function witchSchedule(seed) {
+export function witchSchedule(seed, dur = DURATION) {
   const flip = hash(seed, 99) < 0.5 ? 1 : -1;
-  return Array.from({ length: WITCHES }, (_, i) => {
-    const hero = i === 2 || i === 5;
+  return Array.from({ length: witchesOf(dur) }, (_, i) => {
+    const hero = i % 3 === 2;
     return { t0: 4.5 + i * 3.7 + hash(seed, i, 1) * 0.8, dur: 8.5 + hash(seed, i, 2) * 2.5, dir: i % 2 ? -flip : flip, hero, v: hero ? MOON.v1 + (hash(seed, i, 3) - 0.5) * 0.12 : i % 3 === 0 ? 0.12 + hash(seed, i, 3) * 0.1 : 0.46 + hash(seed, i, 3) * 0.28 };
   });
 }
 
 /** The ghosts of a seed: { t0, life, u, ph }. They rise from the horizon, sway, and fade out. */
-export function ghostSchedule(seed) {
-  return Array.from({ length: GHOSTS }, (_, i) => ({ t0: 6 + i * 4.2 + hash(seed, i, 11) * 1.2, life: 7 + hash(seed, i, 12) * 2, u: 0.06 + hash(seed, i, 13) * 0.88, ph: hash(seed, i, 14) * 6.28 }));
+export function ghostSchedule(seed, dur = DURATION) {
+  return Array.from({ length: ghostsOf(dur) }, (_, i) => ({ t0: 6 + i * 4.2 + hash(seed, i, 11) * 1.2, life: 7 + hash(seed, i, 12) * 2, u: 0.06 + hash(seed, i, 13) * 0.88, ph: hash(seed, i, 14) * 6.28 }));
 }
 
 /**
  * The show at time t (seconds): { moon, witches: [{ u, v, dir }], ghosts: [{ u, v, ox, a }], bats: [{ u, v, ox, oy, a, f (wing frame 0|1), lit (0..1, glowing orange), dir }], glow (0..1) }.
  * Empty before the start and after the end.
  */
-export function halloweenAt(seed, t) {
-  const out = { moon: null, witches: [], ghosts: [], bats: [], glow: 0 };
-  if (t < 0 || t > DURATION) return out;
-  out.moon = moonAt(t);
+export function halloweenAt(seed, t, dur = DURATION) {
+  const out = { moon: null, witches: [], ghosts: [], bats: [], glow: 0 }, fin = finaleOf(dur);
+  if (t < 0 || t > dur) return out;
+  out.moon = moonAt(t, dur);
   out.glow = out.moon ? out.moon.a : 0;
-  witchSchedule(seed).forEach((w, i) => {
+  witchSchedule(seed, dur).forEach((w, i) => {
     const p = (t - w.t0) / w.dur;
     if (p < 0 || p > 1) return;
     out.witches.push({ u: w.dir > 0 ? lerp(-0.12, 1.12, p) : lerp(1.12, -0.12, p), v: w.v + Math.sin(p * 9 + i) * 0.025 - (p - 0.5) * 0.05 * w.dir, dir: w.dir });
   });
-  ghostSchedule(seed).forEach((g) => {
+  ghostSchedule(seed, dur).forEach((g) => {
     const p = (t - g.t0) / g.life;
     if (p < 0 || p > 1) return;
     out.ghosts.push({ u: g.u, v: lerp(0.84, 0.24, smooth(p)), ox: Math.sin(p * 7 + g.ph) * 3, a: Math.pow(Math.sin(p * Math.PI), 0.8) * 0.78 });
   });
-  SWARMS.forEach((s, k) => {
+  swarmsOf(dur).forEach((s, k) => {
     const p = (t - s.t0) / s.dur;
     if (p < 0 || p > 1) return;
     for (let i = 0; i < s.n; i++) {
@@ -63,10 +79,10 @@ export function halloweenAt(seed, t) {
       out.bats.push({ u: (s.dir > 0 ? lerp(-0.12, 1.12, q) : lerp(1.12, -0.12, q)), v: s.v + (hash(seed, k * 50 + i, 22) - 0.5) * 0.16 + 0.035 * Math.sin(t * 2.3 + i * 1.7), ox: 0, oy: 0, a: 1, f: Math.floor(t * 9 + hash(seed, k * 50 + i, 23) * 8) % 2, lit: 0, dir: s.dir });
     }
   });
-  if (t >= FINALE.at) for (let i = 0; i < FINALE.count; i++) {
-    const [px, pz] = PUMPKIN_PTS[i], ta = FINALE.at + (i / FINALE.count) * 1.4, left = i % 2 === 0;
+  if (t >= fin.at) for (let i = 0; i < FINALE.count; i++) {
+    const [px, pz] = PUMPKIN_PTS[i], ta = fin.at + (i / FINALE.count) * 1.4, left = i % 2 === 0;
     const sx = left ? -0.12 : 1.12, sv = 0.1 + hash(seed, i, 31) * 0.7;
-    const so = (t - (FINALE.hold)) / FINALE.scatter;                                    // 0..1 while the pumpkin breaks up
+    const so = (t - fin.hold) / FINALE.scatter;                                    // 0..1 while the pumpkin breaks up
     const p = smooth((t - ta) / FINALE.form);
     if (t < ta || so > 1) continue;
     const ox = px * FINALE.size, oy = -pz * FINALE.size;

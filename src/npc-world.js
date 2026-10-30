@@ -11,7 +11,7 @@ import { findPath } from './path.js';
 import { STEP_MS } from './walker.js';
 import { hashSeed, mulberry32 } from './life.js';
 import { msToZoned, zonedToMs } from './admin-time.js';
-import { SHOWS } from './show/timeline.js';
+import { SHOWS, durationOf } from './show/timeline.js';
 
 /** A villager strolls: one step takes this long (a player's pet takes STEP_MS; at that pace the villagers looked in a hurry, owner 2026-10-25). */
 export const NPC_STEP_MS = Math.round(STEP_MS * 2.5);
@@ -99,7 +99,7 @@ export function townHour(t) { const [h, m] = msToZoned(t).time.split(':').map(Nu
 
 /** The running sky shows as the villagers need them: [{ from, to }] in server ms, whole show length (a player's own "Volver" does not change the sky for the others). */
 export function showSpans(events = []) {
-  return events.filter((e) => e && Object.hasOwn(SHOWS, e.kind) && Number.isFinite(e.start_ms)).map((e) => ({ from: e.start_ms, to: e.start_ms + SHOWS[e.kind].dur * 1000 + SHOW_PAD_MS }));
+  return events.filter((e) => e && Object.hasOwn(SHOWS, e.kind) && Number.isFinite(e.start_ms)).map((e) => ({ from: e.start_ms, to: e.start_ms + durationOf(e) * 1000 + SHOW_PAD_MS }));
 }
 
 // ---- one villager's day ---------------------------------------------------------------------------------------------------------------------

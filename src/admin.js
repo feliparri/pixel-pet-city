@@ -2,7 +2,7 @@
 //   ?mock=1   development only: a stand-in server in the page (the key is "prueba"), to try and photograph the page
 import config from '../config.js';
 import { createEventsApi, adminErrorText } from './events-client.js';
-import { zonedToMs, msToZoned, labelZoned, untilText, zoneOffset } from './admin-time.js';
+import { zonedToMs, msToZoned, labelZoned, untilText, zoneOffset, parseDuration, durationText } from './admin-time.js';
 import { SHOWS } from './show/timeline.js';
 import { LAUNCH_NOW_MS } from './town-events.js';
 
@@ -19,9 +19,13 @@ const say = (text, kind = '') => { const m = $('msg'); m.textContent = text || '
 const randomSeed = () => { const a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] >>> 1; };
 const serverNow = () => Date.now() + offset;
 
+/** The length chosen in the form: { secs } (null: the show's own) or { error }. */
+const chosenDuration = () => parseDuration($('dur').value, $('dur-min').value, $('dur-sec').value);
+
 function paintLink() {
-  const kind = $('kind').value, seed = Number($('seed').value);
-  $('try').href = `show.html?show=${encodeURIComponent(kind)}&seed=${Number.isInteger(seed) && seed >= 0 ? seed : 7}`;
+  const kind = $('kind').value, seed = Number($('seed').value), d = chosenDuration();
+  $('dur-custom').hidden = $('dur').value !== 'custom';
+  $('try').href = `show.html?show=${encodeURIComponent(kind)}&seed=${Number.isInteger(seed) && seed >= 0 ? seed : 7}${d.secs ? `&dur=${d.secs}` : ''}`;
 }
 
 function paintList() {
@@ -32,7 +36,7 @@ function paintList() {
     const li = document.createElement('li');
     const info = document.createElement('div');
     const what = document.createElement('div'), when = document.createElement('div');
-    what.className = 'what'; what.textContent = `${SHOWS[e.kind] ? SHOWS[e.kind].label : e.kind} · semilla ${e.seed}`;
+    what.className = 'what'; what.textContent = `${SHOWS[e.kind] ? SHOWS[e.kind].label : e.kind} · semilla ${e.seed} · ${durationText(e.duration_ms / 1000)}`;
     const run = untilText(e.start_ms, serverNow(), e.duration_ms);
     when.className = 'when'; when.textContent = `${labelZoned(e.start_ms)} (Chile) · `;
     const state = document.createElement('span');
@@ -42,7 +46,7 @@ function paintList() {
     const acts = document.createElement('div');
     acts.className = 'acts';
     const tryIt = document.createElement('a');
-    tryIt.className = 'btn small'; tryIt.textContent = 'Probar'; tryIt.target = '_blank'; tryIt.rel = 'noopener'; tryIt.href = `show.html?show=${encodeURIComponent(e.kind)}&seed=${e.seed}`;
+    tryIt.className = 'btn small'; tryIt.textContent = 'Probar'; tryIt.target = '_blank'; tryIt.rel = 'noopener'; tryIt.href = `show.html?show=${encodeURIComponent(e.kind)}&seed=${e.seed}&dur=${Math.round(e.duration_ms / 1000)}`;
     const cancel = document.createElement('button');
     cancel.className = 'btn small danger'; cancel.type = 'button'; cancel.textContent = 'Cancelar';
     cancel.addEventListener('click', () => cancelEvent(e, cancel));
@@ -86,8 +90,10 @@ async function schedule(ms) {
   const seed = Number($('seed').value);
   if (!Number.isInteger(seed) || seed < 0 || seed > 2147483647) { say(adminErrorText('bad_seed'), 'bad'); return; }
   if (ms <= serverNow()) { say(adminErrorText('start_in_the_past'), 'bad'); return; }
+  const d = chosenDuration();
+  if (d.error) { say(adminErrorText(d.error), 'bad'); return; }
   $('add').disabled = $('now').disabled = true;
-  const r = await api.save({ kind: $('kind').value, seed, start_at: new Date(ms).toISOString() }, key);
+  const r = await api.save({ kind: $('kind').value, seed, start_at: new Date(ms).toISOString(), ...(d.secs ? { duration_s: d.secs } : {}) }, key);
   $('add').disabled = $('now').disabled = false;
   if (!r.ok) { say(adminErrorText(r.error), 'bad'); if (r.error === 'bad_admin_key') logout(); return; }
   say(ms - serverNow() < 60_000 ? `¡Lanzado! Empieza en ${Math.round((ms - serverNow()) / 1000)} segundos.` : `Programado para el ${labelZoned(ms)} (Chile).`, 'ok');
@@ -121,7 +127,7 @@ async function main() {
   $('date').value = soon.date; $('time').value = soon.time;
   $('seed').value = String(randomSeed());
   $('zone-note').textContent = `Ahora en Chile: ${msToZoned(Date.now()).time} (UTC${zoneOffset(Date.now()) >= 0 ? '+' : '−'}${Math.abs(zoneOffset(Date.now()) / 60)}).`;
-  for (const id of ['kind', 'seed']) $(id).addEventListener('input', paintLink);
+  for (const id of ['kind', 'seed', 'dur', 'dur-min', 'dur-sec']) $(id).addEventListener('input', paintLink);
   $('reseed').addEventListener('click', () => { $('seed').value = String(randomSeed()); paintLink(); });
   $('new').addEventListener('submit', add);
   $('now').addEventListener('click', launchNow);

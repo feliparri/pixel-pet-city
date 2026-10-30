@@ -43,3 +43,20 @@ export function untilText(ms, now, runningMs = 0) {
   if (h < 48) return `en ${h} h${r ? ` ${r} min` : ''}`;
   return `en ${Math.round(h / 24)} días`;
 }
+
+/** The lengths the admin page offers for a show, in seconds ('' is the show's own length). */
+export const DURATION_PRESETS = [30, 60, 120, 300];
+/** "30 s", "1 min", "2 min 30 s": a length in seconds in words. */
+export function durationText(secs) {
+  const m = Math.floor(secs / 60), s = Math.round(secs % 60);
+  return m && s ? `${m} min ${s} s` : m ? `${m} min` : `${s} s`;
+}
+/**
+ * The length the owner chose: `choice` is '' (the show's own length: null), a preset in seconds as text, or 'custom' with `min` and `sec` typed.
+ * Returns { secs } (null = the default) or { error: 'bad_duration' } when it is not a whole number of seconds from `lo` to `hi` (20 s to 10 min).
+ */
+export function parseDuration(choice, min, sec, lo = 20, hi = 600) {
+  if (choice === '' || choice == null) return { secs: null };
+  const n = choice === 'custom' ? Number(min || 0) * 60 + Number(sec || 0) : Number(choice);
+  return Number.isInteger(n) && n >= lo && n <= hi ? { secs: n } : { error: 'bad_duration' };
+}

@@ -15,7 +15,8 @@ export function createMockFetch(now = () => Date.now()) {
     if (fn === 'event-save') {
       const start = Date.parse(body.start_at);
       if (!(start > now())) return reply(400, { error: 'start_in_the_past' });
-      const dur = { fireworks: 38000, meteors: 28000, drones: 40000, halloween: 40000 }[body.kind];
+      const dur = (body.duration_s ?? { fireworks: 38, meteors: 28, drones: 40, halloween: 40 }[body.kind]) * 1000;
+      if (body.duration_s != null && !(Number.isInteger(body.duration_s) && body.duration_s >= 20 && body.duration_s <= 600)) return reply(400, { error: 'bad_duration' });
       const e = { id: `00000000-0000-0000-0000-${String(++n).padStart(12, '0')}`, kind: body.kind, seed: body.seed ?? 12345, start_at: new Date(start).toISOString(), start_ms: start, duration_ms: dur };
       events.push(e);
       return reply(201, { event: e });

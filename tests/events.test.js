@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { world } from './trip-helpers.js';
-import { SHOW_SECONDS, MAX_UPCOMING, ATTEMPT_MAX, SCHEDULE_AHEAD_S } from '../supabase/functions/trip/events.js';
-import { SHOWS } from '../src/show/timeline.js';
+import { SHOW_SECONDS, MAX_UPCOMING, ATTEMPT_MAX, SCHEDULE_AHEAD_S, DURATION_MIN_S, DURATION_MAX_S } from '../supabase/functions/trip/events.js';
+import { SHOWS, MIN_DUR, MAX_DUR } from '../src/show/timeline.js';
 
 const KEY = 'a-long-test-admin-key';
 const at = (w, plusS) => new Date((w.now + plusS) * 1000).toISOString();
@@ -156,4 +156,48 @@ test('the migration exists, locks the table (RLS, no anon access) and the functi
     assert.doesNotMatch(src, /eyJ[A-Za-z0-9_-]{20,}/, `${f}: no JWT in the source`);
   }
   assert.match(readFileSync(new URL('../supabase/functions/trip/serve.ts', import.meta.url), 'utf8'), /Deno\.env\.get\('ADMIN_KEY'\)/);
+});
+
+test('the server and the town agree on the bounds of a show\'s length', () => {
+  assert.deepEqual([DURATION_MIN_S, DURATION_MAX_S], [MIN_DUR, MAX_DUR]);
+  const sql = readFileSync(new URL('../supabase/migrations/20261030120000_town_events_duration.sql', import.meta.url), 'utf8');
+  assert.match(sql, /alter table public\.town_events add column duration_s integer check \(duration_s between 20 and 600\)/);
+  assert.doesNotMatch(sql, /not null/i, 'nullable: the events saved before it keep the kind\'s own length');
+});
+
+test('event-save: a length (20 s to 10 min) is stored and listed as duration_ms; left out it is the kind\'s and nothing is stored', async () => {
+  const w = world({ adminKey: KEY });
+  const plain = await save(w, { seed: 1 });
+  assert.equal(plain.body.event.duration_ms, 38000);
+  assert.ok(!('duration_s' in w.db.townEvents.get(plain.body.event.id)), 'no value written: it works before the migration is applied');
+  for (const [d, ms] of [[20, 20000], [90, 90000], [600, 600000]]) {
+    const r = await save(w, { seed: d, duration_s: d, start_at: at(w, 600 + d) });
+    assert.deepEqual([r.status, r.body.event.duration_ms], [201, ms], String(d));
+    assert.equal(w.db.townEvents.get(r.body.event.id).duration_s, d);
+  }
+  assert.equal((await save(w, { seed: 5, duration_s: null, start_at: at(w, 900) })).body.event.duration_ms, 38000, 'null is the default');
+  const list = (await w.web().call('events', {})).body.events;
+  assert.deepEqual(list.map((e) => e.duration_ms).sort((a, b) => a - b), [20000, 38000, 38000, 90000, 600000]);
+});
+
+test('event-save refuses a length out of the bounds or not a whole number of seconds', async () => {
+  const w = world({ adminKey: KEY });
+  for (const d of [19, 0, -30, 601, 3600, 30.5, '60', true, [60]]) assert.equal((await save(w, { duration_s: d })).body.error, 'bad_duration', JSON.stringify(d));
+  assert.equal(w.db.townEvents.size, 0);
+});
+
+test('a long show is still listed while it runs, and a short one drops off the list when it is over', async () => {
+  const w = world({ adminKey: KEY });
+  await save(w, { seed: 1, duration_s: 600, start_at: at(w, 30) });
+  await save(w, { seed: 2, duration_s: 20, start_at: at(w, 30) });
+  w.now += 30 + 400;                                                                      // 400 s in: the 10 minute one runs, the 20 s one is over
+  assert.deepEqual((await w.web().call('events', {})).body.events.map((e) => e.seed), [1]);
+  w.now += 201;
+  assert.deepEqual((await w.web().call('events', {})).body.events, []);
+});
+
+test('a stored row with a length out of the bounds (edited by hand) falls back to the kind\'s', async () => {
+  const w = world({ adminKey: KEY });
+  const id = (await save(w, { seed: 1 })).body.event.id;
+  for (const d of [5, 9999, 12.5, 'x']) { w.db.townEvents.get(id).duration_s = d; assert.equal((await w.web().call('events', {})).body.events[0].duration_ms, 38000, String(d)); }
 });

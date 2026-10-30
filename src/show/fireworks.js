@@ -10,14 +10,19 @@ export const PALETTES = [
 export const SHAPES = ['ring', 'palm', 'heart', 'peony'];
 const GRAV = 40, DRAG = 2.1, LIFE = 2.6, HEAD = { x: 384, y: 330 };
 
+export const DURATION = 38;                                           // seconds by default (the same number as SHOWS.fireworks.dur; a test keeps them equal)
 const cache = new Map();
-/** The schedule for a seed: one entry per burst { tl launch, tb burst, lx, ly, bx, by, bz, R radius, shape, c1, c2 }. */
-export function schedule(seed) {
-  if (cache.has(seed)) return cache.get(seed);
-  const list = [], n = 21, finale = 8;
+/**
+ * The schedule for a seed and a show length `dur` (seconds): one entry per burst { tl launch, tb burst, lx, ly, bx, by, bz, R radius, shape, c1, c2 }.
+ * A longer show has more bursts in its main part (the same pace) and the finale comes later; the default length is the show as it always was.
+ */
+export function schedule(seed, dur = DURATION) {
+  const key = `${seed}/${dur}`;
+  if (cache.has(key)) return cache.get(key);
+  const finaleAt = 24.2 + (dur - DURATION), list = [], n = Math.max(1, Math.round((finaleAt - 0.8) / 1.12)), finale = 8;
   for (let i = 0; i < n + finale; i++) {
     const fin = i >= n, j = fin ? i - n : i;
-    const tl = fin ? 24.2 + j * 0.34 + hash(seed, i, 1) * 0.15 : 0.8 + j * 1.12 + hash(seed, i, 1) * 0.5;
+    const tl = fin ? finaleAt + j * 0.34 + hash(seed, i, 1) * 0.15 : 0.8 + j * 1.12 + hash(seed, i, 1) * 0.5;
     const u = hash(seed, i, 2), v = hash(seed, i, 3);
     const bx = HEAD.x + (fin ? (j / (finale - 1) - 0.5) * 520 : (u - 0.5) * 480), bz = 112 + v * 45 + (fin ? j % 3 * 14 : 0);
     const pal = PALETTES[Math.floor(hash(seed, i, 4) * PALETTES.length)];
@@ -27,7 +32,7 @@ export function schedule(seed) {
       shape: SHAPES[fin ? (j % 4) : Math.floor(hash(seed, i, 10) * SHAPES.length)], c1: pal[0], c2: pal[1],
     });
   }
-  cache.set(seed, list);
+  cache.set(key, list);
   return list;
 }
 
@@ -77,10 +82,10 @@ export function burstSparks(b, seed, age) {
   return out;
 }
 
-/** Everything in the sky at show time t: { rockets, sparks, flashes }. Pure: the same (seed, t) always returns the same lists. */
-export function fireworksAt(seed, t) {
+/** Everything in the sky at show time t: { rockets, sparks, flashes }. Pure: the same (seed, t, dur) always returns the same lists. */
+export function fireworksAt(seed, t, dur = DURATION) {
   const rockets = [], sparks = [], flashes = [];
-  for (const b of schedule(seed)) {
+  for (const b of schedule(seed, dur)) {
     if (t < b.tl || t > b.tb + LIFE) continue;
     if (t < b.tb) {                                                    // the rocket climbs, leaving a few dim points behind it
       const f = b.tb - b.tl;
