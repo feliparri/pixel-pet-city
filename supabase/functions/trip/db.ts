@@ -69,6 +69,23 @@ export function createDb(url: string, serviceKey: string) {
       if (!r.ok) throw new Error(`db ${r.status}`);
       return Array.isArray(r.json) && r.json.length ? r.json[0] : null;
     },
+    /** The season overrides (table town_seasons) whose year is within [fromYear, toYear]. */
+    async listSeasons(fromYear: number, toYear: number): Promise<Row[]> {
+      const r = await call(`/town_seasons?year=gte.${fromYear}&year=lte.${toYear}&select=*&order=season.asc,year.asc&limit=100`);
+      if (!r.ok) throw new Error(`db ${r.status}`);
+      return Array.isArray(r.json) ? r.json : [];
+    },
+    /** Insert or replace the override of (season, year). */
+    async upsertSeason(row: Row): Promise<void> {
+      const r = await call('/town_seasons?on_conflict=season,year', { method: 'POST', body: JSON.stringify(row), prefer: 'resolution=merge-duplicates,return=minimal' });
+      if (!r.ok) throw new Error(`db ${r.status}`);
+    },
+    /** Delete the override of (season, year); true when there was one. */
+    async deleteSeason(season: string, year: number): Promise<boolean> {
+      const r = await call(`/town_seasons?season=eq.${q(season)}&year=eq.${year}`, { method: 'DELETE', prefer: 'return=representation' });
+      if (!r.ok) throw new Error(`db ${r.status}`);
+      return Array.isArray(r.json) && r.json.length > 0;
+    },
     /** The tools a board's pet owns (table pet_tools). */
     async getTools(deviceId: string): Promise<string[]> {
       const r = await call(`/pet_tools?device_id=eq.${q(deviceId)}&select=tool&order=bought_at.asc&limit=20`);

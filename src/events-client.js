@@ -17,6 +17,10 @@ export function createEventsApi({ base, fetch: fetcher = globalThis.fetch }) {
     list: ({ aheadDays, limit } = {}) => call('events', { ...(aheadDays ? { ahead_days: aheadDays } : {}), ...(limit ? { limit } : {}) }),
     save: (event, adminKey) => call('event-save', event, adminKey),
     cancel: (id, adminKey) => call('event-cancel', { id }, adminKey),
+    /** An override of a season for a year: { season, year, mode: 'dates' (with starts_at, ends_at: ISO) | 'on' | 'off' }. */
+    seasonSave: (o, adminKey) => call('season-save', o, adminKey),
+    /** Back to the built-in dates of a season for a year. */
+    seasonClear: (season, year, adminKey) => call('season-clear', { season, year }, adminKey),
   };
 }
 
@@ -39,6 +43,11 @@ export function adminErrorText(error) {
     case 'bad_seed': return 'La semilla debe ser un número entero entre 0 y 2147483647.';
     case 'bad_start': case 'start_in_the_past': return 'La fecha y la hora deben estar en el futuro.';
     case 'start_too_far': return 'Solo se puede programar hasta 60 días hacia adelante.';
+    case 'bad_season': return 'Esa temporada no existe.';
+    case 'bad_year': return 'Ese año no es válido para una temporada.';
+    case 'bad_mode': return 'Modo de temporada no válido.';
+    case 'bad_end': return 'La fecha de término no es válida.';
+    case 'bad_range': return 'El término debe ser posterior al inicio (y la temporada durar menos de 400 días).';
     case 'too_many_events': return 'Ya hay demasiados shows programados. Cancela alguno.';
     case 'unknown_event': return 'Ese show ya no existe.';
     case 'network': return 'No se pudo conectar con el servidor.';

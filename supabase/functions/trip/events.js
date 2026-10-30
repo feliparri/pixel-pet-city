@@ -9,6 +9,10 @@ export const LIST_AHEAD_S = 7 * 86400;        // the list shows what starts with
 export const SCHEDULE_AHEAD_S = 60 * 86400;   // an event can be scheduled up to 60 days ahead
 export const LIST_DEFAULT = 20, LIST_MAX = 50;  // how many a list holds by default and at most (the admin page asks for all it can)
 export const MAX_UPCOMING = 50;               // and the owner cannot pile up more than this many
+/** The seasons the town knows (the keys of SEASONS in src/seasons.js; a test keeps them equal) and the modes an override can take. */
+export const SEASON_KEYS = ['halloween'];
+export const SEASON_MODES = ['dates', 'on', 'off'];
+export const SEASON_SPAN_MAX_S = 400 * 86400;   // a window of custom dates is at most this long
 export const SEED_MAX = 2147483647;
 export const ATTEMPT_WINDOW_S = 600;
 export const ATTEMPT_MAX = 10;                // wrong admin keys per window, per function instance (best effort: instances do not share memory)
@@ -22,6 +26,10 @@ const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:
 /** An event's length in seconds: the one it was saved with (`duration_s`, null for the events that predate it), else its kind's. */
 const lengthS = (row) => (Number.isInteger(row.duration_s) && row.duration_s >= DURATION_MIN_S && row.duration_s <= DURATION_MAX_S ? row.duration_s : SHOW_SECONDS[row.kind]);
 const publicEvent = (row) => ({ id: row.id, kind: row.kind, seed: row.seed, start_at: iso(Date.parse(row.start_at)), start_ms: Date.parse(row.start_at), duration_ms: lengthS(row) * 1000 });
+
+/** An override as the town reads it: dates in ms (null unless mode 'dates'). */
+const publicSeason = (row) => ({ season: row.season, year: row.year, mode: row.mode, starts_ms: row.starts_at ? Date.parse(row.starts_at) : null, ends_ms: row.ends_at ? Date.parse(row.ends_at) : null });
+const yearOf = (deps) => new Date(nowMs(deps)).getUTCFullYear();
 
 function parseJson(bytes) {
   if (!bytes || !bytes.length) return { v: {} };
@@ -46,7 +54,7 @@ async function adminCheck(req, deps) {
   return err(401, 'bad_admin_key');
 }
 
-/** Upcoming and running shows plus the server's clock (ms), so every player can line up with the same moment. */
+/** Upcoming and running shows, the season overrides of last, this and next year, and the server's clock (ms), so every player can line up with the same moment. */
 export async function events(req, deps) {
   const p = parseJson(req.body);                                              // optional: { ahead_days: 1..60, limit: 1..50 } (a GET has no body)
   if (p.fail) return p.fail;
@@ -56,7 +64,8 @@ export async function events(req, deps) {
   const longest = DURATION_MAX_S * 1000;                                     // a running show may be the longest one
   const rows = await deps.db.listEvents(iso(t - longest), iso(t + ahead * 1000));
   const list = rows.map(publicEvent).filter((e) => e.start_ms + e.duration_ms > t).sort((x, y) => x.start_ms - y.start_ms).slice(0, limit);
-  return reply(200, { now: t, events: list });
+  const y = yearOf(deps), seasons = (await deps.db.listSeasons(y - 1, y + 1)).map(publicSeason);
+  return reply(200, { now: t, events: list, seasons });
 }
 
 export async function eventSave(req, deps) {
@@ -92,4 +101,48 @@ export async function eventCancel(req, deps) {
   if (row.cancelled_at) return reply(200, { id, cancelled: true, replayed: true });
   await deps.db.cancelEvent(id, iso(nowMs(deps)));
   return reply(200, { id, cancelled: true, replayed: false });
+}
+
+/** The (season, year) of a season call, validated: { season, year } or { fail }. */
+function seasonKey(v, deps) {
+  if (typeof v.season !== 'string' || !SEASON_KEYS.includes(v.season)) return { fail: err(400, 'bad_season') };
+  const y = yearOf(deps);
+  if (!Number.isInteger(v.year) || v.year < y - 1 || v.year > y + 5) return { fail: err(400, 'bad_year') };
+  return { season: v.season, year: v.year };
+}
+
+const isoOk = (s) => typeof s === 'string' && ISO_RE.test(s) && !Number.isNaN(Date.parse(s));
+
+/** The owner's override of a season for a year: mode 'dates' (starts_at and ends_at), 'on' (forced on) or 'off' (forced off). Replaces the one there was. */
+export async function seasonSave(req, deps) {
+  const denied = await adminCheck(req, deps);
+  if (denied) return denied;
+  const p = parseJson(req.body);
+  if (p.fail) return p.fail;
+  const k = seasonKey(p.v, deps);
+  if (k.fail) return k.fail;
+  const { mode, starts_at: startsAt, ends_at: endsAt } = p.v;
+  if (typeof mode !== 'string' || !SEASON_MODES.includes(mode)) return err(400, 'bad_mode');
+  let starts = null, ends = null;
+  if (mode === 'dates') {
+    if (!isoOk(startsAt)) return err(400, 'bad_start');
+    if (!isoOk(endsAt)) return err(400, 'bad_end');
+    starts = Date.parse(startsAt); ends = Date.parse(endsAt);
+    if (ends <= starts || ends - starts > SEASON_SPAN_MAX_S * 1000) return err(400, 'bad_range');
+  }
+  const row = { season: k.season, year: k.year, mode, starts_at: starts == null ? null : iso(starts), ends_at: ends == null ? null : iso(ends), updated_at: iso(nowMs(deps)) };
+  await deps.db.upsertSeason(row);
+  return reply(200, { season: publicSeason(row) });
+}
+
+/** Back to the built-in dates: deletes the override of a season for a year (asking again is fine). */
+export async function seasonClear(req, deps) {
+  const denied = await adminCheck(req, deps);
+  if (denied) return denied;
+  const p = parseJson(req.body);
+  if (p.fail) return p.fail;
+  const k = seasonKey(p.v, deps);
+  if (k.fail) return k.fail;
+  const had = await deps.db.deleteSeason(k.season, k.year);
+  return reply(200, { season: k.season, year: k.year, cleared: true, replayed: !had });
 }

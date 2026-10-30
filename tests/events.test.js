@@ -201,3 +201,68 @@ test('a stored row with a length out of the bounds (edited by hand) falls back t
   const id = (await save(w, { seed: 1 })).body.event.id;
   for (const d of [5, 9999, 12.5, 'x']) { w.db.townEvents.get(id).duration_s = d; assert.equal((await w.web().call('events', {})).body.events[0].duration_ms, 38000, String(d)); }
 });
+
+// ---- seasons ----------------------------------------------------------------------------------------------------------------------
+const sSave = (w, over = {}, ...key) => w.admin('season-save', { season: 'halloween', year: 2027, mode: 'on', ...over }, key.length ? key[0] : KEY);
+const iso = (s) => new Date(s).toISOString();
+
+test('seasons: events lists none by default, then the overrides of last, this and next year', async () => {
+  const w = world({ adminKey: KEY });                                      // the fake clock is in 2027
+  assert.deepEqual((await w.web().call('events', {})).body.seasons, []);
+  assert.equal((await sSave(w, { year: 2027, mode: 'dates', starts_at: '2027-10-20T00:00:00-03:00', ends_at: '2027-11-02T06:00:00-03:00' })).status, 200);
+  assert.equal((await sSave(w, { year: 2028, mode: 'off' })).status, 200);
+  w.db.townSeasons.set('halloween|2020', { season: 'halloween', year: 2020, mode: 'on', starts_at: null, ends_at: null });      // old: not listed
+  const list = (await w.web().call('events', {})).body.seasons;
+  assert.deepEqual(list, [
+    { season: 'halloween', year: 2027, mode: 'dates', starts_ms: Date.parse('2027-10-20T03:00:00Z'), ends_ms: Date.parse('2027-11-02T09:00:00Z') },
+    { season: 'halloween', year: 2028, mode: 'off', starts_ms: null, ends_ms: null },
+  ]);
+});
+
+test('season-save replaces the row; season-clear deletes it and may be asked twice', async () => {
+  const w = world({ adminKey: KEY });
+  const a = await sSave(w, { mode: 'on', starts_at: '2027-01-01T00:00:00Z' });          // dates are ignored unless mode is dates
+  assert.deepEqual(a.body.season, { season: 'halloween', year: 2027, mode: 'on', starts_ms: null, ends_ms: null });
+  await sSave(w, { mode: 'off' });
+  assert.equal(w.db.townSeasons.size, 1);
+  assert.equal(w.db.townSeasons.get('halloween|2027').mode, 'off');
+  assert.deepEqual((await w.admin('season-clear', { season: 'halloween', year: 2027 }, KEY)).body, { season: 'halloween', year: 2027, cleared: true, replayed: false });
+  assert.equal((await w.admin('season-clear', { season: 'halloween', year: 2027 }, KEY)).body.replayed, true);
+  assert.equal(w.db.townSeasons.size, 0);
+});
+
+test('season-save and season-clear need the owner\'s key', async () => {
+  const w = world({ adminKey: KEY });
+  assert.equal((await sSave(w, {}, undefined)).body.error, 'bad_admin_key');
+  assert.equal((await sSave(w, {}, 'nope')).status, 401);
+  assert.equal((await w.admin('season-clear', { season: 'halloween', year: 2027 }, 'nope')).status, 401);
+  assert.equal(w.db.townSeasons.size, 0);
+  const off = world();
+  assert.equal((await sSave(off, {}, KEY)).body.error, 'admin_disabled');
+});
+
+test('season-save validates the season, year, mode and dates', async () => {
+  const w = world({ adminKey: KEY });
+  const bad = async (over, error) => assert.equal((await sSave(w, over)).body.error, error, JSON.stringify(over));
+  const d = { mode: 'dates', starts_at: '2027-10-20T00:00:00Z', ends_at: '2027-11-02T00:00:00Z' };
+  await bad({ season: 'rain' }, 'bad_season');
+  await bad({ season: '__proto__' }, 'bad_season');
+  await bad({ season: 5 }, 'bad_season');
+  await bad({ year: 1999 }, 'bad_year');
+  await bad({ year: 2040 }, 'bad_year');
+  await bad({ year: '2027' }, 'bad_year');
+  await bad({ year: 2027.5 }, 'bad_year');
+  await bad({ mode: 'maybe' }, 'bad_mode');
+  await bad({ mode: undefined }, 'bad_mode');
+  await bad({ ...d, starts_at: 'soon' }, 'bad_start');
+  await bad({ ...d, starts_at: undefined }, 'bad_start');
+  await bad({ ...d, ends_at: '2027-11-02' }, 'bad_end');
+  await bad({ ...d, ends_at: d.starts_at }, 'bad_range');
+  await bad({ ...d, ends_at: '2027-10-19T00:00:00Z' }, 'bad_range');
+  await bad({ ...d, ends_at: '2029-10-20T00:00:00Z' }, 'bad_range');
+  assert.equal((await sSave(w, d)).status, 200);
+  assert.equal((await w.admin('season-clear', { season: 'x', year: 2027 }, KEY)).body.error, 'bad_season');
+  assert.equal((await w.admin('season-clear', { season: 'halloween', year: 3000 }, KEY)).body.error, 'bad_year');
+  assert.equal(w.db.townSeasons.size, 1);
+  assert.equal(iso(w.db.townSeasons.get('halloween|2027').starts_at), '2027-10-20T00:00:00.000Z');
+});

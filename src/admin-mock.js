@@ -1,7 +1,7 @@
 // Development only (admin.html?mock=1): a stand-in for the trip function that lives in the page, so the admin page can be tried and
 // photographed without a server or a key. The key it accepts is "prueba". Never loaded without ?mock=1.
 export function createMockFetch(now = () => Date.now()) {
-  const events = [];
+  const events = [], seasons = new Map();
   let n = 0;
   const reply = (status, body) => ({ status, json: async () => body });
   return async (url, init) => {
@@ -9,7 +9,7 @@ export function createMockFetch(now = () => Date.now()) {
     const body = JSON.parse(init.body || '{}'), key = init.headers['x-admin-key'];
     if (fn === 'events') {
       const days = body.ahead_days || 7;
-      return reply(200, { now: now(), events: events.filter((e) => !e.gone && e.start_ms < now() + days * 86400000).sort((a, b) => a.start_ms - b.start_ms) });
+      return reply(200, { now: now(), events: events.filter((e) => !e.gone && e.start_ms < now() + days * 86400000).sort((a, b) => a.start_ms - b.start_ms), seasons: [...seasons.values()] });
     }
     if (key !== 'prueba') return reply(401, { error: 'bad_admin_key' });
     if (fn === 'event-save') {
@@ -26,6 +26,18 @@ export function createMockFetch(now = () => Date.now()) {
       if (!e) return reply(body.id === 'x' ? 400 : 404, { error: body.id === 'x' ? 'bad_id' : 'unknown_event' });
       e.gone = true;
       return reply(200, { id: e.id, cancelled: true, replayed: false });
+    }
+    if (fn === 'season-save' || fn === 'season-clear') {
+      if (body.season !== 'halloween') return reply(400, { error: 'bad_season' });
+      if (!Number.isInteger(body.year)) return reply(400, { error: 'bad_year' });
+      const id = `${body.season}|${body.year}`;
+      if (fn === 'season-clear') return reply(200, { season: body.season, year: body.year, cleared: true, replayed: !seasons.delete(id) });
+      if (!['dates', 'on', 'off'].includes(body.mode)) return reply(400, { error: 'bad_mode' });
+      const s = Date.parse(body.starts_at), e = Date.parse(body.ends_at);
+      if (body.mode === 'dates' && !(e > s)) return reply(400, { error: Number.isNaN(s) ? 'bad_start' : Number.isNaN(e) ? 'bad_end' : 'bad_range' });
+      const row = { season: body.season, year: body.year, mode: body.mode, starts_ms: body.mode === 'dates' ? s : null, ends_ms: body.mode === 'dates' ? e : null };
+      seasons.set(id, row);
+      return reply(200, { season: row });
     }
     return reply(404, { error: 'unknown_action' });
   };

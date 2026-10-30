@@ -8,10 +8,10 @@ import { toBase64 } from '../supabase/functions/trip/travel-package.js';
 export const fixture = (name) => new Uint8Array(readFileSync(new URL(`./fixtures/${name}`, import.meta.url)));
 
 export function memoryDb() {
-  const devices = new Map(), trips = new Map(), townEvents = new Map(), tools = new Map(), petDays = new Map();
+  const devices = new Map(), trips = new Map(), townEvents = new Map(), townSeasons = new Map(), tools = new Map(), petDays = new Map();
   const matches = (row, where) => Object.entries(where).every(([k, vs]) => vs.some((v) => row[k] === v));
   const db = {
-    devices, trips, townEvents, tools, petDays,
+    devices, trips, townEvents, townSeasons, tools, petDays,
     async getDevice(id) { return devices.get(id) ?? null; },
     async insertDevice(row) { if (devices.has(row.id)) return false; devices.set(row.id, { ...row }); return true; },
     async getTripByDevice(d, t) { return [...trips.values()].find((x) => x.device_id === d && x.trip_id === t) ?? null; },
@@ -47,6 +47,9 @@ export function memoryDb() {
     async countUpcoming(now) { return [...townEvents.values()].filter((e) => !e.cancelled_at && e.start_at > now).length; },
     async getEvent(id) { return townEvents.get(id) ?? null; },
     async insertEvent(row) { townEvents.set(row.id, { ...row }); },
+    async listSeasons(a, b) { return [...townSeasons.values()].filter((r) => r.year >= a && r.year <= b).map((r) => ({ ...r })); },
+    async upsertSeason(row) { townSeasons.set(`${row.season}|${row.year}`, { ...row }); },
+    async deleteSeason(season, year) { return townSeasons.delete(`${season}|${year}`); },
     async cancelEvent(id, at) { const e = townEvents.get(id); if (!e || e.cancelled_at) return null; e.cancelled_at = at; return { ...e }; },
   };
   return db;

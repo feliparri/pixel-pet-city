@@ -1,18 +1,13 @@
-// Halloween in the town: when the decorations are up (a pure function of the server's clock, the same for every player) and where they stand.
+// Halloween in the town: where the decorations stand (when they are up is the season registry's, src/seasons.js; halloweenOn is its default window).
 // The window is Oct 24 00:00 to Nov 1 06:00 America/Santiago, every year (06:00 is when the town's day turns, so the night of Oct 31 to Nov 1
 // keeps its decorations). Chile is on summer time (UTC-3) all through it, so there is no clock change inside the window.
 // The decorations are drawn over the map, never part of it: nothing blocks a path, and outside the window nothing is drawn.
 import { TILE, HOUSES } from './map.js';
-import { zonedToMs } from './admin-time.js';
+import { activeSeasons } from './seasons.js';
 
-const edges = new Map();                                      // year -> [start ms, end ms]
-/** True while the town wears its Halloween decorations at server time `ms` (UTC ms). */
+/** True while the town wears its Halloween decorations at server time `ms` by the DEFAULT window (src/seasons.js: overrides from the server are applied by activeSeasons). */
 export function halloweenOn(ms) {
-  if (!Number.isFinite(ms)) return false;
-  const y = new Date(ms).getUTCFullYear();
-  let e = edges.get(y);
-  if (!e) edges.set(y, e = [zonedToMs(`${y}-10-24`, '00:00'), zonedToMs(`${y}-11-01`, '06:00')]);
-  return ms >= e[0] && ms < e[1];
+  return activeSeasons(ms).has('halloween');
 }
 
 // Tiles (x, y) of the jack-o'-lanterns and of the lantern stakes; every one is open grass or plaza that is not a door, a mat or a path.

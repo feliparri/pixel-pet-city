@@ -5,6 +5,7 @@ import { createEventsApi, adminErrorText } from './events-client.js';
 import { zonedToMs, msToZoned, labelZoned, untilText, zoneOffset, parseDuration, durationText } from './admin-time.js';
 import { SHOWS } from './show/timeline.js';
 import { LAUNCH_NOW_MS } from './town-events.js';
+import { SEASONS, SEASON_KEYS, seasonStatus, defaultWindow } from './seasons.js';
 
 const $ = (id) => document.getElementById(id);
 const KEY_STORE = 'town.adminKey';
@@ -13,7 +14,7 @@ const store = {
   set(v) { try { v ? sessionStorage.setItem(KEY_STORE, v) : sessionStorage.removeItem(KEY_STORE); } catch { /* private mode */ } },
 };
 const mock = new URLSearchParams(location.search).get('mock') === '1';
-let api = null, key = store.get(), offset = 0, events = [], timer = 0;
+let api = null, key = store.get(), offset = 0, events = [], seasonRows = [], timer = 0, seasonsDirty = false;
 
 const say = (text, kind = '') => { const m = $('msg'); m.textContent = text || ''; m.className = `msg ${kind}`; };
 const randomSeed = () => { const a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] >>> 1; };
@@ -56,13 +57,66 @@ function paintList() {
   }
 }
 
-async function refresh() {
+const STATE_TEXT = { on: 'Activa', scheduled: 'Programada', off: 'Apagada' };
+const span = (w) => `${labelZoned(w[0])} → ${labelZoned(w[1])} (Chile)`;
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const field = (label, input) => { const l = el('label', '', label); l.append(input); return l; };
+const input = (type, value) => { const i = el('input'); i.type = type; i.value = value; i.required = true; i.addEventListener('input', () => { seasonsDirty = true; }); return i; };
+
+/** The "Temporadas" section: one card per season, with its state and the controls. Repainted from the server's overrides unless the owner is typing. */
+function paintSeasons() {
+  const ul = $('seasons');
+  ul.replaceChildren();
+  seasonsDirty = false;
+  const now = serverNow();
+  for (const k of SEASON_KEYS) {
+    const st = seasonStatus(k, now, seasonRows), dflt = defaultWindow(k, st.year), w = st.window || dflt;
+    const li = el('li'), head = el('div', 'season-head');
+    head.append(el('h3', '', SEASONS[k].label), el('span', `badge ${st.state}`, STATE_TEXT[st.state]));
+    const how = st.mode === 'on' ? `Lanzada a mano: encendida durante todo ${st.year}.` : st.mode === 'off' ? `Apagada a mano durante ${st.year}.` : st.mode === 'dates' ? `Fechas cambiadas para ${st.year}: ${span(w)}.` : `Usa las fechas por defecto de ${st.year}.`;
+    const info = el('p', 'season-when', `Por defecto: ${span(dflt)}. ${how}`);
+    const a = msToZoned(w[0]), z = msToZoned(w[1]);
+    const from = input('date', a.date), fromT = input('time', a.time), to = input('date', z.date), toT = input('time', z.time);
+    const dates = el('div', 'row');
+    dates.append(field('Desde', from), field('Hora', fromT), field('Hasta', to), field('Hora', toT));
+    const save = el('button', 'btn', 'Guardar fechas'); save.type = 'button';
+    save.addEventListener('click', () => {
+      const s = zonedToMs(from.value, fromT.value), e = zonedToMs(to.value, toT.value);
+      if (!Number.isFinite(s) || !Number.isFinite(e)) { say('Elige las fechas y las horas.', 'bad'); return; }
+      if (e <= s) { say(adminErrorText('bad_range'), 'bad'); return; }
+      seasonAct(save, () => api.seasonSave({ season: k, year: st.year, mode: 'dates', starts_at: new Date(s).toISOString(), ends_at: new Date(e).toISOString() }, key), `${SEASONS[k].label}: fechas guardadas.`);
+    });
+    const acts = el('div', 'row');
+    const now_ = el('button', 'btn primary', 'Lanzar ahora'), off = el('button', 'btn danger', 'Apagar'), back = el('button', 'btn', 'Volver a las fechas por defecto');
+    for (const x of [now_, off, back]) x.type = 'button';
+    back.disabled = st.mode === 'default';
+    now_.addEventListener('click', () => seasonAct(now_, () => api.seasonSave({ season: k, year: st.year, mode: 'on' }, key), `${SEASONS[k].label}: lanzada. Todos la ven en unos 25 segundos.`));
+    off.addEventListener('click', () => seasonAct(off, () => api.seasonSave({ season: k, year: st.year, mode: 'off' }, key), `${SEASONS[k].label}: apagada.`));
+    back.addEventListener('click', () => seasonAct(back, () => api.seasonClear(k, st.year, key), `${SEASONS[k].label}: de vuelta a las fechas por defecto.`));
+    const prev = el('a', 'btn', 'Vista previa'); prev.href = `index.html?dev=1&season=${encodeURIComponent(k)}`; prev.target = '_blank'; prev.rel = 'noopener';
+    acts.append(now_, off, back, prev);
+    li.append(head, info, dates, save, acts, el('p', 'note', '«Vista previa» abre la ciudad con la temporada encendida solo para ti, sin avisar a nadie.'));
+    ul.append(li);
+  }
+}
+
+async function seasonAct(btn, call, okText) {
+  btn.disabled = true;
+  const r = await call();
+  if (!r.ok) { btn.disabled = false; say(adminErrorText(r.error), 'bad'); if (r.error === 'bad_admin_key') logout(); return; }
+  say(okText, 'ok');
+  await refresh(true);
+}
+
+async function refresh(force = false) {
   const sent = Date.now();
   const r = await api.list({ aheadDays: 60, limit: 50 });
   if (!r.ok) { say(adminErrorText(r.error), 'bad'); return; }
   offset = r.body.now - (sent + Date.now()) / 2;
   events = r.body.events;
+  seasonRows = Array.isArray(r.body.seasons) ? r.body.seasons : [];
   paintList();
+  if (force || !seasonsDirty) paintSeasons();
 }
 
 async function cancelEvent(e, btn) {

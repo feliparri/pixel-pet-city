@@ -168,15 +168,29 @@ are refused with `400 bad_entrance`; a stored id the town does not know falls ba
 The owner schedules a show (kind `fireworks`, `meteors`, `drones` or `halloween`, a seed and a start time) and every player in the town sees it at that moment
 (table `town_events`, migrations `20261025120000_town_events.sql` and `20261030120000_town_events_duration.sql`, RLS on and no policy: only these actions touch it).
 
-* `events` (GET or POST, no key): `{ now, events: [{ id, kind, seed, start_at, start_ms, duration_ms }] }`, `now` being the server's clock in ms
+* `events` (GET or POST, no key): `{ now, events: [{ id, kind, seed, start_at, start_ms, duration_ms }], seasons: [{ season, year, mode, starts_ms, ends_ms }] }` (`seasons`: see "Seasons" below), `now` being the server's clock in ms
   (the town keeps the offset). It lists what is running and what starts within 7 days, up to 20, earliest first; a POST body `{ ahead_days (1..60), limit (1..50) }` widens that. Cancelled ones are not listed.
 * `event-save` (POST, header `x-admin-key`): body `{ kind, seed?, start_at, duration_s? }`; `duration_s` is an integer 20..600 (seconds the show runs; left out: the kind's own length, stored as NULL, which is also what older events are) and is returned as `duration_ms` by `events`; `start_at` is ISO 8601 with a time zone (`Z` or `-03:00`), in the future
   and at most 60 days ahead; `seed` is an integer 0..2^31-1 (random when left out); `201 { event }`. At most 50 upcoming shows (`429 too_many_events`).
 * `event-cancel` (POST, header `x-admin-key`): body `{ id }`; `200 { id, cancelled, replayed }`, `404 unknown_event`.
-* The admin key is the function secret `ADMIN_KEY`, set by the owner in the dashboard (Edge Functions > Secrets). Without it the two admin actions answer
+* The admin key is the function secret `ADMIN_KEY`, set by the owner in the dashboard (Edge Functions > Secrets). Without it the admin actions answer
   `503 admin_disabled`; a wrong or missing key is `401 bad_admin_key` (compared in constant time), and 10 wrong keys in 10 minutes in one function instance
   answer `429 too_many_attempts`. The key is never stored, logged or echoed.
 * Errors: `bad_kind`, `bad_seed`, `bad_duration`, `bad_start`, `start_in_the_past`, `start_too_far`, `bad_id`, `bad_json`.
+
+### Seasons (overrides of the built-in yearly windows)
+
+Season art and behaviour ship inside each client (the town's `src/seasons.js`; the board and the app have their own copy) with a default yearly window in Chile
+time, so a season goes live by itself. Table `town_seasons` (migration `20261030150000_town_seasons.sql`, RLS on and no policy) holds only the owner's overrides,
+one row per (`season`, `year`), `year` being the year the window starts in. No row means the default window. Known `season` keys: `halloween`.
+
+* `events` also returns `seasons`: the overrides whose `year` is last, this or next year (UTC year of the server's clock): `{ season, year, mode, starts_ms, ends_ms }`,
+  `mode` being `dates` (the season runs from `starts_ms` to `ends_ms` instead of its default window), `on` (forced on for that year) or `off` (forced off for that year);
+  the dates are `null` unless the mode is `dates`. A client without a row, or without an answer, uses the default window.
+* `season-save` (POST, header `x-admin-key`): body `{ season, year, mode, starts_at?, ends_at? }`; `starts_at` and `ends_at` (ISO 8601 with a time zone) are required for
+  `dates` (the end after the start, at most 400 days) and ignored otherwise; `year` is from last year to 5 years ahead; replaces the row; `200 { season: { season, year, mode, starts_ms, ends_ms } }`.
+* `season-clear` (POST, header `x-admin-key`): body `{ season, year }`; deletes the row; `200 { season, year, cleared: true, replayed }` (`replayed`: there was none).
+* Errors: `bad_season`, `bad_year`, `bad_mode`, `bad_start`, `bad_end`, `bad_range`, `bad_json`, plus the admin ones.
 
 ## Sizes and limits
 

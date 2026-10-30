@@ -7,7 +7,7 @@ import { cleanRadar } from './radar.js';
 import { SHOP, isForSale, boardKnows, knownItems } from './shop.js';
 import { TOOLS, isTool } from './tools.js';
 import { DAILY_CAP, parseMission, townDay } from './missions.js';
-import { events, eventSave, eventCancel } from './events.js';
+import { events, eventSave, eventCancel, seasonSave, seasonClear } from './events.js';
 
 export const BODY_MAX = 12288;                 // a 6144-byte package is 8192 base64 characters, plus the JSON around it
 export const STATE_MAX = 2048;                 // the saved JSON state, serialized
@@ -360,7 +360,8 @@ async function tripAck(req, deps, device) {
 
 const ROUTES = { 'device-register': deviceRegister, 'trip-claim': tripClaim, 'trip-save': tripSave, 'trip-buy': tripBuy, 'trip-buy-tool': tripBuyTool, 'trip-mission': tripMission, 'trip-status': tripStatus,
   'trip-start': tripStart, 'trip-recall': tripRecall, 'trip-return': tripReturn, 'trip-ack': tripAck,
-  'events': events, 'event-save': eventSave, 'event-cancel': eventCancel };
+  'events': events, 'event-save': eventSave, 'event-cancel': eventCancel,
+  'season-save': seasonSave, 'season-clear': seasonClear };
 const GET_OK = new Set(['events']);                // the public list can also be read with GET
 
 /**
