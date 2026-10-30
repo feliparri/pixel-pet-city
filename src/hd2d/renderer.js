@@ -7,7 +7,7 @@ import { drawText, textWidth, textCanvas } from '../font.js';
 import { badge, bobY, BADGE } from '../art/icons.js';
 import { cameraFor, PHONE_OUT, followFocus, snapFocus, sortBackToFront, screenToTile, standAt, project } from './camera.js';
 import { groundMult, approach } from './light.js';
-import { buildWorld, bakeGround, drawGround, standingItems, drawGlows, fountainItem, paintFarm } from './scene.js';
+import { buildWorld, bakeGround, drawGround, standingItems, drawGlows, fountainItem, paintFarm, decorItems, drawDecorGlows } from './scene.js';
 import { createFx } from './fx.js';
 import { createGovernor } from './quality.js';
 import { createPetPainter } from './pets.js';
@@ -124,6 +124,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
     const items = standingItems(world, cam, n, view);
     const jet = world.fountain ? fountainItem(cam, n, now, view) : null;
     if (jet) items.push(jet);
+    if (state.halloween) items.push(...decorItems(world, cam, n, view));
     const ent = { cam, n, now, world, me: state.me, view, wash: flashes.length ? (wx) => burstTint(flashes, wx) : null };
     items.push(...things.items(state, ent, now));
     for (const e of [state.me, ...state.others]) { const it = painter.item(e, ent); if (it) items.push(it); }
@@ -131,6 +132,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
     for (const it of sortBackToFront(items)) it.draw(ctx, ov);
     things.air(ctx, state, cam, now, view);
     drawGlows(ctx, world, cam, n, now, view);
+    if (state.halloween) drawDecorGlows(ctx, world, cam, n, now, view);
     if (sh) {
       drawRockets(ctx, scam, sky.fw, u, alpha); drawDrones(ctx, scam, sky.drones, u, alpha);
       ctx.save(); ctx.globalCompositeOperation = 'lighter';              // each burst lights the whole view with its colour (additive, widest across the ground)
