@@ -10,7 +10,7 @@ import { fountainFrame, drawFountain } from '../art/props.js';
 import { PIECE_KINDS, hedgePiece, fencePiece, benchPiece, bedPiece, fountainWall } from './pieces.js';
 import { cropPiece, CROP_CHARS, soil } from '../art/farm.js';
 import { groundRow, project, standAt } from './camera.js';
-import { halloweenDecor } from '../art/halloween.js';
+import { halloweenDecor, ghostFrames } from '../art/halloween.js';
 import { LAMP_RADIUS, lightAt, nightMultiply, spriteGrade } from './light.js';
 
 /** The part of the town that is baked, in tiles: all of it (another area bakes its own size). */
@@ -308,4 +308,20 @@ export function drawDecorGlows(ctx, world, cam, n, now, view) {
     ctx.fillStyle = g; ctx.fillRect(p.x - r, p.y - r, r * 2, r * 2);
   }
   ctx.globalCompositeOperation = 'source-over';
+}
+
+/** Halloween's wandering ghosts (src/ghosts.js) as billboards over the sorted scene, translucent and a little bigger with the camera's depth like the pets. */
+export function drawGhosts(ctx, ghosts, cam, view) {
+  const fr = ghostFrames();
+  for (const g of ghosts) {
+    const p = standAt(cam, g.x, g.y, g.lift);
+    if (!p) continue;
+    const w = 10 * p.scale, h = 12 * p.scale, x = p.x - w / 2, y = p.y - h;
+    if (x > view.w || x + w < 0 || y > view.h || y + h < 0) continue;
+    const gp = project(cam, g.x, g.y);
+    if (gp) { ctx.fillStyle = 'rgba(8,10,30,0.2)'; ctx.beginPath(); ctx.ellipse(gp.x, gp.y, 4 * gp.scale, 1.6 * gp.scale * Math.max(0.3, cam.sin), 0, 0, 6.2832); ctx.fill(); }
+    ctx.globalAlpha = g.a;
+    if (g.flip) { ctx.save(); ctx.translate(x + w, y); ctx.scale(-1, 1); ctx.drawImage(fr[g.frame], 0, 0, w, h); ctx.restore(); } else ctx.drawImage(fr[g.frame], x, y, w, h);
+    ctx.globalAlpha = 1;
+  }
 }

@@ -7,7 +7,7 @@ import { drawText, textWidth, textCanvas } from '../font.js';
 import { badge, bobY, BADGE } from '../art/icons.js';
 import { cameraFor, PHONE_OUT, followFocus, followMargin, snapFocus, sortBackToFront, screenToTile, standAt, project } from './camera.js';
 import { groundMult, approach } from './light.js';
-import { buildWorld, bakeGround, drawGround, standingItems, drawGlows, fountainItem, paintFarm, decorItems, drawDecorGlows } from './scene.js';
+import { buildWorld, bakeGround, drawGround, standingItems, drawGlows, fountainItem, paintFarm, decorItems, drawDecorGlows, drawGhosts } from './scene.js';
 import { createFx } from './fx.js';
 import { createGovernor } from './quality.js';
 import { createPetPainter } from './pets.js';
@@ -134,6 +134,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
     things.air(ctx, state, cam, now, view);
     drawGlows(ctx, world, cam, n, now, view);
     if (state.halloween) drawDecorGlows(ctx, world, cam, n, now, view);
+    if (state.ghosts && state.ghosts.length) drawGhosts(ctx, state.ghosts, cam, view);
     if (sh) {
       drawRockets(ctx, scam, sky.fw, u, alpha); drawDrones(ctx, scam, sky.drones, u, alpha);
       ctx.save(); ctx.globalCompositeOperation = 'lighter';              // each burst lights the whole view with its colour (additive, widest across the ground)

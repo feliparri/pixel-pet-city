@@ -52,7 +52,7 @@ export function parseDevEvent(search, nowMs) {
  * "Volver" button's visibility. tick(where) every frame, where = 'hd' (the HD-2D town: it draws the show), 'flat' or 'inside' (they only get a toast).
  */
 export function createTownEvents({ api, nowMs = () => Date.now(), devEvents = null, notify = () => {}, onShow = () => {}, setTimer = setTimeout, clearTimer = clearTimeout }) {
-  let events = devEvents || [], offset = 0, timer = null, alive = true, active = false;
+  let events = devEvents || [], seasons = [], offset = 0, timer = null, alive = true, active = false;
   const cuts = {}, warned = new Set(), invited = new Set();
   const serverNow = () => nowMs() + offset;
 
@@ -67,6 +67,7 @@ export function createTownEvents({ api, nowMs = () => Date.now(), devEvents = nu
     if (r.ok && Array.isArray(r.body?.events) && Number.isFinite(r.body.now)) {
       offset = clockOffset(r.body.now, sent, got);
       events = r.body.events.filter(valid);
+      seasons = Array.isArray(r.body.seasons) ? r.body.seasons : [];       // the owner's season overrides (src/seasons.js); a failed ask keeps the last good ones, none yet means the defaults
       delay = nextPollDelay(events, serverNow());
     } else delay = RETRY_MS;
     timer = setTimer(poll, delay);
@@ -100,5 +101,6 @@ export function createTownEvents({ api, nowMs = () => Date.now(), devEvents = nu
       return false;
     },
     get events() { return events; },
+    get seasons() { return seasons; },
   };
 }

@@ -99,3 +99,15 @@ export function halloweenDecor(area) {
   dressed.set(area, list);
   return list;
 }
+
+const GHOST = ['..XXXXXX..', '.XXXXXXXX.', 'XXXXXXXXXX', 'XXooXXooXX', 'XXooXXooXX', 'XXXXooXXXX', 'XXXXooXXXX', 'XXXXXXXXXX', 'XXXXXXXXXX'];
+const TAILS = [['XX.XXXX.XX', 'X..XXXX..X', '.....XX...'], ['.XX.XX.XX.', '.X..XX..X.', '....X..X..']];        // the hem, two frames
+let ghostCache = null;
+/** The wandering ghost, 10 x 12, two frames (the hem sways): [canvas, canvas]. Pale blue, drawn translucent by the renderers. */
+export function ghostFrames() {
+  return ghostCache || (ghostCache = TAILS.map((tail) => {
+    const c = canvas(10, 12), ctx = c.getContext('2d');
+    GHOST.concat(tail).forEach((row, y) => [...row].forEach((ch, x) => { if (ch !== '.') dot(ctx, ch === 'o' ? '#2a2f4a' : y > 6 && x > 5 ? '#b6c4ee' : '#e4ecff', x, y); }));
+    return c;
+  }));
+}

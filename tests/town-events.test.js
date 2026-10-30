@@ -164,3 +164,13 @@ test('the controller hands the renderer the length of the show that runs', async
   const w = r.ctl.tick('hd');
   assert.deepEqual([w.kind, w.dur, w.ts], ['meteors', 75, 50]);
 });
+
+test('the controller keeps the server\'s season overrides; a failed ask leaves the defaults (none)', async () => {
+  const rows = [{ season: 'halloween', year: 2027, mode: 'off', starts_ms: null, ends_ms: null }];
+  const mk = (ok) => createTownEvents({ api: { list: async () => (ok ? { ok: true, status: 200, body: { now: T0, events: [], seasons: rows } } : { ok: false, status: 0, error: 'network' }) }, nowMs: () => T0, setTimer: () => 1, clearTimer: () => {} });
+  const good = mk(true), bad = mk(false), old = createTownEvents({ api: { list: async () => ({ ok: true, status: 200, body: { now: T0, events: [] } }) }, nowMs: () => T0, setTimer: () => 1, clearTimer: () => {} });
+  for (const c of [good, bad, old]) { c.start(); await new Promise((x) => setImmediate(x)); }
+  assert.deepEqual(good.seasons, rows);
+  assert.deepEqual(bad.seasons, []);
+  assert.deepEqual(old.seasons, [], 'a server that does not send them yet');
+});

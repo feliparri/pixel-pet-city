@@ -25,7 +25,8 @@ import { createCanasta } from './canasta.js';
 import { createFarmMemory, farmView, clockOf } from './farm-world.js';
 import { actionAt, perform, objectAt } from './farm-actions.js';
 import { dayOf } from './npc-world.js';
-import { halloweenOn } from './halloween.js';
+import { activeSeasons, parseDevSeasons } from './seasons.js';
+import { ghostsAt } from './ghosts.js';
 import { createHold, villagerAtTap, talkSpot, faceToward } from './npc-hold.js';
 import { hearer, reactionTo, REPLY_WINDOW_MS, REPLY_DELAY_MS, REPLY_EMOTE_MS, REPLY_SAY_MS } from './npc-react.js';
 import { missionFor, missionText, missionRows, statusOf, thanksFor, doneLine, CAPPED_LINE, NOT_READY, GOLD_POP, claimErrorText } from './missions.js';
@@ -59,7 +60,8 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   const renderer = createTownRenderer({ canvas, sprites, font, minH: pad ? MIN_VIEW_H : VIEW_H, minW: pad ? MIN_VIEW_W : VIEW_W, flat: new URLSearchParams(location.search).get('flat') === '1', onNotice: (text) => games.notify(text), onMode: onHdMode });   // a phone: 1.25 times the tiles it showed (and a whole-number pixel size); a desktop: as many tiles as before
   const npcs = createNpcs({ seed: net.code || net.id, sprites });           // the villagers: their place and lines come from (room, server time) alone, nothing of them goes over the net
   const search = new URLSearchParams(location.search);
-  const devHalloween = search.get('dev') === '1' && search.has('halloween') ? search.get('halloween') === '1' : null;      // development only: ?dev=1&halloween=1|0 forces the decorations on or off
+  const devSeasons = parseDevSeasons(location.search);      // development only: ?dev=1&season=halloween|none (or &halloween=1|0) forces seasons on or off
+  let seasonSet = new Set(), seasonAt = -1e9;
   let devNpcT = search.get('dev') === '1' && Number.isFinite(Number(search.get('npct'))) && search.has('npct') ? Number(search.get('npct')) : null;      // development only: ?dev=1&npct=<ms> pins the villagers' clock
   let shopVisits = 0, shopNear = false, shopSayUntil = 0, modal = false, thankLine = null,   // modal: a panel is open (shop, backpack): the pet stands still
     storeVisits = 0, storeNear = false, clerkSayUntil = 0;
@@ -273,7 +275,11 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     const here = !w.busy ? spotAt(w.tileX, w.tileY, self.area) : null;      // standing on a game's pad: the button; walking onto the pad of an open lobby joins it
     if (here && gv.lobby && gv.lobby.g === here && !gv.lobby.iJoined) games.join();
     if (t - hudAt > 120) { hudAt = t; onHud({ ...gv, shopNear: self.area === 'shop' && shopNear && !modal, spot: here, wall: mv.zone && gv.game ? gv.game.name : null, frozen: mv.frozen }); }
-    state.halloween = devHalloween ?? halloweenOn(devNpcT === null ? events.serverNow() : devNpcT);      // Oct 24 to Nov 1 06:00 Chile time (src/halloween.js)
+    if (devSeasons) seasonSet = devSeasons;
+    else if (t - seasonAt > 1000) { seasonAt = t; seasonSet = activeSeasons(devNpcT === null ? events.serverNow() : devNpcT, events.seasons); }      // default windows, overridden by the server's list (src/seasons.js); once a second is plenty
+    state.seasons = seasonSet;
+    state.halloween = seasonSet.has('halloween');
+    state.ghosts = state.halloween ? ghostsAt(self.area, events.serverNow(), state.amb.night) : null;      // the wandering ghosts: the same place for everyone
     state.show = events.tick(!getArea(self.area).outdoor ? 'inside' : renderer.hd ? 'hd' : 'flat');      // the sky is seen from the town and from the farm      // the show that runs now, the same moment on every screen
     renderer.draw(state, t);
     raf = requestAnimationFrame(frame);

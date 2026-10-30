@@ -3,7 +3,7 @@
 //   &hour=21               the time of day (default: 13); see daynight.js
 //   &scale=2               integer zoom
 //   &talk=1                the shopkeeper greets (shop only)
-//   &halloween=1           the Halloween decorations (town; &area=farm shows the farm instead of the town)
+//   &halloween=1           the Halloween decorations and ghosts (town; &area=farm shows the farm instead of the town)
 // The page sets document.title to "ready" when it has painted, so a headless browser knows when to take the screenshot.
 import { getArea, tileAt, TILES, TILE } from './map.js';
 import { seekerSees } from './games/hide.js';
@@ -13,6 +13,7 @@ import { loadFont } from './font.js';
 import { ambientAt } from './daynight.js';
 import { Walker } from './walker.js';
 import { createLife, stepLife, lifeFrame } from './life.js';
+import { ghostsAt } from './ghosts.js';
 import { SHOPKEEPER, shopGreeting } from './npcs.js';
 
 const q = new URLSearchParams(location.search);
@@ -59,7 +60,7 @@ async function main() {
   const scene = document.createElement('canvas');
   scene.width = vw; scene.height = vh;
   const sctx = scene.getContext('2d');
-  const bubbles = drawScene(sctx, { area: area.name, cam, vw, vh, entities: shown, me, now: kind === 'life' ? lifeNow : 1000, amb, sprites, font, chicken, dark, life: lifeScene, halloween: q.get('halloween') === '1', ball: kind === 'pitch' ? { x: 23.4, y: 59.2 } : null, talk: kind === 'shop' && q.get('talk') === '1' ? [{ x: SHOPKEEPER.head.x, y: SHOPKEEPER.head.y, text: shopGreeting(0) }] : null });
+  const bubbles = drawScene(sctx, { area: area.name, cam, vw, vh, entities: shown, me, now: kind === 'life' ? lifeNow : 1000, amb, sprites, font, chicken, dark, life: lifeScene, halloween: q.get('halloween') === '1', ghosts: q.get('halloween') === '1' ? ghostsAt(area.name, 1.8e12, amb.night) : null, ball: kind === 'pitch' ? { x: 23.4, y: 59.2 } : null, talk: kind === 'shop' && q.get('talk') === '1' ? [{ x: SHOPKEEPER.head.x, y: SHOPKEEPER.head.y, text: shopGreeting(0) }] : null });
   const c = document.getElementById('c');
   c.width = vw * scale; c.height = vh * scale;
   const ctx = c.getContext('2d');
