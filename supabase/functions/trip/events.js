@@ -3,7 +3,7 @@
 import { sha256Hex, safeEqual } from './crypto.js';
 
 /** Show kinds and how long each runs, in seconds (the same numbers as SHOWS in src/show/timeline.js; a test keeps them equal). */
-export const SHOW_SECONDS = { fireworks: 38, meteors: 28, drones: 40 };
+export const SHOW_SECONDS = { fireworks: 38, meteors: 28, drones: 40, halloween: 40 };
 export const LIST_AHEAD_S = 7 * 86400;        // the list shows what starts within a week
 export const SCHEDULE_AHEAD_S = 60 * 86400;   // an event can be scheduled up to 60 days ahead
 export const LIST_DEFAULT = 20, LIST_MAX = 50;  // how many a list holds by default and at most (the admin page asks for all it can)

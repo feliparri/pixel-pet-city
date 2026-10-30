@@ -41,7 +41,7 @@ function moon(ctx, x, y, u, a) {
 }
 
 /** Draws the sky from the top of the view down to row `hy`, the land below it, and the treeline on the horizon. `t` is seconds. */
-export function drawSky(ctx, view, hy, t, stars, u, edgeY = 0) {
+export function drawSky(ctx, view, hy, t, stars, u, edgeY = 0, withMoon = true) {
   if (hy <= 0) return;
   const W = view.w, H = view.h, h = Math.min(hy, H);
   const g = ctx.createLinearGradient(0, 0, 0, h);
@@ -54,7 +54,7 @@ export function drawSky(ctx, view, hy, t, stars, u, edgeY = 0) {
     ctx.fillRect(x, y, u, u);
     if (s.big) { ctx.fillStyle = `rgba(${s.c[0]},${s.c[1]},${s.c[2]},${a * 0.55})`; ctx.fillRect(x - u, y, u, u); ctx.fillRect(x + u, y, u, u); ctx.fillRect(x, y - u, u, u); ctx.fillRect(x, y + u, u, u); }
   }
-  moon(ctx, Math.round((W * 0.8) / u) * u, Math.round((h * 0.38) / u) * u, u, clamp01(h / (H * 0.2)));
+  if (withMoon) moon(ctx, Math.round((W * 0.8) / u) * u, Math.round((h * 0.38) / u) * u, u, clamp01(h / (H * 0.2)));
   ctx.restore();
   ctx.fillStyle = `rgb(${LAND})`; ctx.fillRect(0, h, W, H - h);     // the land beyond the town
   const fog = ctx.createLinearGradient(0, h - 6 * u, 0, h + 26 * u);

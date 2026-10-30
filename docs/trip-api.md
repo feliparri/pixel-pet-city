@@ -165,7 +165,7 @@ are refused with `400 bad_entrance`; a stored id the town does not know falls ba
 
 ## Town events (scheduled sky shows)
 
-The owner schedules a show (kind `fireworks`, `meteors` or `drones`, a seed and a start time) and every player in the town sees it at that moment
+The owner schedules a show (kind `fireworks`, `meteors`, `drones` or `halloween`, a seed and a start time) and every player in the town sees it at that moment
 (table `town_events`, migration `20261025120000_town_events.sql`, RLS on and no policy: only these actions touch it).
 
 * `events` (GET or POST, no key): `{ now, events: [{ id, kind, seed, start_at, start_ms, duration_ms }] }`, `now` being the server's clock in ms

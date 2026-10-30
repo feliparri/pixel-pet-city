@@ -14,7 +14,7 @@ import { createPetPainter } from './pets.js';
 import { createThings } from './things.js';
 import { SHOWS, RISE, FALL, tiltAt, showCamera, horizonY } from '../show/timeline.js';
 import { makeStars, drawSky, pixelUnit, LAND } from '../show/sky.js';
-import { drawBursts, drawRockets, drawMeteors, drawDrones } from '../show/draw.js';
+import { drawBursts, drawRockets, drawMeteors, drawDrones, drawHalloween } from '../show/draw.js';
 import { skyAt } from '../show/layers.js';
 import { burstTint } from '../show/tint.js';
 import { createShowFx } from '../show/fx.js';
@@ -109,8 +109,8 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
     ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = k > 0.02 ? `rgb(${LAND})` : `rgb(${Math.round(30 - 20 * n)},${Math.round(48 - 34 * n)},${Math.round(44 - 20 * n)})`;
     ctx.fillRect(0, 0, view.w, view.h);
-    if (hy > 0 && stars) drawSky(ctx, view, hy, now / 1000, stars, u, project(cam, focus.x, 0, 0)?.y);
-    if (sh) { drawMeteors(ctx, sky.meteors, view, hy, u, alpha); drawBursts(ctx, scam, sky.fw, u, alpha); }
+    if (hy > 0 && stars) drawSky(ctx, view, hy, now / 1000, stars, u, project(cam, focus.x, 0, 0)?.y, !sky.hw?.moon);
+    if (sh) { drawMeteors(ctx, sky.meteors, view, hy, u, alpha); if (sky.hw) drawHalloween(ctx, sky.hw, view, hy, u, alpha); drawBursts(ctx, scam, sky.fw, u, alpha); }
     drawGround(ctx, ground, cam, view.w, view.h, gov.settings.rowStep);
     const edge = project(cam, focus.x, 0, 0);                              // the north edge of the map fades into the dark land beyond it
     if (k > 0.02 && edge && hy > 0 && edge.y > hy) {

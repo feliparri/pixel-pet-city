@@ -4,6 +4,7 @@ import { hash } from '../src/show/rand.js';
 import { SHOWS, RISE, FALL, SKY, tiltAt, showEnd, showCamera, horizonY } from '../src/show/timeline.js';
 import { schedule, fireworksAt, burstSparks, SHAPES, directions } from '../src/show/fireworks.js';
 import { meteorsAt, meteorSchedule } from '../src/show/meteors.js';
+import { skyAt } from '../src/show/layers.js';
 import { FORMATIONS, COUNT, T, dronesAt, dronesDuration, phaseAt, slot, pad } from '../src/show/drones.js';
 import { makeStars, twinkle } from '../src/show/sky.js';
 
@@ -144,4 +145,20 @@ test('stars: deterministic per seed, inside the sky, twinkling between dim and b
   assert.deepEqual(makeStars(7), makeStars(7));
   assert.notDeepEqual(makeStars(7), makeStars(8));
   for (const s of makeStars(7)) { assert.ok(s.u >= 0 && s.u < 1 && s.v >= 0 && s.v < 1); for (let t = 0; t < 5; t += 0.7) { const a = twinkle(s, t); assert.ok(a >= 0.3 && a <= 1); } }
+});
+
+test('halloween: the same length as the drones, deterministic, empty outside the show, with a moon, witches, ghosts and bats', async () => {
+  const H = await import('../src/show/halloween.js');
+  assert.equal(H.DURATION, SHOWS.halloween.dur);
+  assert.equal(SHOWS.halloween.label, 'Noche de Halloween');
+  assert.deepEqual(H.halloweenAt(7, 15), H.halloweenAt(7, 15));
+  assert.deepEqual(skyAt('halloween', 7, 15).hw, H.halloweenAt(7, 15));
+  for (const t of [-1, 40.5]) { const r = H.halloweenAt(7, t); assert.deepEqual([r.moon, r.witches, r.ghosts, r.bats], [null, [], [], []]); }
+  assert.equal(skyAt('drones', 7, 5).hw, null);
+  assert.ok(H.halloweenAt(7, 12).moon.v < H.halloweenAt(7, 2).moon.v, 'the moon rises');
+  assert.ok(H.halloweenAt(7, 5).witches.length + H.halloweenAt(7, 11).witches.length > 0);
+  assert.ok([8, 12, 16, 20].some((t) => H.halloweenAt(7, t).ghosts.length > 0));
+  assert.equal(H.PUMPKIN_PTS.length, H.FINALE.count);
+  assert.equal(H.halloweenAt(7, 34).bats.filter((b) => b.lit > 0.99).length, H.FINALE.count, 'the finale: every bat is in the pumpkin and glowing');
+  for (let t = 0; t <= 40; t += 0.5) for (const b of H.halloweenAt(3, t).bats) assert.ok(b.a >= 0 && b.a <= 1 && b.lit >= 0 && b.lit <= 1);
 });

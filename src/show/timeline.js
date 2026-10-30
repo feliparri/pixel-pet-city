@@ -7,6 +7,7 @@ export const SHOWS = {
   fireworks: { dur: 38, label: 'Fuegos artificiales' },
   meteors: { dur: 28, label: 'Estrellas fugaces' },
   drones: { dur: 40, label: 'Drones' },
+  halloween: { dur: 40, label: 'Noche de Halloween' },
 };
 export const RISE = 2.6, FALL = 2.4;
 export const SKY = { cy: 0.82, horizon: 0.4, zoom: 0.92 };     // at full tilt: the focus sits at 82% of the height, the horizon at 40%

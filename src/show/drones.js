@@ -7,14 +7,14 @@ const PAW = ['...XX..XX...', '...XX..XX...', '.XX......XX.', '.XX......XX.', '..
 const FONT = { H: ['X.X', 'X.X', 'XXX', 'X.X', 'X.X'], O: ['XXX', 'X.X', 'X.X', 'X.X', 'XXX'], L: ['X..', 'X..', 'X..', 'X..', 'XXX'], A: ['.X.', 'X.X', 'XXX', 'X.X', 'X.X'] };
 
 /** The '#'/'X' cells of an ascii grid as points in [-1, 1] x [-1, 1] (x right, z up), width-preserving. */
-function gridPoints(rows) {
+export function gridPoints(rows) {
   const w = Math.max(...rows.map((r) => r.length)), h = rows.length, s = Math.max(w, h) - 1, pts = [];
   rows.forEach((r, j) => [...r].forEach((ch, i) => { if (ch === 'X') pts.push([((i - (w - 1) / 2) / s) * 2, (-(j - (h - 1) / 2) / s) * 2]); }));
   return pts;
 }
 
 /** Exactly `n` points taken evenly from a list (repeating some when the list is short). */
-const resample = (pts, n) => Array.from({ length: n }, (_, i) => pts[Math.min(pts.length - 1, Math.floor(((i + 0.5) * pts.length) / n))]);
+export const resample = (pts, n) => Array.from({ length: n }, (_, i) => pts[Math.min(pts.length - 1, Math.floor(((i + 0.5) * pts.length) / n))]);
 
 function heart() {
   return Array.from({ length: COUNT }, (_, i) => {
