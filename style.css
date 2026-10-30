@@ -31,9 +31,17 @@ input:focus-visible, select:focus-visible, .btn:focus-visible { outline: 3px sol
 
 /* the town is the whole window: the view fills it and the bar, the emotes, the game HUD and the phone's controls float over it */
 .town { position: relative; max-width: none; height: 100%; margin: 0; padding: 0; overflow: hidden; }
-.bar { position: absolute; z-index: 4; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: .5rem; padding: max(.4rem, env(safe-area-inset-top)) max(.6rem, env(safe-area-inset-right)) .4rem max(.6rem, env(safe-area-inset-left)); background: rgba(38,44,68,.74); border-bottom: 1px solid rgba(58,68,102,.9); flex-wrap: wrap; }
+/* the bar is one row of icons (an aria-label and a tooltip say what each is); what needs typing opens as a small panel under it */
+.bar { position: absolute; z-index: 4; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: .3rem; padding: max(.3rem, env(safe-area-inset-top)) max(.5rem, env(safe-area-inset-right)) .3rem max(.5rem, env(safe-area-inset-left)); background: rgba(38,44,68,.74); border-bottom: 1px solid rgba(58,68,102,.9); flex-wrap: nowrap; }
 .bar .label { color: var(--muted); font-size: .8rem; }
-.bar strong { color: var(--gold); letter-spacing: .08em; margin-right: auto; user-select: all; }
+.bar strong { color: var(--gold); letter-spacing: .08em; user-select: all; }
+.bar .btn.ico { flex: none; min-width: 2.25rem; min-height: 2.25rem; padding: .1rem .3rem; font-size: 1.15rem; line-height: 1; border-bottom-width: 3px; }
+.bar .btn.ico:active { border-bottom-width: 2px; }
+.bar-gap { flex: 1 1 0; min-width: 0; }
+.bar #cable-state[data-state="connected"] { border-color: var(--gold); }
+.bar #cable-state[data-state="disconnected"], .bar #cable-state[data-state="failed"] { opacity: .6; }
+.bar .stars { display: inline-flex; align-items: center; gap: .2rem; }
+.bar-pop { position: absolute; z-index: 5; top: 100%; left: max(.5rem, env(safe-area-inset-left)); max-width: calc(100% - 1rem); display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; padding: .5rem .6rem; background: var(--face); border: 2px solid var(--gold); box-shadow: 0 4px 12px rgba(0,0,0,.5); }
 /* the stage sits between the phone's controls; without them (a desktop) it is the whole row */
 .play { position: absolute; inset: 0; }
 #stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #0e101a; overflow: hidden; touch-action: none; }
@@ -44,16 +52,14 @@ input:focus-visible, select:focus-visible, .btn:focus-visible { outline: 3px sol
 .emotes .btn.text { font-size: .9rem; }
 
 /* a pet visiting from its board */
-.bar .room-info { display: inline-flex; align-items: center; gap: .5rem; margin-right: auto; }
-.badge { display: inline-flex; align-items: center; gap: .4rem; background: var(--gold); color: var(--bg); font-weight: 700; font-size: .8rem; padding: .15rem .5rem; border: 2px solid #b89420; }
+.bar .badge { background: var(--gold); border-color: #b89420; }
 .keepsakes { display: inline-flex; gap: .2rem; }
 .keepsakes canvas { image-rendering: pixelated; max-height: 28px; width: auto; background: var(--bg); border: 1px solid #b89420; }
-.visit-join { display: inline-flex; align-items: center; gap: .4rem; margin-left: auto; }
-.visit-join input.small { min-height: 2.25rem; padding: .25rem .4rem; width: 9.5rem; text-transform: uppercase; letter-spacing: .06em; font-size: .85rem; }
+.bar-pop input.small { min-height: 2.25rem; padding: .25rem .4rem; width: 9.5rem; text-transform: uppercase; letter-spacing: .06em; font-size: .85rem; }
 a.btn { display: inline-block; text-decoration: none; }
 
 /* the games: stars, the game bar, invitations, big buttons, banners and the results */
-.stars { font-weight: 700; color: var(--gold); font-size: 1.05rem; white-space: nowrap; }
+.stars { font-weight: 700; color: var(--gold); font-size: 1.05rem; white-space: nowrap; flex: none; }
 .hud { position: absolute; inset: 0; pointer-events: none; display: flex; flex-direction: column; align-items: center; padding: 3.4rem .4rem 3.9rem; gap: .4rem; }
 .hud .btn { pointer-events: auto; }
 .game-bar { display: flex; align-items: center; gap: .5rem; background: rgba(24,28,44,.9); border: 2px solid var(--edge); padding: .25rem .5rem; pointer-events: auto; max-width: 100%; }
@@ -104,9 +110,9 @@ a.btn { display: inline-block; text-decoration: none; }
   .touch .toasts { top: 2.8rem; }
   .touch .show-back { top: 2.7rem; }
   /* the stage gets the height: a thin bar, and the emotes behind the 💬 button, as a row over the stage */
-  .touch .bar { flex-wrap: nowrap; gap: .3rem; padding: max(.15rem, env(safe-area-inset-top)) max(.4rem, env(safe-area-inset-right)) .15rem max(.4rem, env(safe-area-inset-left)); border-bottom-width: 1px; }
-  .touch .bar .btn.small { min-height: 1.75rem; padding: .1rem .5rem; font-size: .75rem; border-bottom-width: 3px; }
-  .touch .bar .label, .touch .badge { font-size: .7rem; }
+  .touch .bar { gap: .3rem; padding: max(.15rem, env(safe-area-inset-top)) max(.4rem, env(safe-area-inset-right)) .15rem max(.4rem, env(safe-area-inset-left)); border-bottom-width: 1px; }
+  .touch .bar .btn.ico { min-width: 1.9rem; min-height: 1.75rem; font-size: 1rem; }
+  .touch .bar .label { font-size: .7rem; }
   .touch .bar .stars { font-size: .85rem; }
   .touch .emotes-toggle { display: inline-block; }
   .touch .emotes { display: none; }

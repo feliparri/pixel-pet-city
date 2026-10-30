@@ -48,7 +48,8 @@ function paintCable(state) {
   const text = CABLE_TEXT[state];
   if (!text) return;
   $('cable-status').textContent = text; $('cable-status').hidden = false;
-  $('cable-state').textContent = state === 'connected' || state === 'waiting' ? `Placa: ${text}` : `Placa: ${text} · Reconectar`; $('cable-state').hidden = false;
+  const cs = $('cable-state'), label = state === 'connected' || state === 'waiting' ? `Placa: ${text}` : `Placa: ${text} · Reconectar`;   // an icon in the bar: the state is its label and tooltip, and its look
+  cs.title = label; cs.setAttribute('aria-label', label); cs.dataset.state = state; cs.hidden = false;
   $('cable-state').disabled = state === 'connected' || state === 'waiting';
   $('cable-connect').textContent = state === 'waiting' || state === 'connected' ? 'Desconectar placa' : 'Conectar placa';
 }
@@ -255,6 +256,21 @@ async function copyCode() {
   setTimeout(() => { btn.textContent = 'Copiar código'; }, 1500);
 }
 
+/** The bar's small panels (the room's code, the visit's keepsakes, create or join a room) open from their icon; one at a time, closed by a tap elsewhere or Escape. */
+function closePops(except = null) {
+  for (const b of document.querySelectorAll('#bar [data-pop]')) {
+    const open = b === except && $(b.dataset.pop).hidden;
+    $(b.dataset.pop).hidden = !open;
+    b.setAttribute('aria-expanded', String(open));
+  }
+}
+function setupPops() {
+  const bar = $('bar');
+  bar.addEventListener('click', (e) => { const b = e.target.closest('[data-pop]'); if (b) { closePops(b); const f = $(b.dataset.pop).querySelector('input'); if (f && !$(b.dataset.pop).hidden) f.focus(); } });
+  document.addEventListener('click', (e) => { if (!e.target.closest('#bar')) closePops(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePops(); });
+}
+
 /** On a landscape phone the emotes hide behind the bar's 💬 button and open as a row over the stage (style.css); elsewhere the row is always there. */
 function setEmotesOpen(open) {
   $('emotes').classList.toggle('open', open);
@@ -291,9 +307,10 @@ function enterSolo(arrival) {
 function paintVisitBar() {
   const inSolo = !!visit && visit.solo;
   $('visit-badge').hidden = !visit;
-  $('room-info').hidden = inSolo;
-  $('visit-join').hidden = !inSolo;
+  $('room-open').hidden = inSolo;
+  $('join-open').hidden = !inSolo;
   $('leave').hidden = inSolo;
+  closePops();
 }
 
 function showGone(text, canGoToLobby = false) {
@@ -380,6 +397,7 @@ async function boot() {
   }
   fillItemSelects();
   buildEmotes();
+  setupPops();
   $('show-back').addEventListener('click', () => { if (town) town.events.cut(); });
   $('fx-toggle').addEventListener('click', () => { if (!town || town.hd.locked) return; hdPref = !town.hd.on; store.set('city.hd2d', hdPref ? '1' : '0'); town.hd.set(hdPref, true); paintFx(); });
   shopUi = createShopUi($, {
