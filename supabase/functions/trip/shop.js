@@ -1,6 +1,6 @@
 // The shop's price list: the core WEAR items the pet's gold can buy on a trip. Mirrors pixel-pet common/store.c ITEMS (ids as in store.h item_id_t,
 // keys as in travel-package.js ITEM_KEYS); tests/trip-shop.test.js parses store.c and fails when this drifts. The free top hat (every device owns it)
-// and the keepsakes (a seasonal pack's gift: the witch hat) are not for sale. The two hats marked `town` are sold only here (store.h STORE_TOWN_ITEMS): a
+// and the keepsakes (a seasonal pack's gift: the witch hat, the Santa hat) are not for sale. The two hats marked `town` are sold only here (store.h STORE_TOWN_ITEMS): a
 // board whose firmware predates them refuses a return package that carries them, so trip-buy sells them only on a trip whose start advertised
 // a catalogue that holds their id (`items`, the board's ITEM_COUNT).
 
