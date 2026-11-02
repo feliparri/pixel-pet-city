@@ -168,6 +168,7 @@ import { createHash } from 'node:crypto';
 import { MIN_DUR, MAX_DUR, durationOf } from '../src/show/timeline.js';
 import { plan } from '../src/show/drones.js';
 import * as H from '../src/show/halloween.js';
+import * as X from '../src/show/christmas.js';
 import { DURATION as FW_DUR } from '../src/show/fireworks.js';
 import { DURATION as MET_DUR } from '../src/show/meteors.js';
 
@@ -177,12 +178,12 @@ test('a show at its default length is exactly what it was before lengths existed
     for (const seed of [7, 42, 12345]) for (let t = -1; t <= dur + 1; t += 0.25) h.update(JSON.stringify(skyAt(kind, seed, t, explicit ? dur : undefined)));
     return h.digest('hex').slice(0, 16);
   };
-  const was = { fireworks: '9d8094d10973c8dc', meteors: '382e47a3845e651b', drones: '180b8df8456f30c9', halloween: 'a02863fab937dbb7' };
+  const was = { fireworks: '9d8094d10973c8dc', meteors: '382e47a3845e651b', drones: '180b8df8456f30c9', halloween: 'a02863fab937dbb7', christmas: 'c911882f126a924e' };
   for (const [kind, s] of Object.entries(SHOWS)) {
     assert.equal(sky(kind, s.dur, false), was[kind], `${kind} with no length`);
     assert.equal(sky(kind, s.dur, true), was[kind], `${kind} with its own length`);
   }
-  assert.deepEqual([FW_DUR, MET_DUR, H.DURATION], [SHOWS.fireworks.dur, SHOWS.meteors.dur, SHOWS.halloween.dur]);
+  assert.deepEqual([FW_DUR, MET_DUR, H.DURATION, X.DURATION], [SHOWS.fireworks.dur, SHOWS.meteors.dur, SHOWS.halloween.dur, SHOWS.christmas.dur]);
   assert.equal(dronesDuration(), plan().end);
   assert.deepEqual([plan().n, plan().hold], [FORMATIONS.length, T.hold]);
 });
@@ -213,7 +214,7 @@ test('a longer show has more of its main part, the intro and the finale keep the
 
 test('a longer show is still a pure function of (seed, t, dur): the same lists every time, other seeds and lengths differ', async () => {
   const fresh = await import('../src/show/layers.js?fresh-instance-dur');
-  for (const [kind, dur] of [['fireworks', 150], ['meteors', 75], ['drones', 200], ['halloween', 300]]) {
+  for (const [kind, dur] of [['fireworks', 150], ['meteors', 75], ['drones', 200], ['halloween', 300], ['christmas', 120]]) {
     for (const t of [3.3, 40, 61.5, dur - 8, dur - 1]) {
       assert.deepEqual(skyAt(kind, 9, t, dur), skyAt(kind, 9, t, dur), `${kind} ${t}`);
       assert.deepEqual(skyAt(kind, 9, t, dur), fresh.skyAt(kind, 9, t, dur), `${kind} ${t} in a fresh module`);
@@ -264,4 +265,31 @@ test('halloween: more witches, ghosts and bat swarms in a longer show; the pumpk
     for (let t = 0; t <= d; t += 0.5) for (const b of H.halloweenAt(3, t, d).bats) assert.ok(b.a >= 0 && b.a <= 1 && b.lit >= 0 && b.lit <= 1);
   }
   for (let t = 5; t < 280; t += 7) { const r = H.halloweenAt(7, t, 300); assert.ok(r.witches.length + r.ghosts.length + r.bats.length > 0, `something in the sky at ${t}`); }
+});
+
+test('christmas: the same length as the drones, deterministic, empty outside the show, with a star, sleighs with a trail, sparkles and a tree of lights', () => {
+  assert.equal(SHOWS.christmas.label, 'Noche de Navidad');
+  assert.deepEqual(X.christmasAt(7, 15), X.christmasAt(7, 15));
+  assert.deepEqual(skyAt('christmas', 7, 15).xm, X.christmasAt(7, 15));
+  assert.equal(skyAt('fireworks', 7, 5).xm, undefined, 'only this kind has a Christmas sky');
+  for (const t of [-1, 40.5]) { const r = X.christmasAt(7, t); assert.deepEqual([r.star, r.sparkles, r.sleighs, r.baubles], [null, [], [], []]); }
+  assert.ok(X.christmasAt(7, 12).star.v < X.christmasAt(7, 2).star.v, 'the star rises');
+  assert.ok([5, 9, 12, 16, 20].some((t) => X.christmasAt(7, t).sleighs.some((s) => s.trail.length > 3)), 'a sleigh leaves a trail');
+  assert.equal(X.christmasAt(7, 20).sparkles.length, X.SPARKLES);
+  assert.equal(X.christmasAt(7, 34).baubles.filter((b) => b.lit > 0.99).length, X.FINALE.count, 'the finale: every light is in the tree and glowing');
+  for (let t = 0; t <= 40; t += 0.5) { const r = X.christmasAt(3, t); for (const b of r.baubles) assert.ok(b.a >= 0 && b.a <= 1 && b.lit >= 0 && b.lit <= 1); for (const p of r.sparkles) assert.ok(p.a >= 0 && p.a <= 1); }
+});
+
+test('christmas: more sleighs in a longer show; the tree finale comes at the end, whole, and the star sets with the show', () => {
+  assert.equal(X.sleighsOf(40), 4);
+  assert.ok(X.sleighsOf(120) > 4 && X.sleighsOf(20) >= 2);
+  assert.equal(X.finaleOf().at, X.FINALE.at);
+  for (const d of [20, 40, 90, 300]) {
+    const fin = X.finaleOf(d);
+    assert.equal(X.christmasAt(7, fin.at + 6.5, d).baubles.filter((b) => b.lit > 0.99).length, X.FINALE.count, `${d}s: every light is in the tree and glowing`);
+    assert.deepEqual(X.christmasAt(7, d + 0.5, d).baubles, []);
+    assert.equal(X.christmasAt(7, d - 0.01, d).star === null || X.christmasAt(7, d - 0.01, d).star.a < 0.01, true);
+    assert.ok(X.christmasAt(7, 5, d).star.a > 0.5, 'the star is up near the start');
+  }
+  for (let t = 5; t < 280; t += 7) { const r = X.christmasAt(7, t, 300); assert.ok(r.sleighs.length + r.baubles.length + r.sparkles.length > 0, `something in the sky at ${t}`); }
 });

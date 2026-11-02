@@ -8,6 +8,7 @@ export const SHOWS = {
   meteors: { dur: 28, label: 'Estrellas fugaces' },
   drones: { dur: 40, label: 'Drones' },
   halloween: { dur: 40, label: 'Noche de Halloween' },
+  christmas: { dur: 40, label: 'Noche de Navidad' },
 };
 export const MIN_DUR = 20, MAX_DUR = 600;                       // the bounds, in seconds, of a scheduled show's length (the server checks the same)
 export const RISE = 2.6, FALL = 2.4;

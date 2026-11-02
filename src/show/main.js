@@ -1,6 +1,6 @@
 // Sky show demo page (show.html): the HD-2D plaza at night, and when a show starts the camera tilts up until a horizon band of night sky
 // appears at the top of the screen. The show itself is a pure function of (seed, t) (see fireworks.js, meteors.js, drones.js).
-//   ?show=fireworks|meteors|drones|halloween   start a show      &t=3.2   show time in seconds (with still=1: that exact frame)
+//   ?show=fireworks|meteors|drones|halloween|christmas   start a show      &t=3.2   show time in seconds (with still=1: that exact frame)
 //   &seed=5   the show's seed       &dur=90   the show's length in seconds (20 to 600; default: the kind's own)          &still=1   one deterministic frame, then stop (document.title becomes "ready")
 //   &bench=1  time 120 frames       &res=0.75  scales the internal resolution
 import { TILE } from '../map.js';
@@ -14,6 +14,7 @@ import { SHOWS, tiltAt, showEnd, showCamera, horizonY, FALL, MIN_DUR, MAX_DUR } 
 import { makeStars, drawSky, pixelUnit, LAND } from './sky.js';
 import { skyAt } from './layers.js';
 import { drawBursts, drawRockets, drawMeteors, drawDrones, drawHalloween } from './draw.js';
+import { drawChristmas } from './draw-christmas.js';
 import { smooth } from './rand.js';
 import { burstTint } from './tint.js';
 
@@ -99,10 +100,11 @@ function frame(now, ts) {
   ctx.imageSmoothingEnabled = false;
   ctx.fillStyle = `rgb(${LAND})`; ctx.fillRect(0, 0, view.w, view.h);
   const sky = show ? skyAt(show.kind, SEED, ts, dur) : skyAt('', SEED, 0);
-  drawSky(ctx, view, hy, now / 1000, stars, u, project(cam, focus.x, 0, 0)?.y, !sky.hw?.moon);
+  drawSky(ctx, view, hy, now / 1000, stars, u, project(cam, focus.x, 0, 0)?.y, !(sky.hw?.moon || sky.xm?.star));
   if (show) {
     drawMeteors(ctx, sky.meteors, view, hy, u, alpha);
     if (sky.hw) drawHalloween(ctx, sky.hw, view, hy, u, alpha);
+    if (sky.xm) drawChristmas(ctx, sky.xm, view, hy, u, alpha);
     drawBursts(ctx, cam, sky.fw, u, alpha);
   }
   drawGround(ctx, ground, cam, view.w, view.h);
