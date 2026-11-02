@@ -10,7 +10,7 @@ import { fountainFrame, drawFountain } from '../art/props.js';
 import { PIECE_KINDS, hedgePiece, fencePiece, benchPiece, bedPiece, fountainWall } from './pieces.js';
 import { cropPiece, CROP_CHARS, soil } from '../art/farm.js';
 import { groundRow, project, standAt } from './camera.js';
-import { halloweenDecor, ghostFrames } from '../art/halloween.js';
+import { ghostFrames } from '../art/halloween.js';
 import { GHOST_SCALE } from '../ghosts.js';
 import { LAMP_RADIUS, lightAt, nightMultiply, spriteGrade } from './light.js';
 
@@ -280,33 +280,33 @@ export function fountainItem(cam, n, now, view) {
   } };
 }
 
-/** The Halloween decorations of the world's area as depth-sortable items (see src/halloween.js): standing on their tile, or hung `lift` px up a wall. The lit ones keep their glowing part bright at night. */
-export function decorItems(world, cam, n, view) {
-  const list = halloweenDecor(world.name), items = [];
-  const lights = world.decorLight || (world.decorLight = list.map((d) => lightAt(world.lights, d.x, d.y)));
+/** The seasons' decorations of the world's area (`list`: seasonDecor from src/art/decor.js) as depth-sortable items: standing on their tile, or hung `lift` px up a wall. The lit ones keep their glowing part bright at night. */
+export function decorItems(world, cam, n, view, list) {
+  const items = [];
+  if (!world.decorLight || world.decorLight.list !== list) world.decorLight = { list, lights: list.map((d) => lightAt(world.lights, d.x, d.y)) };       // the lights depend on the list: another season set, another list
+  const lights = world.decorLight.lights;
   list.forEach((d, i) => {
     const p = project(cam, d.x, d.y);
     if (!p) return;
     const s = d.sprite, w = s.width * p.scale, h = s.height * p.scale, x = p.x - w / 2, y = p.y - h - d.lift * p.scale;
     if (x > view.w || x + w < 0 || y > view.h || y + h < 0) return;
     const after = d.lit ? (ctx, nn) => { ctx.globalAlpha = nn; ctx.drawImage(d.lit, 0, 0); ctx.globalAlpha = 1; } : null;
-    items.push({ depth: p.depth, order: 0, draw: (ctx) => ctx.drawImage(n > 0.02 ? nightSprite(world, `hw${i}`, s, n, lights[i], after) : s, 0, 0, s.width, s.height, x, y, w, h) });
+    items.push({ depth: p.depth, order: 0, draw: (ctx) => ctx.drawImage(n > 0.02 ? nightSprite(world, `dc${d.id}`, s, n, lights[i], after) : s, 0, 0, s.width, s.height, x, y, w, h) });
   });
   return items;
 }
 
-/** The additive glow of the lit Halloween decorations on screen, after the town's own glows. */
-export function drawDecorGlows(ctx, world, cam, n, now, view) {
+/** The additive glow of the lit decorations on screen (`list` as for decorItems), after the town's own glows: orange unless the glow names its colour. */
+export function drawDecorGlows(ctx, world, cam, n, now, view, list) {
   if (n <= 0) return;
   ctx.globalCompositeOperation = 'lighter';
   const flick = 1 + Math.sin(now / 700) * 0.07 + Math.sin(now / 190) * 0.03;
-  for (const d of halloweenDecor(world.name)) {
-    if (!d.glow) continue;
-    const p = standAt(cam, d.x, d.y, d.glow.z), r = d.glow.r * 1.4 * p?.scale;
+  for (const d of list) for (const g of d.glows) {
+    const p = standAt(cam, d.x, d.y, g.z), r = g.r * 1.4 * p?.scale;
     if (!p || p.x + r < 0 || p.x - r > view.w || p.y + r < 0 || p.y - r > view.h) continue;
-    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
-    glowStops(g, '255,140,40', 0.3 * n * flick);
-    ctx.fillStyle = g; ctx.fillRect(p.x - r, p.y - r, r * 2, r * 2);
+    const gr = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+    glowStops(gr, g.rgb || '255,140,40', 0.3 * n * flick);
+    ctx.fillStyle = gr; ctx.fillRect(p.x - r, p.y - r, r * 2, r * 2);
   }
   ctx.globalCompositeOperation = 'source-over';
 }

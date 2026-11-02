@@ -1,12 +1,14 @@
 // HD-2D lite prototype page (hd2d.html): the plaza seen through a tilted camera, upright sprites, night lamps, bloom, vignette, tilt-shift.
 //   ?mode=day|night   the light (default night)      &fx=1|0   effects on / off (off = the flat view, no post effects)
 //   &still=1          one deterministic frame, then stop (document.title becomes "ready")        &bench=1   time 120 frames, print the result
-//   &res=0.75         scales the internal resolution
+//   &res=0.75         scales the internal resolution      &halloween=1 / &christmas=1   the town's decorations of that season
 import { TILE } from '../map.js';
 import { loadSprites } from '../sprites.js';
 import { cameraFor, sortBackToFront, snapFocus, visibleTiles } from './camera.js';
 import { approach, nightMultiply } from './light.js';
-import { buildWorld, bakeGround, drawGround, standingItems, drawGlows, fountainItem } from './scene.js';
+import { buildWorld, bakeGround, drawGround, standingItems, drawGlows, fountainItem, decorItems, drawDecorGlows } from './scene.js';
+import { seasonDecor } from '../art/decor.js';
+import { SEASON_KEYS } from '../seasons.js';
 import { createPetPainter } from './pets.js';
 import { createFx } from './fx.js';
 import { Wanderer, rng } from './wander.js';
@@ -14,6 +16,7 @@ import { Wanderer, rng } from './wander.js';
 const q = new URLSearchParams(location.search);
 const still = q.get('still') === '1', bench = q.get('bench') === '1';
 const state = { night: q.get('mode') === 'day' ? 0 : 1, nightTarget: q.get('mode') === 'day' ? 0 : 1, tilt: q.get('fx') === '0' ? 0 : 1, tiltTarget: q.get('fx') === '0' ? 0 : 1 };
+const seasons = new Set(SEASON_KEYS.filter((k) => q.get(k) === '1'));
 const $ = (id) => document.getElementById(id);
 const canvas = $('c'), ctx = canvas.getContext('2d');
 const RES = Math.min(1.5, Math.max(0.4, Number(q.get('res')) || 1));
@@ -76,10 +79,13 @@ function frame(now, dt) {
   const items = standingItems(world, cam, n, view);
   const jet = fountainItem(cam, n, now, view);
   if (jet) items.push(jet);
+  const decor = seasonDecor(world.name, seasons);
+  if (decor.length) items.push(...decorItems(world, cam, n, view, decor));
   const ov = { labels: [], bubbles: [], hits: [] };
   for (const e of pets) { const it = painter.item(e, { cam, n, now, world, me: null, view }); if (it) items.push(it); }
   for (const it of sortBackToFront(items)) it.draw(ctx, ov);
   drawGlows(ctx, world, cam, n, now);
+  if (decor.length) drawDecorGlows(ctx, world, cam, n, now, view, decor);
   fx.apply(ctx, t, n);
 }
 

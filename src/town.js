@@ -60,7 +60,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   const renderer = createTownRenderer({ canvas, sprites, font, minH: pad ? MIN_VIEW_H : VIEW_H, minW: pad ? MIN_VIEW_W : VIEW_W, flat: new URLSearchParams(location.search).get('flat') === '1', onNotice: (text) => games.notify(text), onMode: onHdMode });   // a phone: 1.25 times the tiles it showed (and a whole-number pixel size); a desktop: as many tiles as before
   const npcs = createNpcs({ seed: net.code || net.id, sprites });           // the villagers: their place and lines come from (room, server time) alone, nothing of them goes over the net
   const search = new URLSearchParams(location.search);
-  const devSeasons = parseDevSeasons(location.search);      // development only: ?dev=1&season=halloween|none (or &halloween=1|0) forces seasons on or off
+  const devSeasons = parseDevSeasons(location.search);      // development only: ?dev=1&season=halloween|christmas|none (or &halloween=1|0, &christmas=1|0) forces seasons on or off
   let seasonSet = new Set(), seasonAt = -1e9;
   let devNpcT = search.get('dev') === '1' && Number.isFinite(Number(search.get('npct'))) && search.has('npct') ? Number(search.get('npct')) : null;      // development only: ?dev=1&npct=<ms> pins the villagers' clock
   let shopVisits = 0, shopNear = false, shopSayUntil = 0, modal = false, thankLine = null,   // modal: a panel is open (shop, backpack): the pet stands still
@@ -278,8 +278,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     if (devSeasons) seasonSet = devSeasons;
     else if (t - seasonAt > 1000) { seasonAt = t; seasonSet = activeSeasons(devNpcT === null ? events.serverNow() : devNpcT, events.seasons); }      // default windows, overridden by the server's list (src/seasons.js); once a second is plenty
     state.seasons = seasonSet;
-    state.halloween = seasonSet.has('halloween');
-    state.ghosts = state.halloween ? ghostsAt(self.area, events.serverNow(), state.amb.night) : null;      // the wandering ghosts: the same place for everyone
+    state.ghosts = seasonSet.has('halloween') ? ghostsAt(self.area, events.serverNow(), state.amb.night) : null;      // the wandering ghosts: the same place for everyone
     state.show = events.tick(!getArea(self.area).outdoor ? 'inside' : renderer.hd ? 'hd' : 'flat');      // the sky is seen from the town and from the farm      // the show that runs now, the same moment on every screen
     renderer.draw(state, t);
     raf = requestAnimationFrame(frame);

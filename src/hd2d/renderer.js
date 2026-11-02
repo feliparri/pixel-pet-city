@@ -14,6 +14,7 @@ import { createPetPainter } from './pets.js';
 import { createThings } from './things.js';
 import { SHOWS, RISE, FALL, tiltAt, showCamera, horizonY } from '../show/timeline.js';
 import { makeStars, drawSky, pixelUnit, LAND } from '../show/sky.js';
+import { seasonDecor } from '../art/decor.js';
 import { drawBursts, drawRockets, drawMeteors, drawDrones, drawHalloween } from '../show/draw.js';
 import { skyAt } from '../show/layers.js';
 import { burstTint } from '../show/tint.js';
@@ -125,7 +126,8 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
     const items = standingItems(world, cam, n, view);
     const jet = world.fountain ? fountainItem(cam, n, now, view) : null;
     if (jet) items.push(jet);
-    if (state.halloween) items.push(...decorItems(world, cam, n, view));
+    const decor = seasonDecor(world.name, state.seasons);                   // the decorations of every season that is on
+    if (decor.length) items.push(...decorItems(world, cam, n, view, decor));
     const ent = { cam, n, now, world, me: state.me, view, wash: flashes.length ? (wx) => burstTint(flashes, wx) : null };
     items.push(...things.items(state, ent, now));
     for (const e of [state.me, ...state.others]) { const it = painter.item(e, ent); if (it) items.push(it); }
@@ -133,7 +135,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
     for (const it of sortBackToFront(items)) it.draw(ctx, ov);
     things.air(ctx, state, cam, now, view);
     drawGlows(ctx, world, cam, n, now, view);
-    if (state.halloween) drawDecorGlows(ctx, world, cam, n, now, view);
+    if (decor.length) drawDecorGlows(ctx, world, cam, n, now, view, decor);
     if (state.ghosts && state.ghosts.length) drawGhosts(ctx, state.ghosts, cam, view);
     if (sh) {
       drawRockets(ctx, scam, sky.fw, u, alpha); drawDrones(ctx, scam, sky.drones, u, alpha);

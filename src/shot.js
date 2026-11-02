@@ -4,6 +4,7 @@
 //   &scale=2               integer zoom
 //   &talk=1                the shopkeeper greets (shop only)
 //   &halloween=1           the Halloween decorations and ghosts (town; &area=farm shows the farm instead of the town)
+//   &christmas=1           the Christmas decorations (they can go with &halloween=1)
 // The page sets document.title to "ready" when it has painted, so a headless browser knows when to take the screenshot.
 import { getArea, tileAt, TILES, TILE } from './map.js';
 import { seekerSees } from './games/hide.js';
@@ -14,10 +15,12 @@ import { ambientAt } from './daynight.js';
 import { Walker } from './walker.js';
 import { createLife, stepLife, lifeFrame } from './life.js';
 import { ghostsAt } from './ghosts.js';
+import { SEASON_KEYS } from './seasons.js';
 import { SHOPKEEPER, shopGreeting } from './npcs.js';
 
 const q = new URLSearchParams(location.search);
 const kind = ['town', 'shop', 'view', 'park', 'seek', 'coop', 'sprint', 'life', 'pitch', 'race'].includes(q.get('shot')) ? q.get('shot') : 'town';
+const seasons = new Set(SEASON_KEYS.filter((k) => q.get(k) === '1'));              // &halloween=1, &christmas=1
 const hour = q.has('hour') && Number.isFinite(Number(q.get('hour'))) ? Number(q.get('hour')) : 13;
 const scale = Math.max(1, Math.min(6, Number(q.get('scale')) | 0 || (kind === 'shop' ? 4 : kind === 'view' || kind === 'life' || kind === 'pitch' || kind === 'race' || kind === 'seek' || kind === 'coop' || kind === 'sprint' ? 3 : 2)));
 
@@ -60,7 +63,7 @@ async function main() {
   const scene = document.createElement('canvas');
   scene.width = vw; scene.height = vh;
   const sctx = scene.getContext('2d');
-  const bubbles = drawScene(sctx, { area: area.name, cam, vw, vh, entities: shown, me, now: kind === 'life' ? lifeNow : 1000, amb, sprites, font, chicken, dark, life: lifeScene, halloween: q.get('halloween') === '1', ghosts: q.get('halloween') === '1' ? ghostsAt(area.name, 1.8e12, amb.night) : null, ball: kind === 'pitch' ? { x: 23.4, y: 59.2 } : null, talk: kind === 'shop' && q.get('talk') === '1' ? [{ x: SHOPKEEPER.head.x, y: SHOPKEEPER.head.y, text: shopGreeting(0) }] : null });
+  const bubbles = drawScene(sctx, { area: area.name, cam, vw, vh, entities: shown, me, now: kind === 'life' ? lifeNow : 1000, amb, sprites, font, chicken, dark, life: lifeScene, seasons, ghosts: seasons.has('halloween') ? ghostsAt(area.name, 1.8e12, amb.night) : null, ball: kind === 'pitch' ? { x: 23.4, y: 59.2 } : null, talk: kind === 'shop' && q.get('talk') === '1' ? [{ x: SHOPKEEPER.head.x, y: SHOPKEEPER.head.y, text: shopGreeting(0) }] : null });
   const c = document.getElementById('c');
   c.width = vw * scale; c.height = vh * scale;
   const ctx = c.getContext('2d');

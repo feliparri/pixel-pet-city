@@ -88,14 +88,17 @@ export function halloweenKit() {
 }
 
 const dressed = new Map();
-/** What an area wears, ready to draw: [{ x, y (feet), lift, sprite, lit, glow? { x, y, r } }] (world px; the list's `glows` are the lamp-style glows of the flat renderer). Built once per area. */
+/**
+ * What an area wears, ready to draw: [{ id, x, y (feet), lift, sprite, lit, glows: [{ x, y, z, r }] }] (world px; the list's own `glows` are the lamp-style glows of the flat renderer).
+ * Built once per area. The same shape as christmasDecor (src/art/christmas.js), so the renderers draw any season's list alike (src/art/decor.js).
+ */
 export function halloweenDecor(area) {
   if (dressed.has(area)) return dressed.get(area);
   const kit = halloweenKit(), list = decorOf(area).map((d) => {
     const k = kit[d.kind], g = k.glow;
-    return { ...d, sprite: k.sprite, lit: k.lit, glow: g ? { x: d.x - k.sprite.width / 2 + g.x, y: d.y - d.lift - g.z, z: d.lift + g.z, r: k.r } : null };
+    return { ...d, id: `${d.kind}@${d.x},${d.y}`, sprite: k.sprite, lit: k.lit, glows: g ? [{ x: d.x - k.sprite.width / 2 + g.x, y: d.y - d.lift - g.z, z: d.lift + g.z, r: k.r }] : [] };
   });
-  list.glows = list.filter((d) => d.glow).map((d) => ({ kind: 'lamp', x: d.glow.x, y: d.glow.y, r: d.glow.r }));
+  list.glows = list.flatMap((d) => d.glows.map((g) => ({ kind: 'lamp', x: g.x, y: g.y, r: g.r })));
   dressed.set(area, list);
   return list;
 }

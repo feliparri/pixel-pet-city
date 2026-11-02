@@ -18,7 +18,8 @@ import { drawChicken, CHICKEN_SIZE } from './art/chicken.js';
 import { ball as drawBall } from './art/places.js';
 import { drawBird, drawButterfly, drawFirefly, drawDuck, drawRing, drawSpray } from './art/life.js';
 import { drawAnimal, plotTile } from './art/farm.js';
-import { halloweenDecor, ghostFrames } from './art/halloween.js';
+import { ghostFrames } from './art/halloween.js';
+import { seasonDecor } from './art/decor.js';
 import { GHOST_SCALE } from './ghosts.js';
 
 export const VIEW_W = 224;              // the portrait reference view; a box taller than wide is fitted to it (and the dev previews use it)
@@ -73,7 +74,7 @@ export const headFrame = (e, now, id) => {
  * opts: { area (name), cam {x, y}, entities [{ id, name, look, walker, emote?, jumpAt?, fx?, gone? }], me, now, amb {tint, night}, sprites, font, marker?, fade? }.
  * Returns the bubbles to draw at the final size: [{ x, y, e }] (an emote) or [{ x, y, text }] (a line) in view pixels. `talk`: [{ x, y, text }] lines in map px.
  */
-export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now, amb = NO_LIGHT, sprites, font, marker = null, fade = 0, chicken = null, dark = null, life = null, ball = null, talk = null, farm = null, halloween = false, ghosts = null, zoom = 1, petZoom = zoom }) {
+export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now, amb = NO_LIGHT, sprites, font, marker = null, fade = 0, chicken = null, dark = null, life = null, ball = null, talk = null, farm = null, seasons = null, ghosts = null, zoom = 1, petZoom = zoom }) {
   const area = getArea(areaName), baked = bakeArea(area);
   sctx.setTransform(zoom, 0, 0, zoom, 0, 0);                                    // everything below is in game px; the pets are drawn in their own (smaller) px
   sctx.imageSmoothingEnabled = false;
@@ -112,7 +113,7 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
     if (pr.x - cam.x > vw || pr.x + sw - cam.x < 0 || pr.y - cam.y > vh || pr.y + sh - cam.y < 0) continue;
     items.push({ sortY: pr.sortY, order: 0, draw: () => (pr.sprite ? sctx.drawImage(pr.sprite, pr.x - cam.x, pr.y - cam.y) : pr.draw(sctx, cam.x, cam.y, now, sprites)) });
   }
-  const decor = halloween ? halloweenDecor(areaName) : null;                  // Halloween: jack-o'-lanterns, lanterns, cobwebs and pumpkins, sorted with the pets
+  const decor = seasons && seasons.size ? seasonDecor(areaName, seasons) : null;       // the seasons' decorations (Halloween's jack-o'-lanterns, Christmas's tree...), sorted with the pets
   if (decor) for (const d of decor) {
     const sw = d.sprite.width, sh = d.sprite.height, x = Math.round(d.x - sw / 2 - cam.x), y = Math.round(d.y - d.lift - sh - cam.y);
     if (x > vw || x + sw < 0 || y > vh || y + sh < 0) continue;
@@ -254,7 +255,7 @@ function drawGlows(sctx, glows, cam, night, now, vw, vh) {
     if (g.kind === 'lamp') {
       if (g.x - cam.x < -40 || g.x - cam.x > vw + 40 || g.y - cam.y < -40 || g.y - cam.y > vh + 40) continue;
       for (const [k, a] of [[1, 0.04], [0.85, 0.045], [0.7, 0.05], [0.55, 0.055], [0.4, 0.06], [0.25, 0.07]]) {
-        sctx.fillStyle = `rgba(255,196,96,${a * night * flick})`;
+        sctx.fillStyle = `rgba(${g.rgb || '255,196,96'},${a * night * flick})`;
         const r = Math.round(g.r * k);
         for (let y = -r; y <= r; y += 2) { const hw = Math.round(Math.sqrt(r * r - y * y)); sctx.fillRect(g.x - hw - cam.x, g.y + y - cam.y, hw * 2, 2); }
       }
@@ -302,7 +303,7 @@ export function createRenderer({ canvas, sprites, font, minH = MIN_VIEW_H, minW 
   }
 
   /**
-   * state: { area, me, others, marker, amb, fade, chicken?, dark?, life?, ball?, halloween? } where an entity is { id, name, look, walker, emote? }.
+   * state: { area, me, others, marker, amb, fade, chicken?, dark?, life?, ball?, seasons? (a Set of season keys), ghosts? } where an entity is { id, name, look, walker, emote? }.
    * `now` is a millisecond clock.
    */
   function draw(state, now) {
@@ -312,7 +313,7 @@ export function createRenderer({ canvas, sprites, font, minH = MIN_VIEW_H, minW 
     const mp = state.me.walker.pos();
     const gameInset = { top: Math.ceil(inset.top * box.dpr / scale), bottom: Math.ceil(inset.bottom * box.dpr / scale) };      // css px -> game px
     cam = cameraFor(mp.x * TILE + TILE / 2, mp.y * TILE + TILE / 2, a.w * TILE, a.h * TILE, viewW, viewH, gameInset);
-    const bubbles = drawScene(ctx, { area: areaName, cam, vw: viewW, vh: viewH, entities: state.others, me: state.me, now, amb: state.amb, sprites, font, marker: state.marker, fade: state.fade || 0, chicken: state.chicken || null, dark: state.dark || null, life: state.life || null, ball: state.ball || null, talk: state.talk || null, farm: state.farm || null, halloween: !!state.halloween, ghosts: state.ghosts || null, zoom: scale, petZoom: petScale });
+    const bubbles = drawScene(ctx, { area: areaName, cam, vw: viewW, vh: viewH, entities: state.others, me: state.me, now, amb: state.amb, sprites, font, marker: state.marker, fade: state.fade || 0, chicken: state.chicken || null, dark: state.dark || null, life: state.life || null, ball: state.ball || null, talk: state.talk || null, farm: state.farm || null, seasons: state.seasons || null, ghosts: state.ghosts || null, zoom: scale, petZoom: petScale });
     ctx.setTransform(1, 0, 0, 1, 0, 0);                                         // the bubbles are drawn at the final size
     for (const b of bubbles) drawBubble(ctx, b, scale, canvas.width, scale);
   }
