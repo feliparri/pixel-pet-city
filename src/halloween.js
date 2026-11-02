@@ -1,6 +1,6 @@
 // Halloween in the town: where the decorations stand (when they are up is the season registry's, src/seasons.js; halloweenOn is its default window).
-// The window is Oct 24 00:00 to Nov 1 06:00 America/Santiago, every year (06:00 is when the town's day turns, so the night of Oct 31 to Nov 1
-// keeps its decorations). Chile is on summer time (UTC-3) all through it, so there is no clock change inside the window.
+// The window is Oct 1 00:00 to Nov 2 00:00 America/Santiago, every year (so the night of Oct 31 to Nov 1 keeps its decorations, and Christmas
+// takes over at midnight on Nov 2). The clock change to summer time is early September, so there is none inside the window.
 // The decorations are drawn over the map, never part of it: nothing blocks a path, and outside the window nothing is drawn.
 import { TILE, HOUSES } from './map.js';
 import { activeSeasons } from './seasons.js';

@@ -10,7 +10,7 @@ export const SCHEDULE_AHEAD_S = 60 * 86400;   // an event can be scheduled up to
 export const LIST_DEFAULT = 20, LIST_MAX = 50;  // how many a list holds by default and at most (the admin page asks for all it can)
 export const MAX_UPCOMING = 50;               // and the owner cannot pile up more than this many
 /** The seasons the town knows (the keys of SEASONS in src/seasons.js; a test keeps them equal) and the modes an override can take. */
-export const SEASON_KEYS = ['halloween'];
+export const SEASON_KEYS = ['halloween', 'christmas'];
 export const SEASON_MODES = ['dates', 'on', 'off'];
 export const SEASON_SPAN_MAX_S = 400 * 86400;   // a window of custom dates is at most this long
 export const SEED_MAX = 2147483647;

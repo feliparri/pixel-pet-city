@@ -4,9 +4,10 @@
 // Pure functions of the server's clock: every player sees the same. A missing or failed fetch means no overrides, i.e. the defaults.
 import { zonedToMs, msToZoned } from './admin-time.js';
 
-/** The registry: key -> { label (Spanish, neutral), window(year) -> [start ms, end ms) } (Halloween: Oct 24 00:00 to Nov 1 06:00, when the town's day turns). */
+/** The registry: key -> { label (Spanish, neutral), window(year) -> [start ms, end ms) } (Halloween: Oct 1 00:00 to Nov 2 00:00; Christmas: Nov 2 00:00 to Jan 2 00:00 of the next year). */
 export const SEASONS = {
-  halloween: { label: 'Halloween', window: (y) => [zonedToMs(`${y}-10-24`, '00:00'), zonedToMs(`${y}-11-01`, '06:00')] },
+  halloween: { label: 'Halloween', window: (y) => [zonedToMs(`${y}-10-01`, '00:00'), zonedToMs(`${y}-11-02`, '00:00')] },
+  christmas: { label: 'Navidad', window: (y) => [zonedToMs(`${y}-11-02`, '00:00'), zonedToMs(`${y + 1}-01-02`, '00:00')] },
 };
 export const SEASON_KEYS = Object.keys(SEASONS);
 const MODES = new Set(['dates', 'on', 'off']);
@@ -84,11 +85,11 @@ export function seasonStatus(key, ms, overrides = [], registry = SEASONS) {
   return { year, window, mode: r ? r.mode : 'default', state, active };
 }
 
-/** The development shortcut: ?dev=1&season=halloween[,other] forces those on, ?dev=1&season=none all off; ?dev=1&halloween=1|0 is the same for Halloween. A Set, or null (no shortcut). */
+/** The development shortcut: ?dev=1&season=halloween[,christmas] forces those on, ?dev=1&season=none all off; ?dev=1&halloween=1|0 (or &christmas=1|0) is the same for one season. A Set, or null (no shortcut). */
 export function parseDevSeasons(search, registry = SEASONS) {
   const p = new URLSearchParams(search);
   if (p.get('dev') !== '1') return null;
   if (p.has('season')) return new Set(p.get('season').split(',').filter((k) => Object.hasOwn(registry, k)));
-  if (p.has('halloween')) return new Set(p.get('halloween') === '1' ? ['halloween'] : []);
-  return null;
+  const keys = Object.keys(registry).filter((k) => p.has(k));
+  return keys.length ? new Set(keys.filter((k) => p.get(k) === '1')) : null;
 }

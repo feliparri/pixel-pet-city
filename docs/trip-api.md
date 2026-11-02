@@ -165,7 +165,7 @@ are refused with `400 bad_entrance`; a stored id the town does not know falls ba
 
 ## Town events (scheduled sky shows)
 
-The owner schedules a show (kind `fireworks`, `meteors`, `drones` or `halloween`, a seed and a start time) and every player in the town sees it at that moment
+The owner schedules a show (kind `fireworks`, `meteors`, `drones`, `halloween` or `christmas`, a seed and a start time) and every player in the town sees it at that moment
 (table `town_events`, migrations `20261025120000_town_events.sql` and `20261030120000_town_events_duration.sql`, RLS on and no policy: only these actions touch it).
 
 * `events` (GET or POST, no key): `{ now, events: [{ id, kind, seed, start_at, start_ms, duration_ms }], seasons: [{ season, year, mode, starts_ms, ends_ms }] }` (`seasons`: see "Seasons" below), `now` being the server's clock in ms
@@ -182,7 +182,7 @@ The owner schedules a show (kind `fireworks`, `meteors`, `drones` or `halloween`
 
 Season art and behaviour ship inside each client (the town's `src/seasons.js`; the board and the app have their own copy) with a default yearly window in Chile
 time, so a season goes live by itself. Table `town_seasons` (migration `20261030150000_town_seasons.sql`, RLS on and no policy) holds only the owner's overrides,
-one row per (`season`, `year`), `year` being the year the window starts in. No row means the default window. Known `season` keys: `halloween`.
+one row per (`season`, `year`), `year` being the year the window starts in. No row means the default window. Known `season` keys: `halloween` (default window Oct 1 00:00 to Nov 2 00:00, Chile time) and `christmas` (Nov 2 00:00 to Jan 2 00:00 of the next year, so `year` is the year of the November it starts in).
 
 * `events` also returns `seasons`: the overrides whose `year` is last, this or next year (UTC year of the server's clock): `{ season, year, mode, starts_ms, ends_ms }`,
   `mode` being `dates` (the season runs from `starts_ms` to `ends_ms` instead of its default window), `on` (legacy: on from New Year of that year until the end of that year's default window; the admin page sends `dates` instead, from now to that end) or `off` (forced off for that year);

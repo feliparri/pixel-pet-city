@@ -7,20 +7,26 @@ import { SEASON_KEYS as SERVER_KEYS } from '../supabase/functions/trip/events.js
 const at = (date, time = '12:00') => zonedToMs(date, time);
 const on = (ms, rows, reg) => [...activeSeasons(ms, rows, reg)];
 // a stub Christmas that crosses New Year: Dec 1 -> Jan 6 (window year = the year it starts in)
-const REG = { ...SEASONS, navidad: { label: 'Navidad', window: (y) => [zonedToMs(`${y}-12-01`, '00:00'), zonedToMs(`${y + 1}-01-06`, '00:00')] } };
+const HW = { halloween: SEASONS.halloween };                       // Halloween alone (the real Christmas follows it in the default registry)
+const REG = { ...HW, navidad: { label: 'Navidad', window: (y) => [zonedToMs(`${y}-12-01`, '00:00'), zonedToMs(`${y + 1}-01-06`, '00:00')] } };
 
 test('the server and the town know the same season keys', () => {
   assert.deepEqual([...SERVER_KEYS].sort(), [...SEASON_KEYS].sort());
 });
 
-test('defaults: Halloween goes live by itself on Oct 24 00:00 and ends Nov 1 06:00, Chile time', () => {
-  assert.deepEqual(on(at('2026-10-23', '23:59')), []);
-  assert.deepEqual(on(at('2026-10-24', '00:00')), ['halloween']);
-  assert.deepEqual(on(at('2026-11-01', '05:59')), ['halloween']);
-  assert.deepEqual(on(at('2026-11-01', '06:00')), []);
+test('defaults: Halloween goes live by itself on Oct 1 00:00 and ends Nov 2 00:00, Chile time; Christmas takes over until Jan 2 00:00', () => {
+  assert.deepEqual(on(at('2026-09-30', '23:59')), []);
+  assert.deepEqual(on(at('2026-10-01', '00:00')), ['halloween']);
+  assert.deepEqual(on(at('2026-11-01', '23:59')), ['halloween']);
+  assert.deepEqual(on(at('2026-11-02', '00:00')), ['christmas'], 'one season hands over to the other at midnight');
+  assert.deepEqual(on(at('2026-12-25')), ['christmas']);
+  assert.deepEqual(on(at('2027-01-01', '23:59')), ['christmas'], 'across the new year');
+  assert.deepEqual(on(at('2027-01-02', '00:00')), []);
   assert.deepEqual(on(at('2027-10-30')), ['halloween']);
   assert.deepEqual(on(NaN), []);
-  assert.deepEqual(defaultWindow('halloween', 2026), [Date.UTC(2026, 9, 24, 3), Date.UTC(2026, 10, 1, 9)]);
+  assert.deepEqual(defaultWindow('halloween', 2026), [Date.UTC(2026, 9, 1, 3), Date.UTC(2026, 10, 2, 3)]);
+  assert.deepEqual(defaultWindow('christmas', 2026), [Date.UTC(2026, 10, 2, 3), Date.UTC(2027, 0, 2, 3)]);
+  assert.equal(SEASONS.christmas.label, 'Navidad');
 });
 
 test('no overrides, junk overrides and a failed fetch all mean the defaults', () => {
@@ -30,22 +36,22 @@ test('no overrides, junk overrides and a failed fetch all mean the defaults', ()
 
 test('override dates replace the default window of that year only', () => {
   const rows = [{ season: 'halloween', year: 2026, mode: 'dates', starts_ms: at('2026-10-27', '00:00'), ends_ms: at('2026-11-03', '00:00') }];
-  assert.deepEqual(on(at('2026-10-25'), rows), [], 'the default start no longer counts');
-  assert.deepEqual(on(at('2026-10-27', '00:00'), rows), ['halloween']);
-  assert.deepEqual(on(at('2026-11-02'), rows), ['halloween'], 'past the default end');
-  assert.deepEqual(on(at('2026-11-03', '00:00'), rows), []);
-  assert.deepEqual(on(at('2027-10-30'), rows), ['halloween'], 'next year is the default again');
+  assert.deepEqual(on(at('2026-10-25'), rows, HW), [], 'the default window is replaced: before the new start it is off');
+  assert.deepEqual(on(at('2026-10-27', '00:00'), rows, HW), ['halloween']);
+  assert.deepEqual(on(at('2026-11-02'), rows, HW), ['halloween'], 'past the default end');
+  assert.deepEqual(on(at('2026-11-03', '00:00'), rows, HW), []);
+  assert.deepEqual(on(at('2027-10-30'), rows, HW), ['halloween'], 'next year is the default again');
 });
 
 test('legacy forced on lasts until the end of that year\'s default window; forced off silences that year\'s window', () => {
   const force = (mode) => [{ season: 'halloween', year: 2026, mode, starts_ms: null, ends_ms: null }];
-  assert.deepEqual(on(at('2026-03-10'), force('on')), ['halloween']);
-  assert.deepEqual(on(at('2026-11-01', '05:59'), force('on')), ['halloween']);
-  assert.deepEqual(on(at('2026-11-01', '06:00'), force('on')), [], 'not for the rest of the year');
-  assert.deepEqual(on(at('2026-12-31', '23:00'), force('on')), []);
-  assert.deepEqual(on(at('2027-03-10'), force('on')), []);
-  assert.deepEqual(on(at('2026-10-30'), force('off')), []);
-  assert.deepEqual(on(at('2027-10-30'), force('off')), ['halloween'], 'only that year');
+  assert.deepEqual(on(at('2026-03-10'), force('on'), HW), ['halloween']);
+  assert.deepEqual(on(at('2026-11-01', '23:59'), force('on'), HW), ['halloween']);
+  assert.deepEqual(on(at('2026-11-02', '00:00'), force('on'), HW), [], 'not for the rest of the year');
+  assert.deepEqual(on(at('2026-12-31', '23:00'), force('on'), HW), []);
+  assert.deepEqual(on(at('2027-03-10'), force('on'), HW), []);
+  assert.deepEqual(on(at('2026-10-30'), force('off'), HW), []);
+  assert.deepEqual(on(at('2027-10-30'), force('off'), HW), ['halloween'], 'only that year');
 });
 
 test('launchWindow: from now to the end of this year\'s default window, or for the default length when that is over', () => {
@@ -54,9 +60,9 @@ test('launchWindow: from now to the end of this year\'s default window, or for t
   const late = at('2026-11-20'), l = launchWindow('halloween', late), [s, e] = defaultWindow('halloween', 2026);
   assert.deepEqual([l.year, l.startsMs, l.endsMs], [2026, late, late + (e - s)]);
   const rows = [{ season: 'halloween', year: w.year, mode: 'dates', starts_ms: w.startsMs, ends_ms: w.endsMs }];
-  assert.deepEqual(on(now, rows), ['halloween']);
-  assert.deepEqual(on(w.endsMs, rows), []);
-  assert.deepEqual(on(now - 1, rows), []);
+  assert.deepEqual(on(now, rows, HW), ['halloween']);
+  assert.deepEqual(on(w.endsMs, rows, HW), []);
+  assert.deepEqual(on(now - 1, rows, HW), []);
 });
 
 test('a window that runs over New Year belongs to the year it starts in', () => {
@@ -96,5 +102,9 @@ test('dev shortcuts need dev=1', () => {
   assert.deepEqual([...parseDevSeasons('?dev=1&season=bogus')], []);
   assert.deepEqual([...parseDevSeasons('?dev=1&halloween=1')], ['halloween']);
   assert.deepEqual([...parseDevSeasons('?dev=1&halloween=0')], []);
+  assert.deepEqual([...parseDevSeasons('?dev=1&season=christmas')], ['christmas']);
+  assert.deepEqual([...parseDevSeasons('?dev=1&season=halloween,christmas')].sort(), ['christmas', 'halloween']);
+  assert.deepEqual([...parseDevSeasons('?dev=1&christmas=1')], ['christmas']);
+  assert.deepEqual([...parseDevSeasons('?dev=1&christmas=0')], []);
   assert.equal(parseDevSeasons('?dev=1'), null);
 });

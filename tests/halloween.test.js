@@ -6,23 +6,23 @@ import { getArea, tileAt, TILE } from '../src/map.js';
 
 const at = (date, time) => zonedToMs(date, time);
 
-test('halloweenOn: from Oct 24 00:00 to Nov 1 06:00 America/Santiago', () => {
-  assert.equal(halloweenOn(at('2026-10-24', '00:00') - 1), false);
-  assert.equal(halloweenOn(at('2026-10-24', '00:00')), true);
+test('halloweenOn: from Oct 1 00:00 to Nov 2 00:00 America/Santiago', () => {
+  assert.equal(halloweenOn(at('2026-10-01', '00:00') - 1), false);
+  assert.equal(halloweenOn(at('2026-10-01', '00:00')), true);
+  assert.equal(halloweenOn(at('2026-10-24', '12:00')), true);
   assert.equal(halloweenOn(at('2026-10-31', '23:59')), true);
-  assert.equal(halloweenOn(at('2026-11-01', '00:00')), true);          // the show's night
-  assert.equal(halloweenOn(at('2026-11-01', '05:59')), true);
-  assert.equal(halloweenOn(at('2026-11-01', '06:00')), false);
-  assert.equal(halloweenOn(at('2026-11-02', '12:00')), false);
+  assert.equal(halloweenOn(at('2026-11-01', '06:00')), true);          // the show's night and the morning after
+  assert.equal(halloweenOn(at('2026-11-01', '23:59')), true);
+  assert.equal(halloweenOn(at('2026-11-02', '00:00')), false);         // Christmas takes over
   assert.equal(halloweenOn(at('2026-06-15', '12:00')), false);
 });
 
 test('halloweenOn: every year, and the clock edges are Chile time (UTC-3 in that range, so 03:00 UTC)', () => {
   for (const y of [2026, 2027, 2030]) {
-    assert.equal(halloweenOn(Date.UTC(y, 9, 24, 3, 0) - 1), false);
-    assert.equal(halloweenOn(Date.UTC(y, 9, 24, 3, 0)), true);
-    assert.equal(halloweenOn(Date.UTC(y, 10, 1, 9, 0) - 1), true);
-    assert.equal(halloweenOn(Date.UTC(y, 10, 1, 9, 0)), false);
+    assert.equal(halloweenOn(Date.UTC(y, 9, 1, 3, 0) - 1), false);
+    assert.equal(halloweenOn(Date.UTC(y, 9, 1, 3, 0)), true);
+    assert.equal(halloweenOn(Date.UTC(y, 10, 2, 3, 0) - 1), true);
+    assert.equal(halloweenOn(Date.UTC(y, 10, 2, 3, 0)), false);
   }
   assert.equal(halloweenOn(NaN), false);
   assert.equal(halloweenOn(undefined), false);

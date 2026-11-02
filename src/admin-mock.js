@@ -1,5 +1,7 @@
 // Development only (admin.html?mock=1): a stand-in for the trip function that lives in the page, so the admin page can be tried and
 // photographed without a server or a key. The key it accepts is "prueba". Never loaded without ?mock=1.
+import { SEASON_KEYS } from './seasons.js';
+
 export function createMockFetch(now = () => Date.now()) {
   const events = [], seasons = new Map();
   let n = 0;
@@ -15,7 +17,7 @@ export function createMockFetch(now = () => Date.now()) {
     if (fn === 'event-save') {
       const start = Date.parse(body.start_at);
       if (!(start > now())) return reply(400, { error: 'start_in_the_past' });
-      const dur = (body.duration_s ?? { fireworks: 38, meteors: 28, drones: 40, halloween: 40 }[body.kind]) * 1000;
+      const dur = (body.duration_s ?? { fireworks: 38, meteors: 28, drones: 40, halloween: 40, christmas: 40 }[body.kind]) * 1000;
       if (body.duration_s != null && !(Number.isInteger(body.duration_s) && body.duration_s >= 20 && body.duration_s <= 600)) return reply(400, { error: 'bad_duration' });
       const e = { id: `00000000-0000-0000-0000-${String(++n).padStart(12, '0')}`, kind: body.kind, seed: body.seed ?? 12345, start_at: new Date(start).toISOString(), start_ms: start, duration_ms: dur };
       events.push(e);
@@ -28,7 +30,7 @@ export function createMockFetch(now = () => Date.now()) {
       return reply(200, { id: e.id, cancelled: true, replayed: false });
     }
     if (fn === 'season-save' || fn === 'season-clear') {
-      if (body.season !== 'halloween') return reply(400, { error: 'bad_season' });
+      if (!SEASON_KEYS.includes(body.season)) return reply(400, { error: 'bad_season' });
       if (!Number.isInteger(body.year)) return reply(400, { error: 'bad_year' });
       const id = `${body.season}|${body.year}`;
       if (fn === 'season-clear') return reply(200, { season: body.season, year: body.year, cleared: true, replayed: !seasons.delete(id) });
