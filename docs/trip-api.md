@@ -152,6 +152,20 @@ pays twice or past the cap; the last payment is cut to what is left), then the g
 `200 { "gold", "capped", "earned_today", "cap", "gold_left" }`. Errors: `401 bad_session`, `403 shop_closed`, `400 bad_mission`, `409 mission_expired` (with `day`), `409 done` (that villager
 paid today), `409 cap_reached`, `409 trip_over`, `409 conflict` (ask again). `trip-claim` also returns `missions: { day, cap, earned, done: [villager ids] }` (today's ledger).
 
+### `trip-gift`
+Request `{ "trip": "<ref>", "gift": "<season>:<slot>:<n>" }` with the token: the pet opened a **seasonal gift** lying in the town and is paid 2 to 5 coins. While a season is on (see "Seasons" below) 3 gifts lie about the town
+and the Parque every 2 hours, in places the town derives from the room's code (`src/gifts.js`); the server cannot know the room, so it checks the claim's **shape** (`gifts.js parseGiftId`): `season` a key of
+the registry that is **on right now** (the built-in windows of `SEASON_WINDOWS`, the mirror of `src/seasons.js`, plus the owner's `town_seasons` overrides with the same rules as the town: dates, forced on, forced off;
+if the overrides cannot be read the answer is `503 try_again`), `slot` the **current slot** or, for the first 2 minutes of a slot, the one before it, and `n` 0..2. A slot is a fixed 2 h window of UTC time,
+`slot = floor((ms - Date.UTC(2026, 0, 1)) / 7200000)`: a plain UTC grid, so Chile's clock changes neither skip nor repeat a slot nor change its length; they only move where a boundary falls on the Chile clock
+(even hours in winter, UTC-4; odd hours in summer, UTC-3). An id has one spelling (no leading zeros). The server prices the gift itself from its id (`2 + hashSeed(id) % 4`, the town computes the same) and bounds forged
+claims with **one payment per gift id** and a **daily cap of 20 coins per pet** across trips, apart from the missions' 50. The ledger is the pet's row of table `pet_days` for the town day its slot **starts** in
+(so a slot that spans the 06:00 change has one row and a gift cannot be paid twice), columns `gift_earned` (coins paid, only ever grows: it is also the compare-and-set column of the claim) and `gifts` (the ids opened); it is
+claimed first with a conditional update (a duplicate or a race never pays twice or past the cap; the last payment is cut to what is left), then the coins are added to the trip's `earned`, the same as `trip-mission`.
+Only trips that started with `"spend": 1`. `200 { "gold", "capped", "gift", "gift_earned", "cap", "gold_left" }`. Errors: `401 bad_session`, `403 shop_closed`, `409 trip_over`, `400 bad_gift` (a malformed id, an unknown season,
+`n` > 2), `409 gift_expired` (not the current slot), `409 season_off`, `409 claimed` (that gift was opened already; with `gift_earned`, `cap`), `409 gift_cap` (with `gift_earned`, `cap`), `409 conflict` (ask again),
+`503 try_again`. Migration `20261104120000_pet_days_gifts.sql`.
+
 ### `trip-status`
 Request `{ "trip": "<ref>" }` with the token. `200 { "status", "recalled", "claimed", "entrance", "version", "can_spend", "gold_left", "bought" }`; it also refreshes the session's
 idle clock, so the page polls it every 5 s while open. `recalled: true` means: play the departure, leave the room, show "Volvió a su casa".
@@ -207,7 +221,8 @@ on `trip-claim` yet (add one at the gateway if abused).
 1c2. Apply `supabase/migrations/20261026120000_trip_items.sql` (trips gain `items`, default 14; before deploying the function). Release order: the firmware that advertises `items` first, then this migration and the function, then the town page (the shop shows the hats as "Necesitas actualizar tu placa" until a trip's board knows them).
 1d. Apply `supabase/migrations/20261025160000_farm_tools.sql` (table `pet_tools`, RLS on with no policy; before deploying the function).
 1e. Apply `supabase/migrations/20261025170000_farm_missions.sql` (trips gain `earned`; table `pet_days`; before deploying the function). `20261025180000_cleanup_trips.sql` creates `cleanup_trips()` (also clearing old days); nothing depends on it.
+1f. Apply `supabase/migrations/20261104120000_pet_days_gifts.sql` (`pet_days` gains `gift_earned` and `gifts`, for `trip-gift`; before deploying the function).
 2. Deploy the single function `trip` with `--no-verify-jwt` (or via `supabase/config.toml`). Entrypoint `index.ts`; files (relative to
-   `supabase/functions/trip/`): `index.ts serve.ts db.ts handlers.js events.js crypto.js radar.js shop.js tools.js missions.js travel-package.js trip-code.js`. Secret `ADMIN_KEY` (the owner's, for the admin actions). Optional secret `TOWN_URL` (default `https://feliparri.github.io/pixel-pet-city/`);
+   `supabase/functions/trip/`): `index.ts serve.ts db.ts handlers.js events.js crypto.js radar.js shop.js tools.js missions.js gifts.js travel-package.js trip-code.js`. Secret `ADMIN_KEY` (the owner's, for the admin actions). Optional secret `TOWN_URL` (default `https://feliparri.github.io/pixel-pet-city/`);
    `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are provided by Supabase to every function.
 3. End-to-end test: `node tools/fake-board.mjs run` (see the README's "Web trip" section).

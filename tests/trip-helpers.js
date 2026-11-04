@@ -34,13 +34,13 @@ export function memoryDb() {
     },
     async getTools(d) { return [...(tools.get(d) ?? [])]; },
     async addTool(d, t) { tools.set(d, new Set([...(tools.get(d) ?? []), t])); },
-    async getPetDay(d, day) { const r = petDays.get(`${d}|${day}`); return r ? { ...r, done: [...r.done] } : null; },
-    async insertPetDay(row) { if (!petDays.has(`${row.device_id}|${row.day}`)) petDays.set(`${row.device_id}|${row.day}`, { ...row, done: [...row.done] }); },
+    async getPetDay(d, day) { const r = petDays.get(`${d}|${day}`); return r ? { ...r, done: [...r.done], gifts: [...r.gifts] } : null; },
+    async insertPetDay(row) { if (!petDays.has(`${row.device_id}|${row.day}`)) petDays.set(`${row.device_id}|${row.day}`, { gift_earned: 0, ...row, done: [...row.done], gifts: [...(row.gifts || [])] }); },       // gift_earned and gifts default like the columns
     async updatePetDay(d, day, where, patch) {
       const row = petDays.get(`${d}|${day}`);
       if (!row || !matches(row, where)) return null;
       Object.assign(row, patch);
-      return { ...row, done: [...row.done] };
+      return { ...row, done: [...row.done], gifts: [...row.gifts] };
     },
     async cleanup() {},
     async listEvents(from, to) { return [...townEvents.values()].filter((e) => !e.cancelled_at && e.start_at >= from && e.start_at <= to).sort((a, b) => a.start_at.localeCompare(b.start_at)); },

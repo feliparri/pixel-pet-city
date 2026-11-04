@@ -68,6 +68,12 @@ export function shopAfterMission(shop, m, r) {
   return { ...shop, gold, missions: missionsAfterClaim(shop.missions, m, r) };
 }
 
+/** What a finished gift claim (trip-gift answers { gold, capped, gift, gift_earned, cap, gold_left }) changes in the state: the gold left (gifts have no ledger in the state: the town keeps the opened ids). */
+export function shopAfterGift(shop, r) {
+  if (r.error === 'shop_closed') return { ...shop, canSpend: false, gold: null };
+  return r.ok && int(r.gold_left) !== null ? { ...shop, gold: r.gold_left } : shop;
+}
+
 /** What a finished tool purchase changes in the state (trip-buy-tool answers { gold_left, tools }); same rules as shopAfterBuy. */
 export function shopAfterBuyTool(shop, key, r) {
   if (r.ok) return { ...shop, gold: int(r.gold_left) ?? shop.gold, tools: toolKeys(r.tools) };

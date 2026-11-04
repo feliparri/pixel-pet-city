@@ -7,6 +7,7 @@ import { cleanRadar } from './radar.js';
 import { SHOP, isForSale, boardKnows, knownItems } from './shop.js';
 import { TOOLS, isTool } from './tools.js';
 import { DAILY_CAP, parseMission, townDay } from './missions.js';
+import { slotAccepted, slotStart, parseGiftId, seasonsOn, GIFT_DAILY_CAP } from './gifts.js';
 import { events, eventSave, eventCancel, seasonSave, seasonClear } from './events.js';
 
 export const BODY_MAX = 12288;                 // a 6144-byte package is 8192 base64 characters, plus the JSON around it
@@ -282,6 +283,52 @@ async function tripMission(req, deps) {
   return err(409, t && t.status === 'active' ? 'conflict' : 'trip_over');
 }
 
+// ---- trip-gift ----------------------------------------------------------------------------------------------------------------
+// A seasonal gift found in the town (src/gifts.js; docs/trip-api.md). Same rail as the missions: the gold goes into the trip's `earned`, and a ledger row of
+// pet_days (per board and town day) is claimed first with a conditional update. The server cannot see the town, so it checks the claim's SHAPE (a season that is
+// on right now, defaults plus the owner's overrides; the current slot, or the one before it for 2 minutes; a gift number 0..2), prices the gift itself from its
+// id (2..5 coins) and bounds forged claims with one payment per gift id and GIFT_DAILY_CAP coins a day. The ledger row is the town day of the slot's start, so a
+// gift has one row whenever it is claimed; `gift_earned` is the coins paid and only ever grows, so it also tells a racing claim apart (the second one conflicts).
+async function tripGift(req, deps) {
+  const p = parseJson(req.body);
+  if (p.fail) return p.fail;
+  const s = await webTrip(req, p.v, deps);
+  if (s.fail) return s.fail;
+  const { trip } = s;
+  if (trip.status !== 'active') return err(409, 'trip_over', { status: trip.status });
+  if (!trip.can_spend) return err(403, 'shop_closed');
+  const g = parseGiftId(p.v.gift);
+  if (!g) return err(400, 'bad_gift');
+  const nowMs = deps.nowS() * 1000;
+  if (!slotAccepted(g.slot, nowMs)) return err(409, 'gift_expired');
+  let rows;
+  try { const y = new Date(nowMs).getUTCFullYear(); rows = await deps.db.listSeasons(y - 1, y + 2); } catch (e) { deps.log?.('trip-gift/seasons', e); return err(503, 'try_again'); }      // the owner may have turned the season off: without their word, no pay
+  if (!seasonsOn(nowMs, rows).has(g.season)) return err(409, 'season_off');
+  const day = townDay(slotStart(g.slot));
+  let row = await deps.db.getPetDay(trip.device_id, day);
+  if (!row) {
+    await deps.db.insertPetDay({ device_id: trip.device_id, day, earned: 0, done: [], gift_earned: 0, gifts: [] });
+    row = await deps.db.getPetDay(trip.device_id, day);
+    if (!row) return err(500, 'internal');
+  }
+  const opened = Array.isArray(row.gifts) ? row.gifts : [], paid = row.gift_earned ?? 0;
+  if (opened.includes(g.id)) return err(409, 'claimed', { gift_earned: paid, cap: GIFT_DAILY_CAP });
+  const room = GIFT_DAILY_CAP - paid;
+  if (room <= 0) return err(409, 'gift_cap', { gift_earned: paid, cap: GIFT_DAILY_CAP });
+  const pay = Math.min(g.reward, room);
+  const day2 = await deps.db.updatePetDay(trip.device_id, day, { gift_earned: [paid] }, { gift_earned: paid + pay, gifts: [...opened, g.id], updated_at: iso(deps.nowS()) });
+  if (!day2) return err(409, 'conflict');
+  let t = trip;
+  for (let attempt = 0; attempt < 2; attempt++) {                              // the gold goes into this trip's return; a recall in between ends the trip, and the day keeps the count
+    const r = await deps.db.updateTrip(t.id, { status: ['active'], earned: [t.earned ?? 0] }, { earned: (t.earned ?? 0) + pay, session_seen_at: iso(deps.nowS()) });
+    if (r) return reply(200, { gold: pay, capped: pay < g.reward, gift: g.id, gift_earned: day2.gift_earned, cap: GIFT_DAILY_CAP, gold_left: goldLeft(r) });
+    t = await deps.db.getTripById(trip.id);
+    if (!t || t.status !== 'active') break;
+  }
+  deps.log?.('trip-gift', new Error('gold counted in the day but not in the trip'));
+  return err(409, t && t.status === 'active' ? 'conflict' : 'trip_over');
+}
+
 // ---- trip-recall --------------------------------------------------------------------------------------------------------------
 async function tripRecall(req, deps, device) {
   const p = parseJson(req.body);
@@ -358,7 +405,7 @@ async function tripAck(req, deps, device) {
   return now && now.status === 'closed' ? reply(200, { trip_id: trip.trip_id, status: 'closed', replayed: true }) : err(409, 'not_returned', { status: now?.status });
 }
 
-const ROUTES = { 'device-register': deviceRegister, 'trip-claim': tripClaim, 'trip-save': tripSave, 'trip-buy': tripBuy, 'trip-buy-tool': tripBuyTool, 'trip-mission': tripMission, 'trip-status': tripStatus,
+const ROUTES = { 'device-register': deviceRegister, 'trip-claim': tripClaim, 'trip-save': tripSave, 'trip-buy': tripBuy, 'trip-buy-tool': tripBuyTool, 'trip-mission': tripMission, 'trip-gift': tripGift, 'trip-status': tripStatus,
   'trip-start': tripStart, 'trip-recall': tripRecall, 'trip-return': tripReturn, 'trip-ack': tripAck,
   'events': events, 'event-save': eventSave, 'event-cancel': eventCancel,
   'season-save': seasonSave, 'season-clear': seasonClear };

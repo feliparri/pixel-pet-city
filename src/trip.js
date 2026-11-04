@@ -4,7 +4,7 @@ import { normalizeTripCode } from './trip-code.js';
 import { parseKeepsake } from './keepsake.js';
 import { validateLook, validateStats, sanitizeName } from './protocol.js';
 import { entranceId } from './entrance.js';
-import { shopFrom, shopAfterBuy, shopAfterBuyTool, shopAfterMission, parseBag } from './shop.js';
+import { shopFrom, shopAfterBuy, shopAfterBuyTool, shopAfterMission, shopAfterGift, parseBag } from './shop.js';
 import { toolKeys } from './tools.js';
 
 export const POLL_MS = 5000;
@@ -107,6 +107,16 @@ export function createTripClient({ base, fetch: fetcher = globalThis.fetch, stor
       if (!r.ok && r.error === 'conflict') r = await post('trip-mission', { trip: session.trip, mission: m.id }, session.token);
       const out = r.ok ? { ok: true, ...r.body } : { ok: false, error: r.error, ...(r.body && Number.isInteger(r.body.earned_today) ? { earned_today: r.body.earned_today } : {}) };
       session.shop = shopAfterMission(session.shop, m, out);
+      return out;
+    },
+
+    /** Opens a seasonal gift (trip-gift; `id` is src/gifts.js's `<season>:<slot>:<n>`): the server prices it (2 to 5 coins) and pays within its daily cap for gifts. { ok, gold, capped, gift, gift_earned, cap, gold_left } or { ok: false, error }. */
+    async claimGift(id) {
+      if (!session) return { ok: false, error: 'bad_session' };
+      let r = await post('trip-gift', { trip: session.trip, gift: id }, session.token);
+      if (!r.ok && r.error === 'conflict') r = await post('trip-gift', { trip: session.trip, gift: id }, session.token);
+      const out = r.ok ? { ok: true, ...r.body } : { ok: false, error: r.error };
+      session.shop = shopAfterGift(session.shop, out);
       return out;
     },
 

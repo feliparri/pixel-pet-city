@@ -40,14 +40,14 @@ function zoneOffset(ms) {
   const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: ZONE, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' }).formatToParts(new Date(ms)).map((x) => [x.type, Number(x.value)]));
   return Math.round((Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - Math.floor(ms / 1000) * 1000) / 60000);
 }
-function zonedToMs(date, time) {
+export function zonedToMs(date, time) {
   const [y, mo, da] = date.split('-').map(Number), [h, mi] = time.split(':').map(Number);
   const naive = Date.UTC(y, mo - 1, da, h, mi);
   let ms = naive - zoneOffset(naive) * 60000;
   ms = naive - zoneOffset(ms) * 60000;
   return ms;
 }
-function zonedDate(ms) {
+export function zonedDate(ms) {
   const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: ZONE, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
   return `${p.year}-${p.month}-${p.day}`;
 }
