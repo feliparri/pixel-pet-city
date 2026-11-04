@@ -283,8 +283,9 @@ export function fountainItem(cam, n, now, view) {
 /** The seasons' decorations of the world's area (`list`: seasonDecor from src/art/decor.js) as depth-sortable items: standing on their tile, or hung `lift` px up a wall. The lit ones keep their glowing part bright at night. */
 export function decorItems(world, cam, n, view, list) {
   const items = [];
-  if (!world.decorLight || world.decorLight.list !== list) world.decorLight = { list, lights: list.map((d) => lightAt(world.lights, d.x, d.y)) };       // the lights depend on the list: another season set, another list
-  const lights = world.decorLight.lights;
+  const byList = world.decorLight || (world.decorLight = new WeakMap());                                       // the lights depend on the list (another season set, another list; the gifts' own one)
+  let lights = byList.get(list);
+  if (!lights) byList.set(list, lights = list.map((d) => lightAt(world.lights, d.x, d.y)));
   list.forEach((d, i) => {
     const p = project(cam, d.x, d.y);
     if (!p) return;

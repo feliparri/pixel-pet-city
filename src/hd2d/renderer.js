@@ -129,6 +129,8 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
     if (jet) items.push(jet);
     const decor = seasonDecor(world.name, state.seasons);                   // the decorations of every season that is on
     if (decor.length) items.push(...decorItems(world, cam, n, view, decor));
+    const gifts = state.gifts && state.gifts.length ? state.gifts : null;     // the seasonal gifts lying about (src/gift-world.js), drawn like the decorations
+    if (gifts) items.push(...decorItems(world, cam, n, view, gifts));
     const ent = { cam, n, now, world, me: state.me, view, wash: flashes.length ? (wx) => burstTint(flashes, wx) : null };
     items.push(...things.items(state, ent, now));
     for (const e of [state.me, ...state.others]) { const it = painter.item(e, ent); if (it) items.push(it); }
@@ -137,6 +139,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
     things.air(ctx, state, cam, now, view);
     drawGlows(ctx, world, cam, n, now, view);
     if (decor.length) drawDecorGlows(ctx, world, cam, n, now, view, decor);
+    if (gifts) drawDecorGlows(ctx, world, cam, n, now, view, gifts);
     if (state.ghosts && state.ghosts.length) drawGhosts(ctx, state.ghosts, cam, view);
     if (sh) {
       drawRockets(ctx, scam, sky.fw, u, alpha); drawDrones(ctx, scam, sky.drones, u, alpha);

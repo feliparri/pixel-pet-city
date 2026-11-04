@@ -29,6 +29,8 @@ import { activeSeasons, parseDevSeasons } from './seasons.js';
 import { ghostsAt } from './ghosts.js';
 import { createHold, villagerAtTap, talkSpot, faceToward } from './npc-hold.js';
 import { hearer, reactionTo, REPLY_WINDOW_MS, REPLY_DELAY_MS, REPLY_EMOTE_MS, REPLY_SAY_MS } from './npc-react.js';
+import { createGiftWorld } from './gift-world.js';
+import { HINT_NO_TRIP, giftOutcome } from './gifts.js';
 import { missionFor, missionText, missionRows, statusOf, thanksFor, doneLine, CAPPED_LINE, NOT_READY, GOLD_POP, claimErrorText } from './missions.js';
 
 const FADE_MS = 240;                                  // the fade-in after a door
@@ -47,7 +49,8 @@ function spawnFor(id) {
  * stars: the pet's star counter ({ add(n) }); onHud(info): called a few times a second with what the game buttons and panels need.
  * canasta / farmMemory: the pet's basket (src/canasta.js) and what it did on the farm today (src/farm-world.js); tools(): the keys of the farm tools the pet owns
  * (src/tools.js); onStore(): the pet asked for the Almacén (the farm store); missions: null (villagers just chat) or { enabled(), ledger() ({ day, cap, earned,
- * done }, what the server paid today), claim(m) (hands a mission in: the server pays real gold, src/trip.js claimMission) }; onFarm({ action, prompt }) says which action is available (or null) when it changes, onFarmDone(result) reports an action's outcome (the pop) and onFarmAction(event) every action done (missions).
+ * done }, what the server paid today), claim(m) (hands a mission in: the server pays real gold, src/trip.js claimMission), giftOwner() (who opens the seasonal gifts: the trip's ref),
+ * gift(id) (opens a gift: the server pays 2 to 5 coins, src/trip.js claimGift) }; onFarm({ action, prompt }) says which action is available (or null) when it changes, onFarmDone(result) reports an action's outcome (the pop) and onFarmAction(event) every action done (missions).
  * Returns { onNetEvent, emote, playExit, games: { play, join, seek, leave, dismiss }, farm: { act }, destroy }. */
 export function startTown({ canvas, stage, pad = null, sprites, font, net, me, entrance = null, stars = { add() {} }, canasta = createCanasta(), farmMemory = createFarmMemory(), tools = () => [], onStore = () => {}, missions = null, onHud = () => {}, onHdMode = () => {}, onShow = () => {}, onShop = () => {}, insets = () => ({ top: 0, bottom: 0 }), onFarm = () => {}, onFarmDone = () => {}, onFarmAction = () => {} }) {
   const [sx, sy] = spawnFor(net.id);
@@ -87,8 +90,10 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   const chickWalker = new Walker(30, 40);
   chickWalker.hurry = true;
   let chickSeq = 0, hudAt = -Infinity, wasLobby = null;
+  const giftWorld = createGiftWorld({ room: net.code || net.id, storage: (() => { try { return localStorage; } catch { return null; } })() });      // the seasonal gifts of the room (src/gift-world.js)
+  let giftBusy = new Set(), giftHinted = false, giftCapDay = null, giftRetry = new Map(), giftScanAt = -Infinity, selfSay = null;      // giftBusy: ids being opened; giftHinted: the "travel with your pet" hint was shown; giftCapDay: the town day the server said the cap was reached; giftRetry: id -> when to try again
   let racing = false, slowUntil = 0, lastTile = null;          // the obstacle race: a pet that steps onto an obstacle walks slower for RACE.slowMs
-  self.walker.onStep = (x, y, d) => net.sendPos(x, y, d, self.area);
+  self.walker.onStep = (x, y, d) => { net.sendPos(x, y, d, self.area); stepGift(x, y); };      // a step onto or next to a seasonal gift opens it
   net.sendPos(sx, sy, 'down', 'town');
 
   const addPeer = (p) => {
@@ -192,6 +197,9 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     else if (t - seasonAt > 1000) { seasonAt = t; seasonSet = activeSeasons(devNpcT === null ? events.serverNow() : devNpcT, events.seasons); }      // default windows, overridden by the server's list (src/seasons.js); once a second is plenty
     state.seasons = seasonSet;
     npcs.dress(seasonSet);                                        // the villagers wear the Santa hat while Christmas is on (a swap only when the season set changes)
+    state.gifts = self.area === 'town' ? giftWorld.update(devNpcT === null ? events.serverNow() : devNpcT, seasonSet, missions && missions.enabled() ? missions.giftOwner() : null, t) : null;      // the seasonal gifts lying about (3 every 2 hours while a season is on)
+    if (self.area === 'town' && !w.busy && !self.fx && t - giftScanAt > 400) { giftScanAt = t; stepGift(w.tileX, w.tileY); }      // a gift that appears under, or next to, a pet standing still
+    self.say = selfSay && t < selfSay.until ? selfSay.text : null;      // "+3 monedas" above the pet
     if (self.area === 'town') {                                   // ambient life: the birds look at every pet in the town
       stepLife(life, [{ x: w.tileX, y: w.tileY }, ...Array.from(others.values()).filter((o) => o.placed && o.area === 'town').map((o) => ({ x: o.walker.tileX, y: o.walker.tileY }))], t);
       state.life = lifeFrame(life, t, state.amb);
@@ -285,6 +293,52 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     raf = requestAnimationFrame(frame);
   }
   raf = requestAnimationFrame(frame);
+
+  /** The pet stepped onto (or next to) a seasonal gift: open it. */
+  function stepGift(x, y) {
+    if (self.area !== 'town' || self.fx || modal) return;
+    const g = giftWorld.near(x, y);
+    if (g) openGift(g);
+  }
+  /**
+   * Opens a gift: the server pays 2 to 5 coins (`missions.gift`) when this pet is on a trip that can earn; sparkles, "+N monedas" above the pet. A visitor (no trip, or a board
+   * that cannot earn) is told once how to open gifts; a gift opened already, or too late, just goes; the daily cap is told once a day; any other failure is tried again in 8 s.
+   */
+  async function openGift(g) {
+    const t = performance.now();
+    if (giftBusy.has(g.id) || (giftRetry.get(g.id) || 0) > t) return;
+    if (!missions || !missions.enabled()) {
+      if (!giftHinted) { giftHinted = true; onFarmDone({ ok: false, text: HINT_NO_TRIP }); }
+      return;
+    }
+    const day = dayOf(devNpcT === null ? events.serverNow() : devNpcT).date;
+    if (giftCapDay === day) return;
+    giftBusy.add(g.id);
+    const r = await missions.gift(g.id);
+    giftBusy.delete(g.id);
+    if (!alive) return;
+    const t2 = performance.now(), out = giftOutcome(r);
+    if (out.kind === 'paid') {
+      giftWorld.open(g.id, t2);
+      selfSay = { text: out.text, until: t2 + 1800 };
+      self.jumpAt = t2; net.sendJump();
+      onFarmDone({ ok: true, icon: 'coin', text: out.text });
+    } else if (out.kind === 'gone') giftWorld.dismiss(g.id);          // opened already (or too late): it just goes
+    else if (out.kind === 'cap') { giftCapDay = day; onFarmDone({ ok: false, text: out.text }); }
+    else { giftRetry.set(g.id, t2 + 8000); onFarmDone({ ok: false, text: out.text }); }
+  }
+  /** A tap on a gift: open it when the pet is on or next to it, else walk there (it opens on the way, one step before). Not a map walk, so it works with the stick on screen too. */
+  function tapGift(tile) {
+    const g = self.area === 'town' ? giftWorld.at(tile[0], tile[1]) : null;
+    if (!g) return false;
+    const w = self.walker, mv = games.movement();
+    if (mv.frozen || mv.zone || mv.closed) return false;
+    if (Math.max(Math.abs(w.tileX - g.x), Math.abs(w.tileY - g.y)) <= 1) { openGift(g); return true; }
+    const path = findPath(w.tileX, w.tileY, g.x, g.y, self.area);
+    if (!path.length) return false;
+    w.queue = []; w.setPath(path); state.marker = { x: g.x, y: g.y, until: performance.now() + 500 };
+    return true;
+  }
 
   /** The nearest villager that is awake and within TALK_DIST of the pet, or null. */
   function talkTarget() {
@@ -385,7 +439,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     const tile = renderer.pointToTile(ev.clientX, ev.clientY);
     if (!tile) return;
     talkGo = null;
-    if (tapVillager(tile)) { ev.preventDefault(); return; }
+    if (tapVillager(tile) || tapGift(tile)) { ev.preventDefault(); return; }
     if (farmTap(tile, tapWalks(ev.pointerType, !!pad))) { ev.preventDefault(); return; }
     if (!tapWalks(ev.pointerType, !!pad)) return;      // with the stick on screen a finger on the map does not walk the pet
     ev.preventDefault();

@@ -190,6 +190,8 @@ const missionsApi = {
   enabled: () => !!(shopSource && shopSource.shop && shopSource.shop.canSpend && shopSource.claimMission),
   ledger: () => (shopSource && shopSource.shop ? shopSource.shop.missions : parseMissions(null)),
   claim: (m) => shopSource.claimMission(m),
+  giftOwner: () => (shopSource ? (shopSource.session ? shopSource.session.trip : 'dev') : null),      // the pet whose opened gifts the town remembers: this trip (the dev mock: 'dev')
+  gift: (id) => shopSource.claimGift(id),
 };
 
 /** The "Efectos" switch (the HD-2D view): the choice is remembered in this browser; ?flat=1 locks it off. */

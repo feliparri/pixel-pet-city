@@ -10,6 +10,7 @@ import { approach, nightMultiply } from './light.js';
 import { buildWorld, bakeGround, drawGround, standingItems, drawGlows, fountainItem, decorItems, drawDecorGlows } from './scene.js';
 import { seasonDecor } from '../art/decor.js';
 import { SEASON_KEYS } from '../seasons.js';
+import { createGiftWorld } from '../gift-world.js';
 import { createPetPainter } from './pets.js';
 import { createFx } from './fx.js';
 import { Wanderer, rng } from './wander.js';
@@ -18,6 +19,7 @@ const q = new URLSearchParams(location.search);
 const still = q.get('still') === '1', bench = q.get('bench') === '1';
 const state = { night: q.get('mode') === 'day' ? 0 : 1, nightTarget: q.get('mode') === 'day' ? 0 : 1, tilt: q.get('fx') === '0' ? 0 : 1, tiltTarget: q.get('fx') === '0' ? 0 : 1 };
 const seasons = new Set(SEASON_KEYS.filter((k) => q.get(k) === '1'));
+const giftWorld = q.get('gifts') === '1' ? createGiftWorld({ room: 'FOCA-LUNA-42' }) : null, gnow = Number(q.get('gnow')) || 1.8e12;      // &gifts=1: the seasonal gifts as they lie at server time &gnow
 const $ = (id) => document.getElementById(id);
 const canvas = $('c'), ctx = canvas.getContext('2d');
 const RES = Math.min(1.5, Math.max(0.4, Number(q.get('res')) || 1));
@@ -83,11 +85,14 @@ function frame(now, dt) {
   if (jet) items.push(jet);
   const decor = seasonDecor(world.name, seasons);
   if (decor.length) items.push(...decorItems(world, cam, n, view, decor));
+  const gifts = giftWorld ? giftWorld.update(gnow, seasons, 'demo', now) : null;
+  if (gifts) items.push(...decorItems(world, cam, n, view, gifts));
   const ov = { labels: [], bubbles: [], hits: [] };
   for (const e of pets) { const it = painter.item(e, { cam, n, now, world, me: null, view }); if (it) items.push(it); }
   for (const it of sortBackToFront(items)) it.draw(ctx, ov);
   drawGlows(ctx, world, cam, n, now);
   if (decor.length) drawDecorGlows(ctx, world, cam, n, now, view, decor);
+  if (gifts) drawDecorGlows(ctx, world, cam, n, now, view, gifts);
   fx.apply(ctx, t, n);
 }
 

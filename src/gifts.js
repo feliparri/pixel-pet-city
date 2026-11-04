@@ -125,3 +125,11 @@ export function giftErrorText(r) {
     default: return 'No se pudo abrir el regalo. Inténtalo otra vez.';
   }
 }
+
+/** What the town does with the server's answer to a claim: { kind: 'paid', text } (sparkles and "+N monedas"), 'gone' (the gift just goes), 'cap' (said once a day, no more asking today) or 'retry' (said, and asked again in a while). */
+export function giftOutcome(r) {
+  if (r.ok) return { kind: 'paid', text: GIFT_POP(r.gold) };
+  const text = giftErrorText(r);
+  if (text === null) return { kind: 'gone', text: null };
+  return { kind: text === GIFT_CAP_LINE ? 'cap' : 'retry', text };
+}

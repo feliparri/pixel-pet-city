@@ -5,6 +5,7 @@
 //   &talk=1                the shopkeeper greets (shop only)
 //   &halloween=1           the Halloween decorations and ghosts (town; &area=farm shows the farm instead of the town)
 //   &christmas=1           the Christmas decorations (they can go with &halloween=1)
+//   &gifts=1               the seasonal gifts of the seasons that are on, as they lie at server time &gnow=<ms> (default 1.8e12) in room FOCA-LUNA-42 (town only)
 //   &villagers=1           the villagers of room FOCA-LUNA-42 at server time &npct=<ms> (default 1.8e12), dressed for the seasons that are on (town only)
 // The page sets document.title to "ready" when it has painted, so a headless browser knows when to take the screenshot.
 import { getArea, tileAt, TILES, TILE } from './map.js';
@@ -18,6 +19,7 @@ import { createLife, stepLife, lifeFrame } from './life.js';
 import { ghostsAt } from './ghosts.js';
 import { SEASON_KEYS } from './seasons.js';
 import { SHOPKEEPER, shopGreeting, createNpcs } from './npcs.js';
+import { createGiftWorld } from './gift-world.js';
 
 const q = new URLSearchParams(location.search);
 const kind = ['town', 'shop', 'view', 'park', 'seek', 'coop', 'sprint', 'life', 'pitch', 'race'].includes(q.get('shot')) ? q.get('shot') : 'town';
@@ -57,6 +59,7 @@ async function main() {
   }
   if (kind === 'coop') { cam = cameraFor(31 * TILE + 8, 40 * TILE + 8, area.w * TILE, area.h * TILE); vw = VIEW_W; vh = VIEW_H; chicken = { x: 32, y: 42, frame: 1, flip: false }; }
   if (kind === 'sprint') { cam = cameraFor(24 * TILE + 8, 24 * TILE + 8, area.w * TILE, area.h * TILE); vw = VIEW_W; vh = VIEW_H; chicken = { x: 25.5, y: 24, frame: 1, flip: false }; }   // the chicken sprinting across the plaza, a pet chasing it
+  const gifts = q.get('gifts') === '1' && area.name === 'town' ? createGiftWorld({ room: 'FOCA-LUNA-42' }).update(Number(q.get('gnow')) || 1.8e12, seasons, 'shot', 1000) : null;
   const lifeNow = 7300, amb = ambientAt(hour);
   const life = createLife('FOCA-LUNA-42');                                       // the same scene as the room FOCA-LUNA-42; a pet walking up scares a bird
   stepLife(life, [], 0);
@@ -68,7 +71,7 @@ async function main() {
   const scene = document.createElement('canvas');
   scene.width = vw; scene.height = vh;
   const sctx = scene.getContext('2d');
-  const bubbles = drawScene(sctx, { area: area.name, cam, vw, vh, entities: shown, me, now: kind === 'life' ? lifeNow : 1000, amb, sprites, font, chicken, dark, life: lifeScene, seasons, ghosts: seasons.has('halloween') ? ghostsAt(area.name, 1.8e12, amb.night) : null, ball: kind === 'pitch' ? { x: 23.4, y: 59.2 } : null, talk: kind === 'shop' && q.get('talk') === '1' ? [{ x: SHOPKEEPER.head.x, y: SHOPKEEPER.head.y, text: shopGreeting(0) }] : null });
+  const bubbles = drawScene(sctx, { area: area.name, cam, vw, vh, entities: shown, me, now: kind === 'life' ? lifeNow : 1000, amb, sprites, font, chicken, dark, life: lifeScene, seasons, gifts, ghosts: seasons.has('halloween') ? ghostsAt(area.name, 1.8e12, amb.night) : null, ball: kind === 'pitch' ? { x: 23.4, y: 59.2 } : null, talk: kind === 'shop' && q.get('talk') === '1' ? [{ x: SHOPKEEPER.head.x, y: SHOPKEEPER.head.y, text: shopGreeting(0) }] : null });
   const c = document.getElementById('c');
   c.width = vw * scale; c.height = vh * scale;
   const ctx = c.getContext('2d');
