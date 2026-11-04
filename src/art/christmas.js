@@ -127,14 +127,37 @@ export function wreath() {
   return c;
 }
 
+/** A snowball of radius r centred on (cx, cy): white on the left, blue-grey shade on the right, outlined. */
+function ball(ctx, cx, cy, r) {
+  const x0 = Math.floor(cx - r - 1), y0 = Math.floor(cy - r - 1), n = Math.ceil(2 * r + 2);
+  shape(ctx, x0, y0, n, n, (x, y) => Math.hypot(x + x0 + 0.5 - cx, y + y0 + 0.5 - cy) <= r, (x, y) => {
+    const d = (x + x0 + 0.5 - cx) / r;
+    return d < -0.3 ? '#ffffff' : d < 0.35 ? '#e6eef8' : '#b4c4de';
+  }, P.ink);
+}
+/** A snowman, 20 x 32 (feet at the bottom): three snowballs, coal eyes and buttons, a carrot nose, a red scarf, stick arms and a small black hat. */
+export function snowman() {
+  const c = canvas(20, 32), ctx = c.getContext('2d');
+  for (const [x, y] of [[3, 17], [2, 16], [1, 15], [0, 14], [16, 17], [17, 16], [18, 15], [19, 14]]) dot(ctx, P.w1, x, y);          // the stick arms, behind the body
+  dot(ctx, P.w1, 1, 13); dot(ctx, P.w1, 19, 13);
+  ball(ctx, 10, 24, 7); ball(ctx, 10, 15.5, 5.2); ball(ctx, 10, 8.5, 4.4);
+  rect(ctx, P.ink, 6, 3, 9, 2); rect(ctx, P.ink, 7, 0, 7, 4); rect(ctx, P.plum, 8, 1, 5, 2); rect(ctx, P.red, 7, 3, 7, 1);              // the hat: brim, crown, a red band
+  dot(ctx, P.ink, 8, 7); dot(ctx, P.ink, 12, 7); for (const x of [7, 8, 9, 10, 11]) dot(ctx, P.ink2, x, 10 + (x === 7 || x === 11 ? -1 : 0));  // eyes, a smile of coal
+  rect(ctx, P.orange, 10, 8, 4, 1); dot(ctx, P.red2, 13, 8);                                                                            // the carrot nose
+  rect(ctx, P.red, 6, 12, 9, 2); rect(ctx, P.red2, 6, 13, 9, 1); rect(ctx, P.red, 13, 14, 2, 5); rect(ctx, P.cream, 13, 16, 2, 1);        // the scarf and its hanging end
+  for (const y of [16, 19, 23, 26]) { rect(ctx, P.ink, 9, y, 2, 2); }                                                                    // buttons
+  return c;
+}
+
 let kitCache = null, lightsCache = new Map();
-/** The sprites by decoration kind: { tree, minitree, gift, cane, wreath } with their lit twins and glows ([] when it does not glow). */
+/** The sprites by decoration kind: { tree, minitree, gift, cane, snowman, wreath } with their lit twins and glows ([] when it does not glow). */
 export function christmasKit() {
   return kitCache || (kitCache = {
     tree: { sprite: tree(), lit: treeLit(), glows: TREE_GLOWS },
     minitree: { sprite: miniTree(), lit: miniTreeLit(), glows: MINI_GLOWS },
     gift: { sprite: gifts(), lit: null, glows: [] },
     cane: { sprite: cane(), lit: caneLit(), glows: CANE_GLOWS },
+    snowman: { sprite: snowman(), lit: null, glows: [] },
     wreath: { sprite: wreath(), lit: null, glows: [] },
   });
 }

@@ -51,6 +51,13 @@ export const VILLAGERS = [
     'Cuiden a los más pequeños, ¿sí?', 'El agua de la fuente me da paz.', 'El sol de hoy trae buenos recuerdos.', '¡Trompetazo de alegría! Priiii...',
   ] },
 ];
+/** The hat the villagers wear while Christmas is on: the item key (the head slot, in every species' sheet). */
+export const SANTA_HAT = 'santa_hat';
+/** `look` with its head slot (item 0) swapped for the Santa hat, or `look` itself when the catalogue has no such hat. A new object only when it changes. */
+export function santaLook(look, catalogue) {
+  if (!catalogue || !catalogue[SANTA_HAT]) return look;
+  return { ...look, items: look.items.map((it, i) => (i === 0 ? SANTA_HAT : it)) };
+}
 export const NIGHT_LINES = ['¡Qué linda la noche!', 'Miren cuántas luces.', 'Ya casi es hora de dormir...', 'La luna está preciosa.'];
 export const SHOW_LINES = ['¡Miren el cielo!', '¡Qué colores tan bonitos!', '¡Guau, qué espectáculo!', '¡Está lindísimo!'];
 
@@ -164,7 +171,7 @@ export function createVariants(render = recolourSheet) {
  * The villagers of a room. `update(t, ctx)` places them for server time `t` and returns entities as render.js draws them
  * ({ id, name, look, walker, emote, say, npc, area, asleep, sprites }); the same objects every call. Every villager is returned, wherever it is:
  * the caller draws the ones whose `area` is the player's. `ctx`: { night, show (this screen's), shows (npc-world's showSpans, the same for all), pet
- * ({ name, area, x, y }, the local pet: a villager greets it when it is near, so that line is per screen) }.
+ * ({ name, area, x, y }, the local pet: a villager greets it when it is near, so that line is per screen), seasons (a Set of the active season keys: Christmas puts the Santa hat on every villager and the clerk, in place of the head item, and takes it off after) }.
  */
 export function createNpcs({ seed, sprites, variants = createVariants() }) {
   const world = createWorld(seed, VILLAGERS.map((v) => v.id));
@@ -172,15 +179,26 @@ export function createNpcs({ seed, sprites, variants = createVariants() }) {
     const ok = v.look.items.every((it) => !it || (sprites.catalogue && sprites.catalogue[it]));
     const look = ok ? v.look : { ...v.look, items: ['', '', '', ''] };
     const sayOffset = Math.floor(mulberry32(hashSeed(`${seed}:npc:${v.id}`))() * SLOT_MS);
-    return { sayOffset, entity: { id: `npc:${v.id}`, name: v.name, look, walker: new Walker(0, 0), emote: null, jumpAt: null, say: null, npc: true, area: 'town', asleep: false, sprites: v.variant ? variants.get(sprites, v.variant) : sprites } };
+    return { sayOffset, base: look, santa: santaLook(look, sprites.catalogue), entity: { id: `npc:${v.id}`, name: v.name, look, walker: new Walker(0, 0), emote: null, jumpAt: null, say: null, npc: true, area: 'town', asleep: false, sprites: v.variant ? variants.get(sprites, v.variant) : sprites } };
   });
   const clerkOk = CLERK.look.items.every((it) => !it || (sprites.catalogue && sprites.catalogue[it]));
   const clerk = { id: `npc:${CLERK.id}`, name: CLERK.name, look: clerkOk ? CLERK.look : { ...CLERK.look, items: ['', '', '', ''] }, walker: new Walker(CLERK.tile[0], CLERK.tile[1], 'down'), emote: null, jumpAt: null, say: null, npc: true, clerk: true, area: 'farm', asleep: false, sprites: variants.get(sprites, CLERK.variant) };
+  const dressed = [...ents, { base: clerk.look, santa: santaLook(clerk.look, sprites.catalogue), entity: clerk }];
+  let santa = false;
+  /** The Santa hat on (Christmas is among `seasons`, a Set of season keys) or off: swaps each villager's `look` for a prebuilt one, only when the season changes (a cheap check per frame). */
+  const dress = (seasons) => {
+    const on = !!(seasons && seasons.has('christmas'));
+    if (on === santa) return;
+    santa = on;
+    for (const d of dressed) d.entity.look = on ? d.santa : d.base;
+  };
   return {
     world,
+    dress,
     /** The Almacén's clerk: one fixed entity in the farm (always awake, not part of the villagers' routines); the town sets its `say` when a pet comes by. */
     clerk,
     update(t, ctx = {}) {
+      if (ctx.seasons !== undefined) dress(ctx.seasons);
       const spans = ctx.shows || [], poses = world.poses(t, spans), pet = ctx.pet;
       return ents.map(({ entity, sayOffset }, i) => {
         const p = poses[i], w = entity.walker;

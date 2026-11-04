@@ -2,6 +2,7 @@
 //   ?mode=day|night   the light (default night)      &fx=1|0   effects on / off (off = the flat view, no post effects)
 //   &still=1          one deterministic frame, then stop (document.title becomes "ready")        &bench=1   time 120 frames, print the result
 //   &res=0.75         scales the internal resolution      &halloween=1 / &christmas=1   the town's decorations of that season
+//   &at=park          the Parque's west half (the pond, the hedge) instead of the plaza      &gifts=1   the seasonal gifts (of the seasons on) lying about
 import { TILE } from '../map.js';
 import { loadSprites } from '../sprites.js';
 import { cameraFor, sortBackToFront, snapFocus, visibleTiles } from './camera.js';
@@ -20,9 +21,10 @@ const seasons = new Set(SEASON_KEYS.filter((k) => q.get(k) === '1'));
 const $ = (id) => document.getElementById(id);
 const canvas = $('c'), ctx = canvas.getContext('2d');
 const RES = Math.min(1.5, Math.max(0.4, Number(q.get('res')) || 1));
-const CAST = [['Mochi', 'cat', 2, ['tophat', '', '', ''], 21, 24], ['Luna', 'seal', 1, ['', '', '', ''], 27, 18], ['Rana', 'frog', 2, ['', '', '', ''], 24, 24], ['Nube', 'cat', 0, ['', '', '', ''], 19, 20], ['Coco', 'seal', 2, ['', '', '', ''], 29, 23]];
-const BOX = { x0: 14, y0: 13, x1: 33, y1: 29 };
-const FOLLOW_BOX = { x0: 20, y0: 20, x1: 28, y1: 24 };                 // the camera's focus stays here so the view never leaves the baked region
+const park = q.get('at') === 'park';
+const CAST = park ? [['Mochi', 'cat', 2, ['tophat', '', '', ''], 14, 36], ['Luna', 'seal', 1, ['', '', '', ''], 16, 35], ['Rana', 'frog', 2, ['', '', '', ''], 12, 37], ['Nube', 'cat', 0, ['', '', '', ''], 18, 36]] : [['Mochi', 'cat', 2, ['tophat', '', '', ''], 21, 24], ['Luna', 'seal', 1, ['', '', '', ''], 27, 18], ['Rana', 'frog', 2, ['', '', '', ''], 24, 24], ['Nube', 'cat', 0, ['', '', '', ''], 19, 20], ['Coco', 'seal', 2, ['', '', '', ''], 29, 23]];
+const BOX = park ? { x0: 12, y0: 34, x1: 22, y1: 40 } : { x0: 14, y0: 13, x1: 33, y1: 29 };
+const FOLLOW_BOX = park ? { x0: 13, y0: 36, x1: 15, y1: 37 } : { x0: 20, y0: 20, x1: 28, y1: 24 };                 // the camera's focus stays here so the view never leaves the baked region
 
 let sprites, world, ground, fx, view = { w: 0, h: 0 }, groundKey = '', pets = [], focus = { x: 24 * TILE, y: 21.5 * TILE };
 let painter = null;

@@ -5,6 +5,7 @@
 //   &talk=1                the shopkeeper greets (shop only)
 //   &halloween=1           the Halloween decorations and ghosts (town; &area=farm shows the farm instead of the town)
 //   &christmas=1           the Christmas decorations (they can go with &halloween=1)
+//   &villagers=1           the villagers of room FOCA-LUNA-42 at server time &npct=<ms> (default 1.8e12), dressed for the seasons that are on (town only)
 // The page sets document.title to "ready" when it has painted, so a headless browser knows when to take the screenshot.
 import { getArea, tileAt, TILES, TILE } from './map.js';
 import { seekerSees } from './games/hide.js';
@@ -16,7 +17,7 @@ import { Walker } from './walker.js';
 import { createLife, stepLife, lifeFrame } from './life.js';
 import { ghostsAt } from './ghosts.js';
 import { SEASON_KEYS } from './seasons.js';
-import { SHOPKEEPER, shopGreeting } from './npcs.js';
+import { SHOPKEEPER, shopGreeting, createNpcs } from './npcs.js';
 
 const q = new URLSearchParams(location.search);
 const kind = ['town', 'shop', 'view', 'park', 'seek', 'coop', 'sprint', 'life', 'pitch', 'race'].includes(q.get('shot')) ? q.get('shot') : 'town';
@@ -45,6 +46,10 @@ async function main() {
   if (kind === 'park') { cam = { x: 0, y: 28 * TILE }; vh = 16 * TILE; }
   if (kind === 'view') { vw = VIEW_W; vh = VIEW_H; cam = cameraFor(24 * TILE, 22 * TILE, area.w * TILE, area.h * TILE); }
   let chicken = null, dark = null, shown = others;
+  if (q.get('villagers') === '1' && area.name === 'town') {
+    const npcs = createNpcs({ seed: 'FOCA-LUNA-42', sprites });
+    shown = [...shown, ...npcs.update(Number(q.get('npct')) || 1.8e12, { seasons }).filter((n) => n.area === 'town')];
+  }
   if (kind === 'seek') {                                                       // the seeker's view: pets outside the light, or in a bush, are not drawn
     cam = cameraFor(me.walker.tileX * TILE + 8, me.walker.tileY * TILE + 8, area.w * TILE, area.h * TILE); vw = VIEW_W; vh = VIEW_H;
     shown = others.filter((o) => seekerSees({ x: me.walker.tileX, y: me.walker.tileY }, { x: o.walker.tileX, y: o.walker.tileY }, !!TILES[tileAt(o.walker.tileX, o.walker.tileY)].hide));

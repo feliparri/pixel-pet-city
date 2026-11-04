@@ -188,6 +188,10 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     const vision = games.seekerVision();                         // the seeker sees only a circle of light, and not what hides in bushes
     state.dark = vision ? { full: vision.full, r: GAME_RULES.hide.lightRadius * 16 } : null;
     if (vision) state.others = vision.full ? [] : state.others.filter((o) => vision.see({ x: o.walker.tileX, y: o.walker.tileY }, !!TILES[tileAt(o.walker.tileX, o.walker.tileY)].hide));
+    if (devSeasons) seasonSet = devSeasons;
+    else if (t - seasonAt > 1000) { seasonAt = t; seasonSet = activeSeasons(devNpcT === null ? events.serverNow() : devNpcT, events.seasons); }      // default windows, overridden by the server's list (src/seasons.js); once a second is plenty
+    state.seasons = seasonSet;
+    npcs.dress(seasonSet);                                        // the villagers wear the Santa hat while Christmas is on (a swap only when the season set changes)
     if (self.area === 'town') {                                   // ambient life: the birds look at every pet in the town
       stepLife(life, [{ x: w.tileX, y: w.tileY }, ...Array.from(others.values()).filter((o) => o.placed && o.area === 'town').map((o) => ({ x: o.walker.tileX, y: o.walker.tileY }))], t);
       state.life = lifeFrame(life, t, state.amb);
@@ -275,9 +279,6 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     const here = !w.busy ? spotAt(w.tileX, w.tileY, self.area) : null;      // standing on a game's pad: the button; walking onto the pad of an open lobby joins it
     if (here && gv.lobby && gv.lobby.g === here && !gv.lobby.iJoined) games.join();
     if (t - hudAt > 120) { hudAt = t; onHud({ ...gv, shopNear: self.area === 'shop' && shopNear && !modal, spot: here, wall: mv.zone && gv.game ? gv.game.name : null, frozen: mv.frozen }); }
-    if (devSeasons) seasonSet = devSeasons;
-    else if (t - seasonAt > 1000) { seasonAt = t; seasonSet = activeSeasons(devNpcT === null ? events.serverNow() : devNpcT, events.seasons); }      // default windows, overridden by the server's list (src/seasons.js); once a second is plenty
-    state.seasons = seasonSet;
     state.ghosts = seasonSet.has('halloween') ? ghostsAt(self.area, events.serverNow(), state.amb.night) : null;      // the wandering ghosts: the same place for everyone
     state.show = events.tick(!getArea(self.area).outdoor ? 'inside' : renderer.hd ? 'hd' : 'flat');      // the sky is seen from the town and from the farm      // the show that runs now, the same moment on every screen
     renderer.draw(state, t);

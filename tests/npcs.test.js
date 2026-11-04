@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { VILLAGERS, SHOPKEEPER, lineAt, shiftHue, createVariants, createNpcs, npcTile, nearShopkeeper, shopGreeting, SHOP_LINES, SLOT_MS, SAY_MS, NIGHT_LINES, SHOW_LINES } from '../src/npcs.js';
+import { VILLAGERS, SHOPKEEPER, lineAt, shiftHue, createVariants, createNpcs, santaLook, SANTA_HAT, CLERK, npcTile, nearShopkeeper, shopGreeting, SHOP_LINES, SLOT_MS, SAY_MS, NIGHT_LINES, SHOW_LINES } from '../src/npcs.js';
 import { SPECIES, STAGES, SLOTS, validateLook, validateMessage } from '../src/protocol.js';
 
 const SEED = 'FOCA-LUNA-42';
@@ -129,4 +129,33 @@ test('the shopkeeper is the raccoon of the pets\' art and behind the counter', (
   assert.ok(SHOPKEEPER.look.items.filter(Boolean).length >= 1);
   const { cell, head } = SHOPKEEPER;
   assert.ok(head.x > cell.x && head.x < cell.x + 32 && head.y >= cell.y && head.y < cell.y + 12, 'its bubble points at its head');
+});
+
+test('villagers wear the Santa hat in the head slot while Christmas is on, and their own head item comes back after', () => {
+  const sprites = { ...fakeSprites, catalogue: { ...fakeSprites.catalogue, [SANTA_HAT]: {} } };
+  const npcs = createNpcs({ seed: SEED, sprites, variants: createVariants(() => ({})) });
+  const t = 1.7e12, heads = () => npcs.update(t).map((e) => e.look.items[0]), usual = VILLAGERS.map((v) => v.look.items[0]);
+  const xmas = new Set(['christmas']), halloween = new Set(['halloween']);
+  assert.deepEqual(heads(), usual);
+  assert.deepEqual(npcs.update(t, { seasons: xmas }).map((e) => e.look.items[0]), VILLAGERS.map(() => SANTA_HAT));
+  const [first] = npcs.update(t, { seasons: xmas });
+  assert.deepEqual(first.look.items.slice(1), VILLAGERS[0].look.items.slice(1), 'only the head slot changes');
+  assert.equal(first.look, npcs.update(t + 1000, { seasons: xmas })[0].look, 'no new look per frame');
+  assert.equal(npcs.clerk.look.items[0], SANTA_HAT, 'the farm clerk too');
+  assert.deepEqual(npcs.update(t, { seasons: halloween }).map((e) => e.look.items[0]), usual, 'another season: no hat');
+  assert.equal(npcs.clerk.look.items[0], CLERK.look.items[0] || '', 'the clerk gets its own back');
+  npcs.dress(xmas); assert.equal(npcs.update(t)[0].look.items[0], SANTA_HAT, 'dress() keeps the hat until told otherwise');
+  npcs.dress(new Set()); assert.deepEqual(heads(), usual);
+  for (const v of VILLAGERS) assert.deepEqual(santaLook(v.look, sprites.catalogue).items, [SANTA_HAT, ...v.look.items.slice(1)], `${v.id} in a hat`);
+});
+
+test('without a santa_hat in the catalogue the villagers keep their look', () => {
+  const npcs = createNpcs({ seed: SEED, sprites: fakeSprites, variants: createVariants(() => ({})) });
+  assert.deepEqual(npcs.update(1.7e12, { seasons: new Set(['christmas']) }).map((e) => e.look.items[0]), VILLAGERS.map((v) => v.look.items[0]));
+});
+
+test('the real catalogue has a santa_hat in the head slot for every species', () => {
+  const sheet = JSON.parse(readFileSync(new URL('../assets/sprites.json', import.meta.url), 'utf8'));
+  assert.equal(sheet.items[SANTA_HAT].slot, 'head');
+  for (const v of VILLAGERS) assert.ok(sheet.items[SANTA_HAT].worn[`${v.look.species}-${STAGES[v.look.stage]}`], `${v.look.species} stage ${v.look.stage} has a worn santa_hat`);
 });
