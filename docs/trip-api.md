@@ -61,7 +61,7 @@ The body may also carry `"items": <n>` (optional, signed like `spend`): how many
 sane integer (1..255) means 14, the catalogue before them. It is stored on the trip (`trips.items`) and decides which items `trip-buy` may sell: a board refuses a return
 package with an item id it does not know, which would leave the pet away.
 The server validates the package as `travel_parse` does (magic, version 1, length, CRC-32, direction OUT, trip id, counts, items, records,
-pet record size and schema 14, species, stage, name, worn ids) and reads the pet view from it.
+pet record size and schema (14 or 15; the return keeps the schema it arrived in and the stars and parental bytes of 15 pass through untouched), species, stage, name, worn ids) and reads the pet view from it.
 `201 { "trip_id": <u32 of the package>, "trip": "<uuid ref>", "code": "K7M2QX", "url": "https://feliparri.github.io/pixel-pet-city/?trip=K7M2QX",
 "expires_at": "<ISO time, now + 24 h>", "entrance", "status": "waiting" }`.
 A retry of the same package while `waiting`/`active` answers `200` with the same code. Errors: `400 bad_json | bad_package_encoding | bad_entrance`,
@@ -109,7 +109,7 @@ Request `{ "code": "k7m-2qx" }` (any case; spaces and dashes ignored) and option
 `200 { "trip", "status": "active", "token", "entrance", "pet", "state": { "version", "data" } }` where
 `pet = { "name", "species": "frog|seal|cat", "stage": 0..3 (baby..elder), "items": [head, face, neck, back] (catalogue keys of the town's
 sprites.json, "" for none), "keepsakes": [ { "slot": 0..3, "name", "w", "h", "pal": ["#rrggbb" x15], "px": "<base64, 4 bits per pixel, row padded to a byte, high nibble first, 0 = transparent>" } ] }`.
-`pet` also carries `"stats": [hunger, fun, energy, clean, health]` (0..100 each, read from bytes 52..56 of the schema-14 pet record, clamped; they are
+`pet` also carries `"stats": [hunger, fun, energy, clean, health]` (0..100 each, read from bytes 52..56 of the pet record (schema 14 and 15), clamped; they are
 those of the moment the trip started), which the town shows in the pet's presence. A trip started before this field existed has none.
 A worn keepsake (a seasonal item whose art travels in the package) appears in `keepsakes` (its first sprite) and its slot is `""` in `items`.
 One active web session per trip: a second claim answers `409 already_claimed` unless it resumes with the token, or the session was silent

@@ -16,8 +16,13 @@ export const MIN_BYTES = HEADER_BYTES + 3 + 4;
 export const BAG_MAX = 3;
 export const GIFT_MAX = 3;
 export const RECORDS_MAX = 10;
-export const PET_SCHEMA = 14;                 // the only pet record layout read here (save.h SAVE_SCHEMA_VER)
-export const PET_LEN = 733;                   // SAVE_PAYLOAD_LEN_V14
+export const PET_SCHEMA = 15;                 // the newest pet record layout read here (save.h SAVE_SCHEMA_VER)
+export const PET_SCHEMA_MIN = 14;             // the oldest one still accepted: boards and phones update at different times
+export const PET_LEN_V14 = 733;               // SAVE_PAYLOAD_LEN_V14
+export const PET_LEN_V15 = 750;               // SAVE_PAYLOAD_LEN_V15: v14 + the 13-byte stars block (733) + the 4-byte parental block (746)
+export const PET_LEN = PET_LEN_V14;           // kept for older imports: the schema 14 length
+/** The pet record length of each accepted schema. Everything past the v14 prefix is opaque to the server and travels untouched. */
+export const PET_LENS = { 14: PET_LEN_V14, 15: PET_LEN_V15 };
 export const DIR_OUT = 0;
 export const DIR_BACK = 1;
 
@@ -31,7 +36,7 @@ const STAT_COUNT = 5, SLOTS = 4, DECOR_KIND_COUNT = 6, DECOR_KIND_BED = 4, SITEM
 export const ITEM_KEYS = [null, 'tophat', 'bow', 'beanie', 'crown', 'hood', 'jamiro', 'sunglasses', 'heart_cheeks', 'scarf', 'bell_collar', 'wings', 'cape', 'witch_hat', 'horns', 'furhat', 'santa_hat'];
 export const SPECIES = [null, 'frog', 'seal', 'cat'];
 
-// offsets inside the pet record (schema 14, save.c save_payload_encode)
+// offsets inside the pet record (schema 14 prefix, unchanged in 15, save.c save_payload_encode; the last one read is worn + 12 = 701, below the stars block at 733)
 const P = { stage: 8, species: 9, stats: 52, gold: 103, ownedMask: 107, equipped: 111, nameLen: 116, name: 117, nameBytes: 24, seasonN: 592, owned: 593, worn: 689 };
 
 const u16 = (b, o) => b[o] | (b[o + 1] << 8);
@@ -136,8 +141,9 @@ export function parsePackage(buf) {
     at += plen;
   }
   if (end - at !== petLen) return fail('bad_field');
-  if (pkg.petSchema !== PET_SCHEMA) return fail(pkg.petSchema > PET_SCHEMA ? 'unsupported_pet_schema' : 'bad_pet');
-  if (petLen !== PET_LEN) return fail('bad_pet');
+  if (pkg.petSchema > PET_SCHEMA) return fail('unsupported_pet_schema');
+  if (pkg.petSchema < PET_SCHEMA_MIN) return fail('bad_pet');
+  if (petLen !== PET_LENS[pkg.petSchema]) return fail('bad_pet');
   pkg.pet = buf.subarray(at, at + petLen);
   const pet = readPet(pkg.pet);
   if (!pet) return fail('bad_pet');
@@ -164,7 +170,7 @@ function itemsOk(pkg, list, bag) {
 
 /** The few fields of the pet record the town shows; null when one cannot be (the board would refuse the record too). */
 export function readPet(p) {
-  if (p.length !== PET_LEN) return null;
+  if (p.length !== PET_LEN_V14 && p.length !== PET_LEN_V15) return null;
   const stage = p[P.stage], species = p[P.species];
   if (stage > 4 || species < 1 || species > 3) return null;
   const nameLen = p[P.nameLen];

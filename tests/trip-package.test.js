@@ -53,8 +53,9 @@ test('refusals mirror the board: items, pet record, trailing bytes', () => {
   assert.equal(why(edited(plain, (b) => { b[25] = 1; b[26] = 200; })), 'bad_item');          // an unknown wearable id
   assert.equal(why(edited(plain, (b) => { b[25] = 1; b[26] = 1; b[30] = 1; b[31] = 1; })), 'bad_item');   // the top hat twice
   assert.equal(why(edited(plain, (b) => { b[22] = 0; b[23] = 1; })), 'bad_field');           // the pet length disagrees
-  assert.equal(why(edited(plain, (b) => { b[20] = 15; })), 'unsupported_pet_schema');
+  assert.equal(why(edited(plain, (b) => { b[20] = 16; })), 'unsupported_pet_schema');
   assert.equal(why(edited(plain, (b) => { b[20] = 13; })), 'bad_pet');
+  assert.equal(why(edited(plain, (b) => { b[20] = 15; })), 'bad_pet');                       // schema 15 with a schema 14 length
   const petAt = plain.length - 4 - 733;
   assert.equal(why(edited(plain, (b) => { b[petAt + 9] = 7; })), 'bad_pet');                 // a species that does not exist
   assert.equal(why(edited(plain, (b) => { b[petAt + 8] = 9; })), 'bad_pet');                 // a stage that does not exist
@@ -100,4 +101,81 @@ test('the five stats sit at 52..56 of the pet record, in pet.h order, clamped to
   assert.deepEqual(view((b) => { b[petAt + 52] = 250; b[petAt + 56] = 0; }), [100, 80, 100, 100, 0]);
   assert.equal(view((b) => { b[petAt + 57] = 77; })[0], 80);                                 // 57.. is stat_frac, not a stat
   assert.deepEqual(petView(parsePackage(kept).pkg).stats, [80, 80, 100, 100, 100]);
+});
+
+// Schema 15 (save.h SAVE_PAYLOAD_LEN_V15 = 750): the schema 14 record + 13 stars bytes at 733 + 4 parental bytes at 746. The server never edits them.
+const V14_LEN = 733, V15_LEN = 750, STARS_AT = 733, PARENT_AT = 746;
+/** A schema 15 package built from a schema 14 one: the pet record grows by 17 marked bytes, schema and lengths follow. */
+const toV15 = (src, tail = Array.from({ length: 17 }, (_, i) => 0xA0 + i)) => {
+  const end = src.length - 4;
+  const b = new Uint8Array(src.length + 17);
+  b.set(src.subarray(0, end)); b.set(tail, end);
+  b[20] = 15; b[22] = V15_LEN & 255; b[23] = V15_LEN >>> 8;
+  b[8] = b.length & 255; b[9] = b.length >>> 8; b[10] = b[11] = 0;
+  return reseal(b);
+};
+const petOf = (b) => b.subarray(b.length - 4 - (b[22] | b[23] << 8), b.length - 4);
+
+test('the real schema 15 package built by the game parses', () => {
+  const real = fixture('board-v15.bin');
+  assert.equal(real[20], 15);
+  const r = parsePackage(real);
+  assert.equal(r.ok, true);
+  assert.equal(r.pkg.petSchema, 15);
+  assert.equal(r.pkg.pet.length, V15_LEN);
+  assert.equal(petView(r.pkg).gold, 430);
+  const back = buildReturn(real, 2, { spent: 120, earned: 40, bought: ['cape'] });
+  const b = parsePackage(back);
+  assert.equal(b.ok, true);
+  assert.equal(b.pkg.petSchema, 15);
+  assert.equal(petView(b.pkg).gold, 350);
+  assert.deepEqual(petOf(back).subarray(STARS_AT), petOf(real).subarray(STARS_AT));
+});
+
+test('a schema 15 package reads the same pet as its schema 14 twin', () => {
+  const v15 = parsePackage(toV15(plain));
+  assert.equal(v15.ok, true);
+  assert.equal(v15.pkg.petSchema, 15);
+  assert.deepEqual(petView(v15.pkg), petView(parsePackage(plain).pkg));
+  assert.equal(parsePackage(plain).pkg.petSchema, 14);       // schema 14 keeps working
+  assert.equal(parsePackage(kept).pkg.petSchema, 14);
+});
+
+test('schema 15 refusals: wrong length, schema 14 with the long record, a newer schema', () => {
+  const why = (b) => { const r = parsePackage(b); return r.ok ? 'ok' : r.status; };
+  const v15 = toV15(plain);
+  assert.equal(why(edited(v15, (b) => { b[20] = 14; })), 'bad_pet');                         // the v14 header over a v15 record
+  assert.equal(why(edited(v15, (b) => { b[20] = 16; })), 'unsupported_pet_schema');
+  assert.equal(why(edited(v15, (b) => { b[petOf(b).byteOffset + 9] = 7; })), 'bad_pet');     // the v14 field checks still apply
+  const short = new Uint8Array(v15.length - 1); short.set(v15.subarray(0, short.length - 4)); short[22] = 749 & 255; short[23] = 749 >>> 8; short[8] = short.length & 255;
+  assert.equal(why(reseal(short)), 'bad_pet');                                                // a 749 byte record
+});
+
+test('the schema 15 return keeps the schema and passes the stars and parental bytes through untouched', () => {
+  const v15 = toV15(plain);
+  const tail = Array.from(petOf(v15).subarray(STARS_AT));
+  assert.equal(tail.length, 17);
+  const cases = [{}, { spent: 1000, earned: 25 }, { bought: ['cape', 'wings'] }, { spent: 200, earned: 10, bought: ['crown'] }];
+  for (const opts of cases) {
+    const back = buildReturn(v15, 3, opts);
+    const r = parsePackage(back);
+    assert.equal(r.ok, true);
+    assert.equal(r.pkg.petSchema, 15);                       // same schema it arrived in
+    assert.equal(r.pkg.pet.length, V15_LEN);
+    assert.equal(r.pkg.dir, 1);
+    assert.equal(r.pkg.seq, 3);
+    assert.deepEqual(Array.from(petOf(back).subarray(STARS_AT)), tail);
+    assert.deepEqual(Array.from(petOf(back).subarray(STARS_AT, STARS_AT + 13)), tail.slice(0, 13));   // the stars block
+    assert.deepEqual(Array.from(petOf(back).subarray(PARENT_AT)), tail.slice(13));                    // the parental block
+  }
+  // only the gold changes in the pet record's schema 14 prefix: no edit lands in 733..749
+  const back = buildReturn(v15, 3, { spent: 1000, earned: 25, bought: ['cape'] });
+  const a = petOf(v15), c = petOf(back);
+  const diff = []; for (let i = 0; i < V15_LEN; i++) if (a[i] !== c[i]) diff.push(i);
+  assert.ok(diff.length > 0 && diff.every((i) => i >= 103 && i < 107), `only the gold bytes change, saw ${diff}`);
+  assert.equal(petView(parsePackage(back).pkg).gold, 5000 - 1000 + 25);
+  // and the same purchase on schema 14 stays schema 14 and 733 bytes
+  const old = parsePackage(buildReturn(plain, 3, { spent: 1000 }));
+  assert.equal(old.pkg.petSchema, 14);
+  assert.equal(old.pkg.pet.length, V14_LEN);
 });
