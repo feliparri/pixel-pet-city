@@ -21,6 +21,7 @@ import { skyAt } from '../show/layers.js';
 import { burstTint } from '../show/tint.js';
 import { createShowFx } from '../show/fx.js';
 import { smooth } from '../show/rand.js';
+import { drawSnow } from '../snow.js';
 
 const SHOW_FOCUS = { x: 24 * TILE, y: 21.5 * TILE };                     // the show's own frame: its bursts and drones are placed as seen from here
 const BADGE_LIFT = 60;                                                  // a place's badge floats this high over the ground point under it
@@ -141,6 +142,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
     if (decor.length) drawDecorGlows(ctx, world, cam, n, now, view, decor);
     if (gifts) drawDecorGlows(ctx, world, cam, n, now, view, gifts);
     if (state.ghosts && state.ghosts.length) drawGhosts(ctx, state.ghosts, cam, view);
+    if (state.snow && k < 0.05) drawSnow(ctx, view.w, view.h, now, amb.night, Math.max(1, Math.round(pixelUnit(view.h) / 2)));      // December snow (src/snow.js), stronger at night; not while the sky show has the camera
     if (sh) {
       drawRockets(ctx, scam, sky.fw, u, alpha); drawDrones(ctx, scam, sky.drones, u, alpha);
       ctx.save(); ctx.globalCompositeOperation = 'lighter';              // each burst lights the whole view with its colour (additive, widest across the ground)

@@ -26,6 +26,7 @@ import { createFarmMemory, farmView, clockOf } from './farm-world.js';
 import { actionAt, perform, objectAt } from './farm-actions.js';
 import { dayOf } from './npc-world.js';
 import { activeSeasons, parseDevSeasons } from './seasons.js';
+import { snowing } from './snow.js';
 import { ghostsAt } from './ghosts.js';
 import { createHold, villagerAtTap, talkSpot, faceToward } from './npc-hold.js';
 import { hearer, reactionTo, REPLY_WINDOW_MS, REPLY_DELAY_MS, REPLY_EMOTE_MS, REPLY_SAY_MS } from './npc-react.js';
@@ -50,7 +51,7 @@ function spawnFor(id) {
  * canasta / farmMemory: the pet's basket (src/canasta.js) and what it did on the farm today (src/farm-world.js); tools(): the keys of the farm tools the pet owns
  * (src/tools.js); onStore(): the pet asked for the Almacén (the farm store); missions: null (villagers just chat) or { enabled(), ledger() ({ day, cap, earned,
  * done }, what the server paid today), claim(m) (hands a mission in: the server pays real gold, src/trip.js claimMission), giftOwner() (who opens the seasonal gifts: the trip's ref),
- * gift(id) (opens a gift: the server pays 2 to 5 coins, src/trip.js claimGift) }; onFarm({ action, prompt }) says which action is available (or null) when it changes, onFarmDone(result) reports an action's outcome (the pop) and onFarmAction(event) every action done (missions).
+ * gift(id) (opens a gift: the server pays 10 to 30 gold (20 to 30 for one of Santa's), src/trip.js claimGift) }; onFarm({ action, prompt }) says which action is available (or null) when it changes, onFarmDone(result) reports an action's outcome (the pop) and onFarmAction(event) every action done (missions).
  * Returns { onNetEvent, emote, playExit, games: { play, join, seek, leave, dismiss }, farm: { act }, destroy }. */
 export function startTown({ canvas, stage, pad = null, sprites, font, net, me, entrance = null, stars = { add() {} }, canasta = createCanasta(), farmMemory = createFarmMemory(), tools = () => [], onStore = () => {}, missions = null, onHud = () => {}, onHdMode = () => {}, onShow = () => {}, onShop = () => {}, insets = () => ({ top: 0, bottom: 0 }), onFarm = () => {}, onFarmDone = () => {}, onFarmAction = () => {} }) {
   const [sx, sy] = spawnFor(net.id);
@@ -64,7 +65,8 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   const npcs = createNpcs({ seed: net.code || net.id, sprites });           // the villagers: their place and lines come from (room, server time) alone, nothing of them goes over the net
   const search = new URLSearchParams(location.search);
   const devSeasons = parseDevSeasons(location.search);      // development only: ?dev=1&season=halloween|christmas|none (or &halloween=1|0, &christmas=1|0) forces seasons on or off
-  let seasonSet = new Set(), seasonAt = -1e9;
+  let seasonSet = new Set(), seasonAt = -1e9, snowOn = false, snowAt = -1e9;
+  const devSnow = new URLSearchParams(location.search).get('dev') === '1' && new URLSearchParams(location.search).get('snow') === '1';      // development only: ?dev=1&snow=1 snows whatever the date
   let devNpcT = search.get('dev') === '1' && Number.isFinite(Number(search.get('npct'))) && search.has('npct') ? Number(search.get('npct')) : null;      // development only: ?dev=1&npct=<ms> pins the villagers' clock
   let shopVisits = 0, shopNear = false, shopSayUntil = 0, modal = false, thankLine = null,   // modal: a panel is open (shop, backpack): the pet stands still
     storeVisits = 0, storeNear = false, clerkSayUntil = 0;
@@ -196,6 +198,8 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     if (devSeasons) seasonSet = devSeasons;
     else if (t - seasonAt > 1000) { seasonAt = t; seasonSet = activeSeasons(devNpcT === null ? events.serverNow() : devNpcT, events.seasons); }      // default windows, overridden by the server's list (src/seasons.js); once a second is plenty
     state.seasons = seasonSet;
+    if (t - snowAt > 1000) { snowAt = t; snowOn = devSnow || snowing(seasonSet, devNpcT === null ? events.serverNow() : devNpcT); }      // Christmas is on and it is December in Chile (src/snow.js), checked once a second
+    state.snow = snowOn && getArea(self.area).outdoor ? true : null;      // the town and the farm; both renderers draw it, stronger at night
     npcs.dress(seasonSet);                                        // the villagers wear the Santa hat while Christmas is on (a swap only when the season set changes)
     state.gifts = self.area === 'town' ? giftWorld.update(devNpcT === null ? events.serverNow() : devNpcT, seasonSet, missions && missions.enabled() ? missions.giftOwner() : null, t) : null;      // the seasonal gifts lying about (3 every 2 hours while a season is on)
     if (self.area === 'town' && !w.busy && !self.fx && t - giftScanAt > 400) { giftScanAt = t; stepGift(w.tileX, w.tileY); }      // a gift that appears under, or next to, a pet standing still
@@ -301,7 +305,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     if (g) openGift(g);
   }
   /**
-   * Opens a gift: the server pays 2 to 5 coins (`missions.gift`) when this pet is on a trip that can earn; sparkles, "+N monedas" above the pet. A visitor (no trip, or a board
+   * Opens a gift: the server pays 10 to 30 gold (20 to 30 for one of Santa's) (`missions.gift`) when this pet is on a trip that can earn; sparkles, "+N monedas" above the pet. A visitor (no trip, or a board
    * that cannot earn) is told once how to open gifts; a gift opened already, or too late, just goes; the daily cap is told once a day; any other failure is tried again in 8 s.
    */
   async function openGift(g) {

@@ -5,7 +5,7 @@ import { P, canvas, rect, dot, shape } from './palette.js';
 
 const GOLD = '#ffd45a', GOLD_LIT = '#fff4b8';
 const SIZE = { w: 16, h: 20 };
-const GLOW = { christmas: { z: 7, r: 16, rgb: '255,214,130' }, halloween: { z: 7, r: 16, rgb: '255,150,60' }, other: { z: 7, r: 16, rgb: '214,196,255' } };
+const GLOW = { christmas: { z: 7, r: 16, rgb: '255,214,130' }, santa: { z: 7, r: 20, rgb: '255,230,150' }, halloween: { z: 7, r: 16, rgb: '255,150,60' }, other: { z: 7, r: 16, rgb: '214,196,255' } };
 
 /** A twinkle of the gift: frame 0 a speck, frame 1 a small four-point star (at the top right). */
 function twinkle(ctx, frame, lit) {
@@ -26,6 +26,20 @@ function christmas(ctx, frame, lit) {
   rect(ctx, gold, 5, 7, 2, 2); rect(ctx, gold, 9, 7, 2, 2); rect(ctx, gold, 7, 8, 2, 2);          // the bow
   if (!lit) { dot(ctx, P.red2, 6, 7); dot(ctx, P.red2, 10, 7); }
   twinkle(ctx, frame, lit);
+}
+
+/** One of Santa's gifts: a green box with a white ribbon, a red and gold bow and a bigger sparkle, so it stands out from the hidden red ones. `lit`: the ribbon, the bow and the twinkle. */
+function santa(ctx, frame, lit) {
+  const rib = lit ? '#ffffff' : '#fff7de', bow = lit ? '#ff9aa4' : '#e0485a', gold = lit ? '#fff4b8' : GOLD;
+  if (!lit) {
+    rect(ctx, P.ink, 2, 9, 12, 11); rect(ctx, '#2f8a4a', 3, 10, 10, 9); rect(ctx, '#5ac070', 3, 10, 2, 9); rect(ctx, '#1f6a38', 11, 10, 2, 9);
+    rect(ctx, P.ink, 4, 6, 8, 4);
+  }
+  rect(ctx, rib, 7, 10, 2, 9); rect(ctx, rib, 3, 13, 10, 2);                                    // the ribbon
+  rect(ctx, bow, 5, 7, 2, 2); rect(ctx, bow, 9, 7, 2, 2); rect(ctx, gold, 7, 8, 2, 2);            // the bow
+  if (!lit) { dot(ctx, '#ff8a96', 6, 7); dot(ctx, '#ff8a96', 10, 7); dot(ctx, GOLD, 4, 17); dot(ctx, GOLD, 11, 17); }
+  twinkle(ctx, frame, lit);
+  if (frame === 1) { dot(ctx, lit ? '#ffffff' : GOLD_LIT, 2, 3); dot(ctx, lit ? '#ffffff' : GOLD_LIT, 2, 5); dot(ctx, lit ? '#ffffff' : GOLD_LIT, 1, 4); dot(ctx, lit ? '#ffffff' : GOLD_LIT, 3, 4); }
 }
 
 /** Halloween: an orange pumpkin pail with a carved face, a black handle and four candies on top. */
@@ -53,7 +67,7 @@ function other(ctx, frame, lit) {
   for (const [x, y] of [[8, 12], [7, 13], [8, 13], [9, 13], [6, 14], [7, 14], [8, 14], [9, 14], [10, 14], [7, 15], [9, 15], [6, 16], [10, 16]]) dot(ctx, gold, x, y);   // a star on the sack
   twinkle(ctx, frame, lit);
 }
-const DRAW = { christmas, halloween };
+const DRAW = { christmas, halloween, santa };
 
 const arts = new Map();
 /** The art of a season's gift: { frames: [canvas, canvas], lits: [canvas, canvas], glow: { z, r, rgb } } (z: px above the feet). Built once per season. */

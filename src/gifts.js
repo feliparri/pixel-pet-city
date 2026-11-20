@@ -1,5 +1,6 @@
 // The seasonal gifts: while a season is on (src/seasons.js), 3 gifts lie about the town and the Parque every 2 hours, the same for everyone in a room, and a
-// pet on a trip that opens one is paid 2 to 5 coins by the server (docs/trip-api.md, trip-gift). Everything here is pure: where the gifts of a slot lie is a
+// pet on a trip that opens one is paid 10 to 30 gold by the server (docs/trip-api.md, trip-gift). While Christmas is on Santa also walks across the plaza every so
+// often (src/santa.js) and drops 5 special gifts that vanish after 5 minutes and pay 20 to 30. Everything here is pure: where the gifts of a slot lie is a
 // function of (room code, slot), what one pays a function of its id, so every screen of a room agrees and nothing goes over the net. The server cannot know the
 // room, so it mirrors only what it must check (slots, ids, prices, which seasons are on: supabase/functions/trip/gifts.js; tests/gifts.test.js keeps them equal).
 import { SEASON_KEYS } from './seasons.js';
@@ -14,8 +15,15 @@ export const SLOT_MS = 2 * 3600 * 1000;
 export const ANCHOR_MS = Date.UTC(2026, 0, 1);
 export const PER_SLOT = 3;                                   // gifts per slot: n = 0..2
 export const GRACE_MS = 120 * 1000;                          // the slot before the current one is still accepted for this long after it ended
-export const REWARD_MIN = 2, REWARD_MAX = 5;
-export const GIFT_DAILY_CAP = 20;                            // the coins gifts pay one pet in one town day (the server's rule; the missions have their own cap)
+export const REWARD_MIN = 10, REWARD_MAX = 30;               // a hidden gift pays 10 to 30 gold
+export const GIFT_DAILY_CAP = 150;                           // the gold gifts pay one pet in one town day (the server's rule; the missions have their own cap)
+// Santa's walks. A walk slot is a fixed 40 min window of UTC time (the same grid origin as the gift slots); in each one Santa walks once, at a start the room's
+// hash picks in the first WALK_START_MAX_MS of the slot, so a walk and its gifts (which last GIFT_LIFE_MS after they are dropped) are over before the slot is.
+export const WALK_SLOT_MS = 40 * 60 * 1000;
+export const WALK_START_MAX_MS = 28 * 60 * 1000;
+export const SANTA_PER = 5;                                  // gifts Santa drops in a walk: n = 0..4
+export const SANTA_REWARD_MIN = 20, SANTA_REWARD_MAX = 30;   // a gift of Santa's pays 20 to 30 gold (a hidden one 10 to 30, so Santa's pays more on average)
+export const SANTA_ID = 'santa';                             // the first part of the id of one of Santa's gifts: `santa:<walk slot>:<n>`
 
 export const slotOf = (ms) => Math.floor((ms - ANCHOR_MS) / SLOT_MS);
 export const slotStart = (slot) => ANCHOR_MS + slot * SLOT_MS;
@@ -25,21 +33,37 @@ export function slotAccepted(slot, ms) {
   return slot === cur || (slot === cur - 1 && ms - slotStart(cur) < GRACE_MS);
 }
 
+/** The walk slot of a server time, its start, and whether the server accepts a claim naming it: the current one, or the previous one during the first GRACE_MS. */
+export const walkSlotOf = (ms) => Math.floor((ms - ANCHOR_MS) / WALK_SLOT_MS);
+export const walkSlotStart = (slot) => ANCHOR_MS + slot * WALK_SLOT_MS;
+export function walkAccepted(slot, ms) {
+  const cur = walkSlotOf(ms);
+  return slot === cur || (slot === cur - 1 && ms - walkSlotStart(cur) < GRACE_MS);
+}
+
 // ---- ids and prices ---------------------------------------------------------------------------------------------------------------------
 /** The first of `seasons` (a Set of keys) in the registry's order, or null: the season a gift of this moment belongs to. */
 export const firstSeason = (seasons) => (seasons ? SEASON_KEYS.find((k) => seasons.has(k)) ?? null : null);
 export const giftId = (season, slot, n) => `${season}:${slot}:${n}`;
-/** The coins a gift pays: 2..5, a pure function of its id (the server prices it the same way). */
+/** The gold a hidden gift pays: 10..30, a pure function of its id (the server prices it the same way). */
 export const rewardOf = (id) => REWARD_MIN + (hashSeed(id) % (REWARD_MAX - REWARD_MIN + 1));
+/** The gold one of Santa's gifts pays: 20..30, a pure function of its id. */
+export const santaRewardOf = (id) => SANTA_REWARD_MIN + (hashSeed(id) % (SANTA_REWARD_MAX - SANTA_REWARD_MIN + 1));
 
 const ID_RE = /^([a-z]+):(\d{1,7}):(\d)$/;
-/** A gift id as { id, season, slot, n, reward }, or null when it is not a valid one: the same check the server makes (an id has one spelling only: no leading zeros). */
+/**
+ * A gift id as { id, season, kind ('hidden' | 'santa'), slot, n, reward }, or null when it is not a valid one: the same check the server makes (an id has one
+ * spelling only: no leading zeros). A hidden gift is `<season>:<slot>:<n>` (slot = a 2 h gift slot, n < PER_SLOT); one of Santa's is `santa:<walk slot>:<n>`
+ * (a 40 min walk slot, n < SANTA_PER) and belongs to the Christmas season.
+ */
 export function parseGiftId(id) {
   const m = typeof id === 'string' ? ID_RE.exec(id) : null;
   if (!m) return null;
   const [, season, slot, n] = m;
-  if (!SEASON_KEYS.includes(season) || String(+slot) !== slot || +n >= PER_SLOT) return null;
-  return { id, season, slot: +slot, n: +n, reward: rewardOf(id) };
+  if (String(+slot) !== slot) return null;
+  if (season === SANTA_ID) return +n < SANTA_PER ? { id, season: 'christmas', kind: 'santa', slot: +slot, n: +n, reward: santaRewardOf(id) } : null;
+  if (!SEASON_KEYS.includes(season) || +n >= PER_SLOT) return null;
+  return { id, season, kind: 'hidden', slot: +slot, n: +n, reward: rewardOf(id) };
 }
 
 // ---- where ------------------------------------------------------------------------------------------------------------------------------
@@ -72,14 +96,14 @@ export function giftTiles(room, slot) {
 }
 
 /**
- * The gifts lying about at server time `ms` in room `room`: [{ id, season, slot, n, x, y, reward }] while a season of `seasons` (a Set of keys) is on,
+ * The gifts lying about at server time `ms` in room `room`: [{ id, season, kind: 'hidden', slot, n, x, y, reward }] while a season of `seasons` (a Set of keys) is on,
  * else []. All of them are in the town (area 'town'). The ones this pet already opened are the caller's business (the town keeps them).
  */
 export function giftsAt(room, ms, seasons) {
   const season = firstSeason(seasons);
   if (!season || !Number.isFinite(ms)) return [];
   const slot = slotOf(ms);
-  return giftTiles(room, slot).map(([x, y], n) => { const id = giftId(season, slot, n); return { id, season, slot, n, x, y, reward: rewardOf(id) }; });
+  return giftTiles(room, slot).map(([x, y], n) => { const id = giftId(season, slot, n); return { id, season, kind: 'hidden', slot, n, x, y, reward: rewardOf(id) }; });
 }
 
 // ---- what the pet opened ----------------------------------------------------------------------------------------------------------------
@@ -103,7 +127,7 @@ export function createOpened(storage = null, key = 'city.gifts') {
     owner(o) { if (o !== who) { who = o; ids = who === null ? new Set() : load(); } },
     has: (id) => ids.has(id),
     /** Forgets what is too old for `slot`'s moment. */
-    prune(slot) { now = slot; for (const id of [...ids]) { const g = parseGiftId(id); if (!g || g.slot < now - KEEP_SLOTS) ids.delete(id); } },
+    prune(slot) { now = slot; for (const id of [...ids]) { const g = parseGiftId(id); if (!g || (g.kind === 'santa' ? slotOf(walkSlotStart(g.slot)) : g.slot) < now - KEEP_SLOTS) ids.delete(id); } },
     add(id) { if (who === null || ids.has(id)) return; ids.add(id); save(); },
     get size() { return ids.size; },
   };

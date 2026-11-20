@@ -153,17 +153,20 @@ pays twice or past the cap; the last payment is cut to what is left), then the g
 paid today), `409 cap_reached`, `409 trip_over`, `409 conflict` (ask again). `trip-claim` also returns `missions: { day, cap, earned, done: [villager ids] }` (today's ledger).
 
 ### `trip-gift`
-Request `{ "trip": "<ref>", "gift": "<season>:<slot>:<n>" }` with the token: the pet opened a **seasonal gift** lying in the town and is paid 2 to 5 coins. While a season is on (see "Seasons" below) 3 gifts lie about the town
+Request `{ "trip": "<ref>", "gift": "<season>:<slot>:<n>" | "santa:<walk slot>:<n>" }` with the token: the pet opened a **seasonal gift** lying in the town and is paid 10 to 30 gold, or 20 to 30 for one of **Santa's** (below). While a season is on (see "Seasons" below) 3 gifts lie about the town
 and the Parque every 2 hours, in places the town derives from the room's code (`src/gifts.js`); the server cannot know the room, so it checks the claim's **shape** (`gifts.js parseGiftId`): `season` a key of
 the registry that is **on right now** (the built-in windows of `SEASON_WINDOWS`, the mirror of `src/seasons.js`, plus the owner's `town_seasons` overrides with the same rules as the town: dates, forced on, forced off;
 if the overrides cannot be read the answer is `503 try_again`), `slot` the **current slot** or, for the first 2 minutes of a slot, the one before it, and `n` 0..2. A slot is a fixed 2 h window of UTC time,
 `slot = floor((ms - Date.UTC(2026, 0, 1)) / 7200000)`: a plain UTC grid, so Chile's clock changes neither skip nor repeat a slot nor change its length; they only move where a boundary falls on the Chile clock
-(even hours in winter, UTC-4; odd hours in summer, UTC-3). An id has one spelling (no leading zeros). The server prices the gift itself from its id (`2 + hashSeed(id) % 4`, the town computes the same) and bounds forged
-claims with **one payment per gift id** and a **daily cap of 20 coins per pet** across trips, apart from the missions' 50. The ledger is the pet's row of table `pet_days` for the town day its slot **starts** in
+(even hours in winter, UTC-4; odd hours in summer, UTC-3). An id has one spelling (no leading zeros). The server prices the gift itself from its id (`10 + hashSeed(id) % 21`, the town computes the same) and bounds forged
+claims with **one payment per gift id** and a **daily cap of 150 gold per pet** across trips, apart from the missions' 50 (a day holds at most 16 gift ids at those prices, inside the `gifts` check of 20: no migration needed).
+**Santa's gifts:** while Christmas is on, Santa walks across the plaza once in every 40 min **walk slot** (`walkSlot = floor((ms - Date.UTC(2026, 0, 1)) / 2400000)`; the start inside the slot is the room's hash, the first 28 min of it) and drops 5 gifts that last
+5 minutes; their id is `santa:<walk slot>:<n>` with `n` 0..4, they belong to the `christmas` season (it must be on), the walk slot must be the current one (or the previous one in the first 2 minutes), the price is `20 + hashSeed(id) % 11`, and they share the same
+one-payment-per-id rule, ledger and daily cap as the hidden gifts (the ledger day is the one the walk slot starts in). The ledger is the pet's row of table `pet_days` for the town day its slot **starts** in
 (so a slot that spans the 06:00 change has one row and a gift cannot be paid twice), columns `gift_earned` (coins paid, only ever grows: it is also the compare-and-set column of the claim) and `gifts` (the ids opened); it is
 claimed first with a conditional update (a duplicate or a race never pays twice or past the cap; the last payment is cut to what is left), then the coins are added to the trip's `earned`, the same as `trip-mission`.
 Only trips that started with `"spend": 1`. `200 { "gold", "capped", "gift", "gift_earned", "cap", "gold_left" }`. Errors: `401 bad_session`, `403 shop_closed`, `409 trip_over`, `400 bad_gift` (a malformed id, an unknown season,
-`n` > 2), `409 gift_expired` (not the current slot), `409 season_off`, `409 claimed` (that gift was opened already; with `gift_earned`, `cap`), `409 gift_cap` (with `gift_earned`, `cap`), `409 conflict` (ask again),
+`n` > 2, or > 4 for Santa's), `409 gift_expired` (not the current slot), `409 season_off`, `409 claimed` (that gift was opened already; with `gift_earned`, `cap`), `409 gift_cap` (with `gift_earned`, `cap`), `409 conflict` (ask again),
 `503 try_again`. Migration `20261104120000_pet_days_gifts.sql`.
 
 ### `trip-status`

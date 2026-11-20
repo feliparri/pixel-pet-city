@@ -65,21 +65,40 @@ test('the previous slot is accepted for 2 minutes after it ended, never a later 
 // ---- ids and prices -----------------------------------------------------------------------------------------------------------------
 test('a gift id is <season>:<slot>:<n> and has one spelling', () => {
   assert.equal(G.giftId('christmas', 3719, 2), 'christmas:3719:2');
-  assert.deepEqual(G.parseGiftId('christmas:3719:2'), { id: 'christmas:3719:2', season: 'christmas', slot: 3719, n: 2, reward: G.rewardOf('christmas:3719:2') });
+  assert.deepEqual(G.parseGiftId('christmas:3719:2'), { id: 'christmas:3719:2', season: 'christmas', kind: 'hidden', slot: 3719, n: 2, reward: G.rewardOf('christmas:3719:2') });
+  assert.deepEqual(G.parseGiftId('santa:9876:4'), { id: 'santa:9876:4', season: 'christmas', kind: 'santa', slot: 9876, n: 4, reward: G.santaRewardOf('santa:9876:4') }, 'one of Santa\'s: Christmas gold, n up to 4');
+  for (const bad of ['santa:9876:5', 'santa:09876:0', 'santa:9876:00', 'Santa:1:0', 'santa:-1:0', 'santa:1:0:0']) assert.equal(G.parseGiftId(bad), null, bad);
   for (const bad of ['', 'x', 'christmas:3719', 'christmas:3719:3', 'christmas:03719:0', 'christmas:3719:00', 'easter:3719:0', 'Christmas:3719:0', 'christmas:-3:0', 'christmas:3719:0 ', ' christmas:3719:0', 'christmas:99999999:0', 'christmas:3719:0:1', 7, null, undefined, {}]) assert.equal(G.parseGiftId(bad), null, String(bad));
 });
 
-test('the price of a gift is 2 to 5 coins, a pure function of its id, and every price shows up', () => {
-  const seen = new Map();
-  for (let slot = 3000; slot < 4000; slot++) for (let n = 0; n < 3; n++) for (const season of SEASON_KEYS) {
-    const id = G.giftId(season, slot, n), r = G.rewardOf(id);
-    assert.ok(Number.isInteger(r) && r >= G.REWARD_MIN && r <= G.REWARD_MAX, id);
-    assert.equal(G.rewardOf(id), r);
-    seen.set(r, (seen.get(r) || 0) + 1);
+test('the price of a hidden gift is 10 to 30 gold and Santa\'s is 20 to 30, pure functions of the id, and every price shows up', () => {
+  const seen = new Map(), santa = new Map();
+  for (let slot = 3000; slot < 4000; slot++) for (let n = 0; n < 5; n++) {
+    const sid = G.giftId('santa', slot, n), sr = G.santaRewardOf(sid);
+    assert.ok(Number.isInteger(sr) && sr >= G.SANTA_REWARD_MIN && sr <= G.SANTA_REWARD_MAX, sid);
+    santa.set(sr, (santa.get(sr) || 0) + 1);
+    if (n >= 3) continue;
+    for (const season of SEASON_KEYS) {
+      const id = G.giftId(season, slot, n), r = G.rewardOf(id);
+      assert.ok(Number.isInteger(r) && r >= G.REWARD_MIN && r <= G.REWARD_MAX, id);
+      assert.equal(G.rewardOf(id), r);
+      seen.set(r, (seen.get(r) || 0) + 1);
+    }
   }
-  assert.deepEqual([...seen.keys()].sort(), [2, 3, 4, 5]);
-  const total = [...seen.values()].reduce((a, b) => a + b, 0);
-  for (const [r, c] of seen) assert.ok(c > total * 0.18 && c < total * 0.32, `price ${r} comes up ${c} of ${total}`);
+  assert.deepEqual([G.REWARD_MIN, G.REWARD_MAX, G.SANTA_REWARD_MIN, G.SANTA_REWARD_MAX, G.GIFT_DAILY_CAP], [10, 30, 20, 30, 150]);
+  assert.deepEqual([...seen.keys()].sort((a, b) => a - b), Array.from({ length: 21 }, (_, i) => 10 + i));
+  assert.deepEqual([...santa.keys()].sort((a, b) => a - b), Array.from({ length: 11 }, (_, i) => 20 + i));
+  const mean = (m) => [...m].reduce((a, [v, c]) => a + v * c, 0) / [...m.values()].reduce((a, c) => a + c, 0);
+  assert.ok(Math.abs(mean(seen) - 20) < 0.6 && Math.abs(mean(santa) - 25) < 0.6, `means ${mean(seen)} ${mean(santa)}`);
+  assert.ok(mean(santa) > mean(seen) + 3, 'Santa\'s gifts pay more on average');
+});
+
+test('the daily cap of 150 leaves room for the gifts: at most 16 ids a day, inside the ledger\'s check of 20, so no migration widens it', () => {
+  const ids = Math.ceil(G.GIFT_DAILY_CAP / Math.min(G.REWARD_MIN, G.SANTA_REWARD_MIN)) + 1;      // every payment but the last is at least 10; the last may be cut to what is left
+  assert.equal(ids, 16);
+  const sql = readFileSync(new URL('../supabase/migrations/20261104120000_pet_days_gifts.sql', import.meta.url), 'utf8');
+  assert.match(sql, /jsonb_array_length\(gifts\) <= 20/);
+  assert.ok(ids <= 20);
 });
 
 // ---- where -------------------------------------------------------------------------------------------------------------------------
@@ -214,9 +233,10 @@ test('the gift world: the list is the slot\'s gifts, bobbing and twinkling; open
   const again = createGiftWorld({ room: 'FOCA-LUNA-42', storage: st, art: fakeArt });           // another page load: still opened
   assert.equal(again.update(ms, xmas, 'trip', 0).length, 2);
   assert.equal(createGiftWorld({ room: 'FOCA-LUNA-42', storage: st, art: fakeArt }).update(ms, xmas, 'other-trip', 0).length, 3, 'another pet sees all three');
-  assert.equal(w.update(ms + 2 * HOUR, xmas, 'trip', 0).length, 3, 'the next slot brings three new ones');
-  w.dismiss(w.update(ms + 2 * HOUR, xmas, 'trip', 0)[0].gift.id);
-  assert.equal(w.update(ms + 2 * HOUR, xmas, 'trip', 1).length, 2, 'a dismissed gift goes without a burst');
+  const hidden = (l) => l.filter((d) => d.gift && d.gift.kind === 'hidden');                  // Santa may be walking by in this slot: his gifts are another test's business
+  assert.equal(hidden(w.update(ms + 2 * HOUR, xmas, 'trip', 0)).length, 3, 'the next slot brings three new ones');
+  w.dismiss(hidden(w.update(ms + 2 * HOUR, xmas, 'trip', 0))[0].gift.id);
+  assert.equal(hidden(w.update(ms + 2 * HOUR, xmas, 'trip', 1)).length, 2, 'a dismissed gift goes without a burst');
 });
 
 test('the gift world: a visitor sees the gifts and opens none; the season off takes them away; art exists for every season, known or not', async () => {
@@ -239,13 +259,20 @@ test('the gift world: a visitor sees the gifts and opens none; the season off ta
 
 // ---- the town and the server agree --------------------------------------------------------------------------------------------------------
 test('the server mirrors the town: slots, ids, prices and the seasons it knows', () => {
-  for (const k of ['SLOT_MS', 'ANCHOR_MS', 'PER_SLOT', 'GRACE_MS', 'REWARD_MIN', 'REWARD_MAX', 'GIFT_DAILY_CAP']) assert.equal(S[k], G[k], k);
-  assert.equal(G.GIFT_DAILY_CAP, 20);
+  for (const k of ['SLOT_MS', 'ANCHOR_MS', 'PER_SLOT', 'GRACE_MS', 'REWARD_MIN', 'REWARD_MAX', 'GIFT_DAILY_CAP', 'WALK_SLOT_MS', 'WALK_START_MAX_MS', 'SANTA_PER', 'SANTA_REWARD_MIN', 'SANTA_REWARD_MAX', 'SANTA_ID']) assert.equal(S[k], G[k], k);
+  assert.equal(G.GIFT_DAILY_CAP, 150);
   assert.deepEqual(SERVER_KEYS, SEASON_KEYS);
   assert.deepEqual(Object.keys(S.SEASON_WINDOWS), SEASON_KEYS);
   for (let t = Date.UTC(2026, 0, 1); t < Date.UTC(2028, 0, 1); t += 7 * 3600e3 + 12345) {
     assert.equal(S.slotOf(t), G.slotOf(t)); assert.equal(S.slotStart(S.slotOf(t)), G.slotStart(G.slotOf(t)));
     for (const d of [-1, 0, 1]) { const slot = G.slotOf(t) + d; assert.equal(S.slotAccepted(slot, t), G.slotAccepted(slot, t)); }
+    assert.equal(S.walkSlotOf(t), G.walkSlotOf(t)); assert.equal(S.walkSlotStart(S.walkSlotOf(t)), G.walkSlotStart(G.walkSlotOf(t)));
+    for (const d of [-1, 0, 1]) { const slot = G.walkSlotOf(t) + d; assert.equal(S.walkAccepted(slot, t), G.walkAccepted(slot, t)); }
+  }
+  for (let slot = 8000; slot < 12000; slot += 13) for (const n of [0, 1, 2, 3, 4, 5]) {
+    const id = G.giftId('santa', slot, n);
+    assert.equal(S.santaRewardOf(id), G.santaRewardOf(id), id);
+    assert.deepEqual(S.parseGiftId(id), G.parseGiftId(id), id);
   }
   for (let slot = 3000; slot < 4000; slot += 7) for (const season of [...SEASON_KEYS, 'easter']) for (const n of [0, 1, 2, 3]) {
     const id = G.giftId(season, slot, n);

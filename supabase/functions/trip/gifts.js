@@ -1,4 +1,5 @@
-// The seasonal gifts, as far as the server needs them (src/gifts.js is the town's side). While a season is on, 3 gifts lie in the town every 2 hours; where
+// The seasonal gifts, as far as the server needs them (src/gifts.js is the town's side). While a season is on, 3 gifts lie in the town every 2 hours (and while
+// Christmas is on, Santa drops 5 more every walk, `santa:<walk slot>:<n>`, paid more); where
 // they lie is the room's business (the server cannot know the room), so the server checks only the SHAPE of a claim: a real season that is on right now,
 // the current slot (or the one before it, for 2 minutes), a gift number 0..2; it prices the gift itself from its id and bounds what forged claims can earn
 // with one claim per gift id and a daily cap in coins per pet. The tables below mirror src/gifts.js and src/seasons.js; tests/gifts.test.js keeps them equal.
@@ -13,8 +14,13 @@ export const SLOT_MS = 2 * 3600 * 1000;
 export const ANCHOR_MS = Date.UTC(2026, 0, 1);
 export const PER_SLOT = 3;                                   // gifts per slot: n = 0..2
 export const GRACE_MS = 120 * 1000;                          // the slot before the current one is still accepted for this long after it ended (a gift opened at the very edge)
-export const REWARD_MIN = 2, REWARD_MAX = 5;
-export const GIFT_DAILY_CAP = 20;                            // the most coins gifts pay one pet in one town day, across trips (apart from the missions' own cap)
+export const REWARD_MIN = 10, REWARD_MAX = 30;               // a hidden gift pays 10 to 30 gold
+export const GIFT_DAILY_CAP = 150;                           // the most gold gifts pay one pet in one town day, across trips (apart from the missions' own cap)
+export const WALK_SLOT_MS = 40 * 60 * 1000;                  // Santa's walk grid: one walk per 40 min slot, its gifts gone before the slot ends (src/gifts.js)
+export const WALK_START_MAX_MS = 28 * 60 * 1000;
+export const SANTA_PER = 5;                                  // gifts per walk: n = 0..4
+export const SANTA_REWARD_MIN = 20, SANTA_REWARD_MAX = 30;
+export const SANTA_ID = 'santa';
 
 export const slotOf = (ms) => Math.floor((ms - ANCHOR_MS) / SLOT_MS);
 export const slotStart = (slot) => ANCHOR_MS + slot * SLOT_MS;
@@ -24,23 +30,38 @@ export function slotAccepted(slot, ms) {
   return slot === cur || (slot === cur - 1 && ms - slotStart(cur) < GRACE_MS);
 }
 
+export const walkSlotOf = (ms) => Math.floor((ms - ANCHOR_MS) / WALK_SLOT_MS);
+export const walkSlotStart = (slot) => ANCHOR_MS + slot * WALK_SLOT_MS;
+/** Is `slot` a walk slot a claim may name at server time `ms`: the current one, or the previous one during the first GRACE_MS of this one? */
+export function walkAccepted(slot, ms) {
+  const cur = walkSlotOf(ms);
+  return slot === cur || (slot === cur - 1 && ms - walkSlotStart(cur) < GRACE_MS);
+}
+
 /** A 32 bit hash of a string (the same as hashSeed in src/life.js). */
 export function hashSeed(str) {
   let h = 2166136261;
   for (const ch of String(str)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
   return h >>> 0;
 }
-/** The coins a gift pays: 2..5, a pure function of its id. */
+/** The gold a hidden gift pays: 10..30, a pure function of its id. */
 export const rewardOf = (id) => REWARD_MIN + (hashSeed(id) % (REWARD_MAX - REWARD_MIN + 1));
+/** The gold one of Santa's gifts pays: 20..30. */
+export const santaRewardOf = (id) => SANTA_REWARD_MIN + (hashSeed(id) % (SANTA_REWARD_MAX - SANTA_REWARD_MIN + 1));
 
 const ID_RE = /^([a-z]+):(\d{1,7}):(\d)$/;
-/** A gift id (`<season>:<slot>:<n>`) as { id, season, slot, n, reward }, or null when it is not a valid one (an id has one spelling only: no leading zeros). */
+/**
+ * A gift id as { id, season, kind ('hidden' | 'santa'), slot, n, reward }, or null when it is not a valid one (an id has one spelling only: no leading zeros).
+ * `<season>:<slot>:<n>` is a hidden gift (a 2 h slot, n < PER_SLOT); `santa:<walk slot>:<n>` is one of Santa's (a 40 min walk slot, n < SANTA_PER; season 'christmas').
+ */
 export function parseGiftId(id) {
   const m = typeof id === 'string' ? ID_RE.exec(id) : null;
   if (!m) return null;
   const [, season, slot, n] = m;
-  if (!SEASON_KEYS.includes(season) || String(+slot) !== slot || +n >= PER_SLOT) return null;
-  return { id, season, slot: +slot, n: +n, reward: rewardOf(id) };
+  if (String(+slot) !== slot) return null;
+  if (season === SANTA_ID) return +n < SANTA_PER ? { id, season: 'christmas', kind: 'santa', slot: +slot, n: +n, reward: santaRewardOf(id) } : null;
+  if (!SEASON_KEYS.includes(season) || +n >= PER_SLOT) return null;
+  return { id, season, kind: 'hidden', slot: +slot, n: +n, reward: rewardOf(id) };
 }
 
 // ---- which seasons are on ---------------------------------------------------------------------------------------------------------------

@@ -7,7 +7,7 @@ import { TOOLS, isTool, toolKeys } from './tools.js';
 import { DAILY_CAP, parseMission } from './missions.js';
 import { parseDevSeasons } from './seasons.js';
 import { dayOf } from './npc-world.js';
-import { parseGiftId, slotAccepted, slotStart, GIFT_DAILY_CAP } from './gifts.js';
+import { parseGiftId, slotAccepted, walkAccepted, GIFT_DAILY_CAP } from './gifts.js';
 import { activeSeasons } from './seasons.js';
 
 export function createMockShop(search = '') {
@@ -58,7 +58,7 @@ export function createMockShop(search = '') {
       const g = parseGiftId(id), on = devSeasons || activeSeasons(nowMs);
       if (!shop.canSpend) r = { ok: false, error: 'shop_closed' };
       else if (!g) r = { ok: false, error: 'bad_gift' };
-      else if (!slotAccepted(g.slot, nowMs)) r = { ok: false, error: 'gift_expired' };
+      else if (!(g.kind === 'santa' ? walkAccepted(g.slot, nowMs) : slotAccepted(g.slot, nowMs))) r = { ok: false, error: 'gift_expired' };
       else if (!on.has(g.season)) r = { ok: false, error: 'season_off' };
       else if (giftsOpened.includes(g.id)) r = { ok: false, error: 'claimed' };
       else if (giftPaid >= GIFT_DAILY_CAP) r = { ok: false, error: 'gift_cap', gift_earned: giftPaid, cap: GIFT_DAILY_CAP };

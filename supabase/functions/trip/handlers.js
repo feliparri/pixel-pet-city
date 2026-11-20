@@ -7,7 +7,7 @@ import { cleanRadar } from './radar.js';
 import { SHOP, isForSale, boardKnows, knownItems } from './shop.js';
 import { TOOLS, isTool } from './tools.js';
 import { DAILY_CAP, parseMission, townDay } from './missions.js';
-import { slotAccepted, slotStart, parseGiftId, seasonsOn, GIFT_DAILY_CAP } from './gifts.js';
+import { slotAccepted, slotStart, walkAccepted, walkSlotStart, parseGiftId, seasonsOn, GIFT_DAILY_CAP } from './gifts.js';
 import { events, eventSave, eventCancel, seasonSave, seasonClear } from './events.js';
 
 export const BODY_MAX = 12288;                 // a 6144-byte package is 8192 base64 characters, plus the JSON around it
@@ -287,7 +287,7 @@ async function tripMission(req, deps) {
 // A seasonal gift found in the town (src/gifts.js; docs/trip-api.md). Same rail as the missions: the gold goes into the trip's `earned`, and a ledger row of
 // pet_days (per board and town day) is claimed first with a conditional update. The server cannot see the town, so it checks the claim's SHAPE (a season that is
 // on right now, defaults plus the owner's overrides; the current slot, or the one before it for 2 minutes; a gift number 0..2), prices the gift itself from its
-// id (2..5 coins) and bounds forged claims with one payment per gift id and GIFT_DAILY_CAP coins a day. The ledger row is the town day of the slot's start, so a
+// id (hidden: 10..30 gold; one of Santa's, `santa:<walk slot>:<n>`: 20..30) and bounds forged claims with one payment per gift id and GIFT_DAILY_CAP coins a day. The ledger row is the town day of the slot's start, so a
 // gift has one row whenever it is claimed; `gift_earned` is the coins paid and only ever grows, so it also tells a racing claim apart (the second one conflicts).
 async function tripGift(req, deps) {
   const p = parseJson(req.body);
@@ -300,11 +300,11 @@ async function tripGift(req, deps) {
   const g = parseGiftId(p.v.gift);
   if (!g) return err(400, 'bad_gift');
   const nowMs = deps.nowS() * 1000;
-  if (!slotAccepted(g.slot, nowMs)) return err(409, 'gift_expired');
+  if (!(g.kind === 'santa' ? walkAccepted(g.slot, nowMs) : slotAccepted(g.slot, nowMs))) return err(409, 'gift_expired');
   let rows;
   try { const y = new Date(nowMs).getUTCFullYear(); rows = await deps.db.listSeasons(y - 1, y + 2); } catch (e) { deps.log?.('trip-gift/seasons', e); return err(503, 'try_again'); }      // the owner may have turned the season off: without their word, no pay
   if (!seasonsOn(nowMs, rows).has(g.season)) return err(409, 'season_off');
-  const day = townDay(slotStart(g.slot));
+  const day = townDay(g.kind === 'santa' ? walkSlotStart(g.slot) : slotStart(g.slot));
   let row = await deps.db.getPetDay(trip.device_id, day);
   if (!row) {
     await deps.db.insertPetDay({ device_id: trip.device_id, day, earned: 0, done: [], gift_earned: 0, gifts: [] });

@@ -110,7 +110,7 @@ export function createTripClient({ base, fetch: fetcher = globalThis.fetch, stor
       return out;
     },
 
-    /** Opens a seasonal gift (trip-gift; `id` is src/gifts.js's `<season>:<slot>:<n>`): the server prices it (2 to 5 coins) and pays within its daily cap for gifts. { ok, gold, capped, gift, gift_earned, cap, gold_left } or { ok: false, error }. */
+    /** Opens a seasonal gift (trip-gift; `id` is src/gifts.js's `<season>:<slot>:<n>`): the server prices it (hidden: 10 to 30 gold; one of Santa's, `santa:<walk slot>:<n>`: 20 to 30) and pays within its daily cap for gifts. { ok, gold, capped, gift, gift_earned, cap, gold_left } or { ok: false, error }. */
     async claimGift(id) {
       if (!session) return { ok: false, error: 'bad_session' };
       let r = await post('trip-gift', { trip: session.trip, gift: id }, session.token);

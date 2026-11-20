@@ -21,6 +21,7 @@ import { drawAnimal, plotTile } from './art/farm.js';
 import { ghostFrames } from './art/halloween.js';
 import { seasonDecor } from './art/decor.js';
 import { GHOST_SCALE } from './ghosts.js';
+import { drawSnow } from './snow.js';
 
 export const VIEW_W = 224;              // the portrait reference view; a box taller than wide is fitted to it (and the dev previews use it)
 export const VIEW_H = 288;
@@ -74,7 +75,7 @@ export const headFrame = (e, now, id) => {
  * opts: { area (name), cam {x, y}, entities [{ id, name, look, walker, emote?, jumpAt?, fx?, gone? }], me, now, amb {tint, night}, sprites, font, marker?, fade? }.
  * Returns the bubbles to draw at the final size: [{ x, y, e }] (an emote) or [{ x, y, text }] (a line) in view pixels. `talk`: [{ x, y, text }] lines in map px.
  */
-export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now, amb = NO_LIGHT, sprites, font, marker = null, fade = 0, chicken = null, dark = null, life = null, ball = null, talk = null, farm = null, seasons = null, gifts = null, ghosts = null, zoom = 1, petZoom = zoom }) {
+export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now, amb = NO_LIGHT, sprites, font, marker = null, fade = 0, chicken = null, dark = null, life = null, ball = null, talk = null, farm = null, seasons = null, gifts = null, ghosts = null, zoom = 1, petZoom = zoom, snow = null }) {
   const area = getArea(areaName), baked = bakeArea(area);
   sctx.setTransform(zoom, 0, 0, zoom, 0, 0);                                    // everything below is in game px; the pets are drawn in their own (smaller) px
   sctx.imageSmoothingEnabled = false;
@@ -189,6 +190,7 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
     if (life) { sctx.globalCompositeOperation = 'lighter'; for (const f of life.fireflies) drawFirefly(sctx, Math.round(f.x - cam.x), Math.round(f.y - cam.y), f.glow); sctx.globalCompositeOperation = 'source-over'; }
   }
 
+  if (snow && baked.outdoor) drawSnow(sctx, vw, vh, now, amb.night, 1);       // December snow (src/snow.js), over the town after its light
   if (ghosts && ghosts.length) {                                               // Halloween's wandering ghosts float over everything, translucent (after the tint, so they stay visible at night)
     const fr = ghostFrames();
     for (const g of ghosts) {
@@ -314,7 +316,7 @@ export function createRenderer({ canvas, sprites, font, minH = MIN_VIEW_H, minW 
     const mp = state.me.walker.pos();
     const gameInset = { top: Math.ceil(inset.top * box.dpr / scale), bottom: Math.ceil(inset.bottom * box.dpr / scale) };      // css px -> game px
     cam = cameraFor(mp.x * TILE + TILE / 2, mp.y * TILE + TILE / 2, a.w * TILE, a.h * TILE, viewW, viewH, gameInset);
-    const bubbles = drawScene(ctx, { area: areaName, cam, vw: viewW, vh: viewH, entities: state.others, me: state.me, now, amb: state.amb, sprites, font, marker: state.marker, fade: state.fade || 0, chicken: state.chicken || null, dark: state.dark || null, life: state.life || null, ball: state.ball || null, talk: state.talk || null, farm: state.farm || null, seasons: state.seasons || null, gifts: state.gifts || null, ghosts: state.ghosts || null, zoom: scale, petZoom: petScale });
+    const bubbles = drawScene(ctx, { area: areaName, cam, vw: viewW, vh: viewH, entities: state.others, me: state.me, now, amb: state.amb, sprites, font, marker: state.marker, fade: state.fade || 0, chicken: state.chicken || null, dark: state.dark || null, life: state.life || null, ball: state.ball || null, talk: state.talk || null, farm: state.farm || null, seasons: state.seasons || null, gifts: state.gifts || null, ghosts: state.ghosts || null, snow: state.snow || null, zoom: scale, petZoom: petScale });
     ctx.setTransform(1, 0, 0, 1, 0, 0);                                         // the bubbles are drawn at the final size
     for (const b of bubbles) drawBubble(ctx, b, scale, canvas.width, scale);
   }

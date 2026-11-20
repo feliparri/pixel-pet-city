@@ -5,6 +5,7 @@
 //   &talk=1                the shopkeeper greets (shop only)
 //   &halloween=1           the Halloween decorations and ghosts (town; &area=farm shows the farm instead of the town)
 //   &christmas=1           the Christmas decorations (they can go with &halloween=1)
+//   &snow=1                December snow over the town (src/snow.js; &now=<ms> moves the flakes)
 //   &gifts=1               the seasonal gifts of the seasons that are on, as they lie at server time &gnow=<ms> (default 1.8e12) in room FOCA-LUNA-42 (town only)
 //   &villagers=1           the villagers of room FOCA-LUNA-42 at server time &npct=<ms> (default 1.8e12), dressed for the seasons that are on (town only)
 // The page sets document.title to "ready" when it has painted, so a headless browser knows when to take the screenshot.
@@ -71,7 +72,7 @@ async function main() {
   const scene = document.createElement('canvas');
   scene.width = vw; scene.height = vh;
   const sctx = scene.getContext('2d');
-  const bubbles = drawScene(sctx, { area: area.name, cam, vw, vh, entities: shown, me, now: kind === 'life' ? lifeNow : 1000, amb, sprites, font, chicken, dark, life: lifeScene, seasons, gifts, ghosts: seasons.has('halloween') ? ghostsAt(area.name, 1.8e12, amb.night) : null, ball: kind === 'pitch' ? { x: 23.4, y: 59.2 } : null, talk: kind === 'shop' && q.get('talk') === '1' ? [{ x: SHOPKEEPER.head.x, y: SHOPKEEPER.head.y, text: shopGreeting(0) }] : null });
+  const bubbles = drawScene(sctx, { area: area.name, cam, vw, vh, entities: shown, me, now: kind === 'life' ? lifeNow : 1000, amb, sprites, font, chicken, dark, life: lifeScene, seasons, gifts, snow: q.get('snow') === '1' ? true : null, ghosts: seasons.has('halloween') ? ghostsAt(area.name, 1.8e12, amb.night) : null, ball: kind === 'pitch' ? { x: 23.4, y: 59.2 } : null, talk: kind === 'shop' && q.get('talk') === '1' ? [{ x: SHOPKEEPER.head.x, y: SHOPKEEPER.head.y, text: shopGreeting(0) }] : null });
   const c = document.getElementById('c');
   c.width = vw * scale; c.height = vh * scale;
   const ctx = c.getContext('2d');

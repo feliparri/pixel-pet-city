@@ -36,7 +36,7 @@ test('gift: the happy path pays the price of the id into the trip, the ledger an
   const t = await start();
   const gift = t.mine(0), price = G.rewardOf(gift);
   const r = await t.claim(gift);
-  assert.deepEqual([r.status, r.body], [200, { gold: price, capped: false, gift, gift_earned: price, cap: 20, gold_left: 5000 + price }]);
+  assert.deepEqual([r.status, r.body], [200, { gold: price, capped: false, gift, gift_earned: price, cap: 150, gold_left: 5000 + price }]);
   assert.equal(t.row.earned, price);
   assert.deepEqual([t.ledger().gift_earned, t.ledger().gifts, t.ledger().earned, t.ledger().done], [price, [gift], 0, []], 'the missions\' own ledger is untouched');
   const second = await t.claim(t.mine(1));
@@ -51,7 +51,7 @@ test('gift: the happy path pays the price of the id into the trip, the ledger an
 
 test('gift: the price is the town\'s, whatever the client says', async () => {
   const t = await start();
-  for (let n = 0; n < 3; n++) { const r = await t.claim(t.mine(n)); assert.equal(r.body.gold, G.rewardOf(t.mine(n))); assert.ok(r.body.gold >= 2 && r.body.gold <= 5); }
+  for (let n = 0; n < 3; n++) { const r = await t.claim(t.mine(n)); assert.equal(r.body.gold, G.rewardOf(t.mine(n))); assert.ok(r.body.gold >= 10 && r.body.gold <= 30); }
   const forged = await t.w.web((await t.w.web().call('trip-claim', { code: (await t.board.start(plain, { spend: 1 })).body.code })).body.token).call('trip-gift', { trip: t.ref, gift: t.mine(0, 'christmas'), reward: 500, gold: 500 });
   assert.notEqual(forged.status, 200, 'a second session for another trip');
 });
@@ -85,7 +85,7 @@ test('gift: two claims of one gift at once pay once', async () => {
   assert.deepEqual(t.ledger().gifts, [g]);
 });
 
-test('gift: the cap is 20 coins a town day: the last gift is cut to what is left, then gift_cap; a new town day starts over; another pet has its own', async () => {
+test('gift: the cap is 150 gold a town day: the last gift is cut to what is left, then gift_cap; a new town day starts over; another pet has its own', async () => {
   const t = await start();
   const paid = [];
   let day = townDay(t.w.now * 1000);
@@ -96,11 +96,11 @@ test('gift: the cap is 20 coins a town day: the last gift is cut to what is left
   }
   assert.ok(paid.includes('capped') && paid.at(-1) === 'gift_cap', JSON.stringify(paid));
   const sum = paid.filter((x) => Number.isInteger(x)).reduce((a, b) => a + b, 0);
-  assert.equal(sum, 20, 'exactly the cap was paid');
-  assert.equal(t.row.earned, 20);
+  assert.equal(sum, 150, 'exactly the cap was paid');
+  assert.equal(t.row.earned, 150);
   const over = await t.claim(t.mine(2));
-  assert.deepEqual([over.status, over.body.error, over.body.gift_earned, over.body.cap], [409, 'gift_cap', 20, 20]);
-  assert.equal(t.row.earned, 20);
+  assert.deepEqual([over.status, over.body.error, over.body.gift_earned, over.body.cap], [409, 'gift_cap', 150, 150]);
+  assert.equal(t.row.earned, 150);
   // another pet has its own cap
   const other = await start({ w: t.w });
   assert.equal((await other.claim(other.mine(0))).status, 200);
@@ -255,8 +255,45 @@ test('the trip client and the dev mock open gifts by the same rules', async () =
   assert.equal((await createMockShop('?shop=closed').claimGift(m0, noon)).error, 'shop_closed');
   assert.equal((await createMockShop('?dev=1&season=halloween').claimGift(id('halloween', mslot, 1), noon)).ok, true, 'the dev flag turns a season on');
   const capped = createMockShop('?gold=0'), reach = [];
-  for (let slot = mslot; slot < mslot + 12; slot++) for (let n = 0; n < 3; n++) { const x = await capped.claimGift(id('christmas', slot, n), G.slotStart(slot) + 1000); reach.push(x.ok ? x.gold : x.error); }
-  assert.equal(reach.filter(Number.isInteger).reduce((a, b) => a + b, 0), 20, 'the mock stops at the cap, like the server');
+  for (let slot = mslot; slot < mslot + 24; slot++) for (let n = 0; n < 3; n++) { const x = await capped.claimGift(id('christmas', slot, n), G.slotStart(slot) + 1000); reach.push(x.ok ? x.gold : x.error); }
+  assert.equal(reach.filter(Number.isInteger).reduce((a, b) => a + b, 0), 150, 'the mock stops at the cap, like the server');
   assert.ok(reach.includes('gift_cap'));
-  assert.equal(S.GIFT_DAILY_CAP, 20);
+  assert.equal(S.GIFT_DAILY_CAP, 150);
+});
+
+// ---- Santa's gifts ------------------------------------------------------------------------------------------------------------------
+test('gift: one of Santa\'s pays 20 to 30, in the current walk slot, once, sharing the hidden gifts\' ledger and daily cap', async () => {
+  const t = await start();
+  const walk = G.walkSlotOf(t.w.now * 1000), sid = (n, slot = walk) => id('santa', slot, n);
+  const paid = [];
+  for (let n = 0; n < 5; n++) {
+    const r = await t.claim(sid(n));
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.gold, G.santaRewardOf(sid(n)));
+    assert.ok(r.body.gold >= 20 && r.body.gold <= 30);
+    paid.push(r.body.gold);
+  }
+  assert.equal(t.row.earned, paid.reduce((a, b) => a + b, 0));
+  assert.deepEqual(t.ledger().gifts, [0, 1, 2, 3, 4].map((n) => sid(n)), 'the same ledger as the hidden gifts');
+  const dup = await t.claim(sid(2));
+  assert.deepEqual([dup.status, dup.body.error], [409, 'claimed']);
+  const hidden = await t.claim(t.mine(0));
+  assert.equal(hidden.body.gift_earned, Math.min(G.GIFT_DAILY_CAP, paid.reduce((a, b) => a + b, 0) + G.rewardOf(t.mine(0))), 'one running total for both kinds, cut at the cap');
+});
+
+test('gift: Santa\'s ids are refused out of their walk slot, with Christmas off, with n out of 0..4 or a bad spelling; the previous walk slot gets 2 minutes of grace', async () => {
+  const t = await start();
+  const cur = G.walkSlotOf(t.w.now * 1000), start0 = G.walkSlotStart(cur);
+  t.w.now = (start0 + 5 * 60000) / 1000;
+  assert.equal((await t.claim(id('santa', cur - 1, 0))).body.error, 'gift_expired');
+  assert.equal((await t.claim(id('santa', cur + 1, 0))).body.error, 'gift_expired');
+  assert.equal((await t.claim(id('santa', cur, 5))).body.error, 'bad_gift');
+  assert.equal((await t.claim(`santa:0${cur}:0`)).body.error, 'bad_gift');
+  t.w.now = (start0 + 119000) / 1000;
+  assert.equal((await t.claim(id('santa', cur - 1, 3))).status, 200, 'grace');
+  t.w.now = (start0 + 120000) / 1000;
+  assert.equal((await t.claim(id('santa', cur - 1, 4))).body.error, 'gift_expired');
+  assert.equal((await t.w.admin('season-save', { season: 'christmas', year: 2026, mode: 'off' }, KEY)).status, 200);
+  assert.equal((await t.claim(id('santa', cur, 0))).body.error, 'season_off', 'Santa only gives while Christmas is on');
+  assert.equal(t.row.earned, G.santaRewardOf(id('santa', cur - 1, 3)));
 });
