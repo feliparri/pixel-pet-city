@@ -2,12 +2,16 @@
 // position at any time, so any client can draw the same sky at the same moment without keeping particle state.
 // World units are map px (x right, y south, z up). Bursts happen far to the north of the plaza and high, so the tilted camera shows them in the sky band.
 import { hash, clamp01 } from './rand.js';
+import { NEW_SHAPES, festiveDirs } from './shapes.js';
 
 export const PALETTES = [
   [[255, 84, 96], [255, 200, 90]], [[255, 214, 80], [255, 120, 60]], [[90, 220, 255], [200, 255, 255]], [[255, 110, 210], [255, 190, 240]],
   [[120, 255, 150], [230, 255, 140]], [[170, 140, 255], [120, 200, 255]], [[255, 255, 255], [255, 220, 150]],
 ];
-export const SHAPES = ['ring', 'palm', 'heart', 'peony'];
+export const SHAPES = ['ring', 'palm', 'heart', 'peony'];       // the classic bursts; the festive ones (star, tree, snowflake, gift, double heart) are in shapes.js
+export { NEW_SHAPES };
+const NEW_SHARE = 0.34;                                                // about a third of the main part's bursts are a festive shape
+const FINALE_SHAPES = ['ring', 'star', 'heart', 'tree', 'peony', 'snowflake', 'heart2', 'gift'];
 const GRAV = 40, DRAG = 2.1, LIFE = 2.6, HEAD = { x: 384, y: 330 };
 
 export const DURATION = 38;                                           // seconds by default (the same number as SHOWS.fireworks.dur; a test keeps them equal)
@@ -19,6 +23,7 @@ const cache = new Map();
 export function schedule(seed, dur = DURATION) {
   const key = `${seed}/${dur}`;
   if (cache.has(key)) return cache.get(key);
+  if (cache.size >= 8) cache.clear();                                  // long shows build their sky in chunks (layers.js), each with its own seed: keep the memory bounded
   const finaleAt = 24.2 + (dur - DURATION), list = [], n = Math.max(1, Math.round((finaleAt - 0.8) / 1.12)), finale = 8;
   for (let i = 0; i < n + finale; i++) {
     const fin = i >= n, j = fin ? i - n : i;
@@ -29,7 +34,7 @@ export function schedule(seed, dur = DURATION) {
     list.push({
       i, tl, tb: tl + 1.0 + hash(seed, i, 5) * 0.35, lx: HEAD.x + (bx - HEAD.x) * 0.35 + (hash(seed, i, 6) - 0.5) * 60, ly: HEAD.y + 6 + hash(seed, i, 7) * 40,
       bx, by: -170 + hash(seed, i, 8) * 130, bz, R: 150 + hash(seed, i, 9) * 40,
-      shape: SHAPES[fin ? (j % 4) : Math.floor(hash(seed, i, 10) * SHAPES.length)], c1: pal[0], c2: pal[1],
+      shape: fin ? FINALE_SHAPES[j % FINALE_SHAPES.length] : hash(seed, i, 11) < NEW_SHARE ? NEW_SHAPES[Math.floor(hash(seed, i, 12) * NEW_SHAPES.length)] : SHAPES[Math.floor(hash(seed, i, 10) * SHAPES.length)], c1: pal[0], c2: pal[1],
     });
   }
   cache.set(key, list);
@@ -38,6 +43,7 @@ export function schedule(seed, dur = DURATION) {
 
 /** The unit launch directions of a burst's sparks [[vx, vy, vz, ring 0|1, glitter 0|1]], deterministic per burst. */
 export function directions(b, seed) {
+  if (NEW_SHAPES.includes(b.shape)) return festiveDirs(b.shape);
   const out = [];
   if (b.shape === 'ring') {
     for (let k = 0; k < 56; k++) { const a = (k / 56) * Math.PI * 2; out.push([Math.cos(a), Math.cos(a) * 0.2, Math.sin(a), k % 2, 0]); }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { zonedToMs, msToZoned, zoneOffset, untilText, parseDuration, durationText, DURATION_PRESETS } from '../src/admin-time.js';
+import { zonedToMs, msToZoned, zoneOffset, untilText, rangeSecs, durationText } from '../src/admin-time.js';
 import { createEventsApi, clockOffset, adminErrorText } from '../src/events-client.js';
 import { createMockFetch } from '../src/admin-mock.js';
 
@@ -74,15 +74,15 @@ test('the page\'s development server stand-in behaves like the function: key, pa
   assert.equal((await api.list()).body.events.length, 0);
 });
 
-test('the length the owner picks: the show\'s own, a preset, or minutes and seconds, from 20 s to 10 min', () => {
-  assert.deepEqual(parseDuration('', 1, 30), { secs: null });
-  assert.deepEqual(DURATION_PRESETS, [30, 60, 120, 300]);
-  for (const p of DURATION_PRESETS) assert.deepEqual(parseDuration(String(p)), { secs: p });
-  assert.deepEqual(parseDuration('custom', '1', '30'), { secs: 90 });
-  assert.deepEqual(parseDuration('custom', '', '45'), { secs: 45 });
-  assert.deepEqual(parseDuration('custom', '10', '0'), { secs: 600 });
-  assert.deepEqual(parseDuration('custom', '0', '20'), { secs: 20 });
-  for (const [c, m, s] of [['custom', '0', '19'], ['custom', '10', '1'], ['custom', '', ''], ['custom', '0', '30.5'], ['custom', '-1', '30'], ['custom', 'x', '0'], ['5'], ['3600']]) assert.deepEqual(parseDuration(c, m, s), { error: 'bad_duration' }, `${c} ${m} ${s}`);
+test('the length the owner picks is a range: no end is the show\'s own, else end minus start, 20 s to 24 h', () => {
+  const t0 = zonedToMs('2026-12-25', '00:00');
+  assert.deepEqual(rangeSecs(t0, NaN), { secs: null });
+  assert.deepEqual(rangeSecs(t0, null), { secs: null });
+  assert.deepEqual(rangeSecs(t0, zonedToMs('2026-12-25', '02:00')), { secs: 7200 }, 'two hours');
+  assert.deepEqual(rangeSecs(t0, zonedToMs('2026-12-25', '00:00') + 20_000), { secs: 20 });
+  assert.deepEqual(rangeSecs(t0, zonedToMs('2026-12-26', '00:00')), { secs: 86400 }, 'a whole day');
+  for (const end of [t0 - 1000, t0, t0 + 19_000, t0 + 86_401_000, zonedToMs('2026-12-30', '00:00')]) assert.deepEqual(rangeSecs(t0, end), { error: 'bad_duration' }, String(end - t0));
+  assert.deepEqual(rangeSecs(NaN, t0 + 60_000), { error: 'bad_duration' });
 });
 
 test('a length in words', () => {

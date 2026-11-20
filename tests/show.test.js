@@ -178,7 +178,8 @@ test('a show at its default length is exactly what it was before lengths existed
     for (const seed of [7, 42, 12345]) for (let t = -1; t <= dur + 1; t += 0.25) h.update(JSON.stringify(skyAt(kind, seed, t, explicit ? dur : undefined)));
     return h.digest('hex').slice(0, 16);
   };
-  const was = { fireworks: '9d8094d10973c8dc', meteors: '382e47a3845e651b', drones: '180b8df8456f30c9', halloween: 'a02863fab937dbb7', christmas: 'c911882f126a924e' };
+  // fireworks and christmas changed on purpose (festive shapes in the bursts; one Santa at a time instead of overlapping sleighs); meteors, drones and halloween are untouched
+  const was = { fireworks: '1b8fe217d4206c10', meteors: '382e47a3845e651b', drones: '180b8df8456f30c9', halloween: 'a02863fab937dbb7', christmas: '2353770f64efda64' };
   for (const [kind, s] of Object.entries(SHOWS)) {
     assert.equal(sky(kind, s.dur, false), was[kind], `${kind} with no length`);
     assert.equal(sky(kind, s.dur, true), was[kind], `${kind} with its own length`);
@@ -192,8 +193,10 @@ test('durationOf: the event\'s own length when it is within the bounds, else the
   assert.equal(durationOf({ kind: 'drones', duration_ms: 90_000 }), 90);
   assert.equal(durationOf({ kind: 'drones', duration_ms: MIN_DUR * 1000 }), MIN_DUR);
   assert.equal(durationOf({ kind: 'drones', duration_ms: MAX_DUR * 1000 }), MAX_DUR);
-  for (const bad of [undefined, null, 0, 5_000, 601_000, NaN, '40000x']) assert.equal(durationOf({ kind: 'fireworks', duration_ms: bad }), 38, String(bad));
+  for (const bad of [undefined, null, 0, 5_000, 86_401_000, NaN, '40000x']) assert.equal(durationOf({ kind: 'fireworks', duration_ms: bad }), 38, String(bad));
   assert.equal(durationOf({ kind: 'meteors' }), 28);
+  assert.equal(durationOf({ kind: 'christmas', duration_ms: 7_200_000 }), 7200, 'two hours');
+  assert.equal(durationOf({ kind: 'christmas', duration_ms: 86_400_000 }), 86400, 'a whole day');
 });
 
 test('a longer show has more of its main part, the intro and the finale keep their length', () => {
@@ -281,8 +284,8 @@ test('christmas: the same length as the drones, deterministic, empty outside the
 });
 
 test('christmas: more sleighs in a longer show; the tree finale comes at the end, whole, and the star sets with the show', () => {
-  assert.equal(X.sleighsOf(40), 4);
-  assert.ok(X.sleighsOf(120) > 4 && X.sleighsOf(20) >= 2);
+  assert.equal(X.sleighsOf(40), 3);
+  assert.ok(X.sleighsOf(120) > 3 && X.sleighsOf(20) >= 1);
   assert.equal(X.finaleOf().at, X.FINALE.at);
   for (const d of [20, 40, 90, 300]) {
     const fin = X.finaleOf(d);
@@ -292,4 +295,58 @@ test('christmas: more sleighs in a longer show; the tree finale comes at the end
     assert.ok(X.christmasAt(7, 5, d).star.a > 0.5, 'the star is up near the start');
   }
   for (let t = 5; t < 280; t += 7) { const r = X.christmasAt(7, t, 300); assert.ok(r.sleighs.length + r.baubles.length + r.sparkles.length > 0, `something in the sky at ${t}`); }
+});
+
+// ---- one Santa at a time, long shows, festive firework shapes ----------------------------------------------------------------------------
+import { NEW_SHAPES } from '../src/show/fireworks.js';
+import { LONG_AFTER, CHUNK } from '../src/show/layers.js';
+
+test('christmas: only one Santa is on screen at any moment, for every seed and length (the sleighs used to overlap)', () => {
+  for (const dur of [20, 40, 90, 300, 600, 3600, 7200]) for (const seed of [1, 7, 42, 12345]) {
+    let seen = 0;
+    for (let t = 0; t <= dur; t += dur > 700 ? 3.7 : 0.1) { const n = skyAt('christmas', seed, t, dur).xm.sleighs.length; assert.ok(n <= 1, `${dur}s seed ${seed} t=${t.toFixed(1)}: ${n} Santas`); seen += n; }
+    assert.ok(seen > 0, `${dur}s seed ${seed}: Santa does fly`);
+  }
+  const s = X.sleighSchedule(7, 40);                                                            // and the schedule itself leaves a gap between passes
+  for (let i = 1; i < s.length; i++) assert.ok(s[i].t0 > s[i - 1].t0 + s[i - 1].dur, `pass ${i} starts after pass ${i - 1} ends`);
+  assert.ok(s.at(-1).t0 + s.at(-1).dur < X.finaleOf(40).at, 'the last pass ends before the finale');
+});
+
+test('a show longer than LONG_AFTER plays in chunks: always something in the sky, the finale only at the real end, deterministic', () => {
+  for (const dur of [LONG_AFTER + 1, 3600, 7200, 86400]) {
+    const tail = dur - CHUNK;
+    for (const kind of ['fireworks', 'meteors', 'drones', 'halloween', 'christmas']) {
+      assert.deepEqual(skyAt(kind, 5, tail / 2 + 3.3, dur), skyAt(kind, 5, tail / 2 + 3.3, dur), `${kind} ${dur} deterministic`);
+      assert.notDeepEqual(skyAt(kind, 5, 4, dur), skyAt(kind, 6, 4, dur), `${kind} ${dur} seed`);
+    }
+    for (let t = 20; t < tail; t += 97.3) {
+      const fw = skyAt('fireworks', 7, t, dur).fw, xm = skyAt('christmas', 7, t, dur).xm;
+      assert.ok(fw.rockets.length + fw.sparks.length > 0 || t % CHUNK > 1, `fireworks fill the sky at ${t} of ${dur}`);
+      assert.equal(xm.baubles.length, 0, `no Christmas finale before the end (${t} of ${dur})`);
+      assert.ok(xm.star && xm.star.a > 0.99, 'the star stays up through the body');
+    }
+    const fin = X.finaleOf(CHUNK);
+    assert.equal(skyAt('christmas', 7, tail + fin.at + 6.5, dur).xm.baubles.filter((b) => b.lit > 0.99).length, X.FINALE.count, `${dur}: the tree at the real end`);
+    assert.deepEqual(skyAt('christmas', 7, dur + 1, dur).xm.baubles, []);
+  }
+  const a = skyAt('fireworks', 7, 100, 3600), b = skyAt('fireworks', 7, 100 + CHUNK, 3600);
+  assert.notDeepEqual(a.fw.sparks, b.fw.sparks, 'each chunk has its own sky');
+});
+
+test('fireworks: star, tree, snowflake, gift and double heart are real shapes, mixed into the show and its finale, deterministic from the seed', () => {
+  assert.deepEqual(NEW_SHAPES.slice().sort(), ['gift', 'heart2', 'snowflake', 'star', 'tree']);
+  const seen = new Set();
+  for (let seed = 1; seed <= 12; seed++) for (const b of schedule(seed)) seen.add(b.shape);
+  for (const s of NEW_SHAPES) assert.ok(seen.has(s), `${s} appears in some show`);
+  for (const s of SHAPES) assert.ok(seen.has(s), `${s} still appears`);
+  assert.deepEqual(schedule(7).map((b) => b.shape), schedule(7).map((b) => b.shape));
+  assert.ok(['star', 'tree'].every((s) => schedule(7).slice(-8).some((b) => b.shape === s)), 'the finale has a star and a tree');
+  for (const shape of NEW_SHAPES) {
+    const d = directions({ shape, i: 0 }, 7);
+    assert.ok(d.length >= 40 && d.length <= 120, `${shape}: ${d.length} sparks`);
+    for (const [x, y, z] of d) { assert.ok(Math.abs(x) <= 1.25 && Math.abs(z) <= 1.25 && y === 0, `${shape} stays in its unit box`); }
+    const w = d.map((p) => p[0]), h = d.map((p) => p[2]);
+    assert.ok(Math.max(...w) - Math.min(...w) > 1 && Math.max(...h) - Math.min(...h) > 1, `${shape} has a size`);
+    assert.deepEqual(d, directions({ shape, i: 5 }, 9), `${shape} does not depend on the seed: the outline is the picture`);
+  }
 });

@@ -4,6 +4,7 @@
 // The pure parts (showAt, warningsAt, nextPollDelay, parseDevEvent) are tested; the controller takes its clock, timers and server as parameters.
 import { SHOWS, showEnd, durationOf, MIN_DUR, MAX_DUR } from './show/timeline.js';
 import { clockOffset } from './events-client.js';
+import { autoEvents } from './auto-shows.js';
 
 export const WARN_MS = 60_000;          // "in 1 minute" toast
 export const POLL_MS = 20_000;          // how often the list is asked for: a show launched from the admin page reaches everyone before it starts
@@ -49,12 +50,14 @@ export function parseDevEvent(search, nowMs) {
 
 /**
  * The controller. api: { list() } (events-client); devEvents: a fixed list instead of the server; notify(text): a toast; onShow(active): the
- * "Volver" button's visibility. tick(where) every frame, where = 'hd' (the HD-2D town: it draws the show), 'flat' or 'inside' (they only get a toast).
+ * event-mode button: onShow(inShow, running) with inShow = this screen is in the show's view and running = a show runs (it may be left with `cut` and entered again with `resume`). tick(where) every frame, where = 'hd' (the HD-2D town: it draws the show), 'flat' or 'inside' (they only get a toast).
  */
 export function createTownEvents({ api, nowMs = () => Date.now(), devEvents = null, notify = () => {}, onShow = () => {}, setTimer = setTimeout, clearTimer = clearTimeout }) {
-  let events = devEvents || [], seasons = [], offset = 0, timer = null, alive = true, active = false;
+  let events = devEvents || [], seasons = [], offset = 0, timer = null, alive = true, active = false, running = false;
   const cuts = {}, warned = new Set(), invited = new Set();
   const serverNow = () => nowMs() + offset;
+  /** The scheduled shows plus the automatic ones of the Christmas season (none while a dev shortcut is in use). */
+  const allEvents = (sn) => (devEvents ? events : events.concat(autoEvents(sn, seasons)));
 
   async function poll() {
     if (!alive || devEvents) return;
@@ -84,23 +87,32 @@ export function createTownEvents({ api, nowMs = () => Date.now(), devEvents = nu
     /** Per frame: sends the toasts that are due and returns the show to draw ({ kind, seed, ts, cut, dur }) or null. */
     tick(where = 'hd') {
       const sn = serverNow();
-      for (const w of warningsAt(events, sn, warned)) { warned.add(w.event.id); notify(w.text); }
-      const cur = showAt(events, sn, cuts);
-      const on = !!cur && cur.cut == null;
-      if (on !== active) { active = on; onShow(on); }
+      const all = allEvents(sn);
+      for (const w of warningsAt(all, sn, warned)) { warned.add(w.event.id); notify(w.text); }
+      const cur = showAt(all, sn, cuts);
+      const on = !!cur && cur.cut == null, run = where === 'hd' && !!showAt(all, sn);      // the button is only for the screen that draws the show
+      if (on !== active || run !== running) { active = on; running = run; onShow(on, run); }
       if (cur && where !== 'hd' && !invited.has(cur.event.id)) {
         invited.add(cur.event.id);
         notify(where === 'inside' ? '¡Hay un show en el cielo! Sal a la calle para verlo.' : '¡Hay un show en el cielo! Activa «Efectos» para verlo.');
       }
       return cur ? { kind: cur.event.kind, seed: cur.event.seed, ts: cur.ts, cut: cur.cut, dur: cur.dur } : null;
     },
-    /** The player's "Volver": the show winds down on this screen only. */
+    /** The player's "Volver al pueblo": the show winds down on this screen only (it keeps running for the others, and `resume` brings it back). */
     cut() {
-      const cur = showAt(events, serverNow(), cuts);
-      if (cur && cur.cut == null) { cuts[cur.event.id] = cur.ts; active = false; onShow(false); return true; }
+      const cur = showAt(allEvents(serverNow()), serverNow(), cuts);
+      if (cur && cur.cut == null) { cuts[cur.event.id] = cur.ts; active = false; onShow(false, running); return true; }
       return false;
     },
-    get events() { return events; },
+    /** "Ver show": back into the show that still runs (the camera tilts up again). */
+    resume() {
+      const sn = serverNow(), live = showAt(allEvents(sn), sn);
+      if (live && cuts[live.event.id] != null) { delete cuts[live.event.id]; return true; }
+      return false;
+    },
+    /** The event-mode button: leaves the show when in it, enters it when away. Returns true when the mode changed. */
+    toggle() { return this.cut() || this.resume(); },
+    get events() { return allEvents(serverNow()); },
     get seasons() { return seasons; },
   };
 }

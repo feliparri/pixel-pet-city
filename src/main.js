@@ -170,7 +170,7 @@ async function enter(code, { transport = mode, arrival = null, solo = false } = 
   canasta = visit ? visit.canasta : (canasta || createCanasta());       // dev only: a basket that lives for this page
   if (!visit && !devFarm) devFarm = farmMemoryFor('dev');
   window.cityDebug = () => ({ town, net, canasta });                    // handy in the console when testing with two tabs
-  town = startTown({ canvas: $('view'), stage: $('stage'), pad: touch ? { stick: $('stick'), a: $('pad-a'), b: $('pad-b') } : null, sprites, font, net, me, entrance: arrival, stars: counter, canasta, farmMemory: visit ? visit.farm : devFarm, tools: () => (shopSource && shopSource.shop ? shopSource.shop.tools : []), onStore: () => shopUi && shopUi.openStore(), missions: missionsApi, onFarm: paintFarmPrompt, onFarmDone: farmPop, onHud: (info) => hud && hud.update(info), onHdMode: () => paintFx(), onShow: (on) => { $('show-back').hidden = !on; }, onShop: () => shopUi && shopUi.openShop(), insets: stageInsets });
+  town = startTown({ canvas: $('view'), stage: $('stage'), pad: touch ? { stick: $('stick'), a: $('pad-a'), b: $('pad-b') } : null, sprites, font, net, me, entrance: arrival, stars: counter, canasta, farmMemory: visit ? visit.farm : devFarm, tools: () => (shopSource && shopSource.shop ? shopSource.shop.tools : []), onStore: () => shopUi && shopUi.openStore(), missions: missionsApi, onFarm: paintFarmPrompt, onFarmDone: farmPop, onHud: (info) => hud && hud.update(info), onHdMode: () => paintFx(), onShow: (on, running) => { const b = $('show-back'); b.hidden = !running; b.textContent = on ? 'Volver al pueblo' : 'Ver show'; b.setAttribute('aria-pressed', String(on)); }, onShop: () => shopUi && shopUi.openShop(), insets: stageInsets });
   if (!town.hd.locked) town.hd.set(hdPref);
   paintFx();
   setStatus('connected');
@@ -407,7 +407,7 @@ async function boot() {
   fillItemSelects();
   buildEmotes();
   setupPops();
-  $('show-back').addEventListener('click', () => { if (town) town.events.cut(); });
+  $('show-back').addEventListener('click', () => { if (town) town.events.toggle(); });
   $('fx-toggle').addEventListener('click', () => { if (!town || town.hd.locked) return; hdPref = !town.hd.on; store.set('city.hd2d', hdPref ? '1' : '0'); town.hd.set(hdPref, true); paintFx(); });
   shopUi = createShopUi($, {
     sprites, source: () => shopSource,

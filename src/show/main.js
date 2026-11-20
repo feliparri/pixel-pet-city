@@ -1,7 +1,7 @@
 // Sky show demo page (show.html): the HD-2D plaza at night, and when a show starts the camera tilts up until a horizon band of night sky
 // appears at the top of the screen. The show itself is a pure function of (seed, t) (see fireworks.js, meteors.js, drones.js).
 //   ?show=fireworks|meteors|drones|halloween|christmas   start a show      &t=3.2   show time in seconds (with still=1: that exact frame)
-//   &seed=5   the show's seed       &dur=90   the show's length in seconds (20 to 600; default: the kind's own)          &still=1   one deterministic frame, then stop (document.title becomes "ready")
+//   &seed=5   the show's seed       &dur=90   the show's length in seconds (20 to 86400; default: the kind's own)          &still=1   one deterministic frame, then stop (document.title becomes "ready")
 //   &bench=1  time 120 frames       &res=0.75  scales the internal resolution
 import { TILE } from '../map.js';
 import { drawPet, loadSprites } from '../sprites.js';

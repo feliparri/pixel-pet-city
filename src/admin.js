@@ -2,7 +2,7 @@
 //   ?mock=1   development only: a stand-in server in the page (the key is "prueba"), to try and photograph the page
 import config from '../config.js';
 import { createEventsApi, adminErrorText } from './events-client.js';
-import { zonedToMs, msToZoned, labelZoned, untilText, zoneOffset, parseDuration, durationText } from './admin-time.js';
+import { zonedToMs, msToZoned, labelZoned, untilText, zoneOffset, rangeSecs, durationText } from './admin-time.js';
 import { SHOWS } from './show/timeline.js';
 import { LAUNCH_NOW_MS } from './town-events.js';
 import { SEASONS, SEASON_KEYS, seasonStatus, defaultWindow, launchWindow } from './seasons.js';
@@ -20,12 +20,20 @@ const say = (text, kind = '') => { const m = $('msg'); m.textContent = text || '
 const randomSeed = () => { const a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] >>> 1; };
 const serverNow = () => Date.now() + offset;
 
-/** The length chosen in the form: { secs } (null: the show's own) or { error }. */
-const chosenDuration = () => parseDuration($('dur').value, $('dur-min').value, $('dur-sec').value);
+/** The end typed in the form (UTC ms), NaN when there is none; an end with only one of its two fields counts as typed and fails the range check. */
+const chosenEnd = () => {
+  const d = $('end-date').value, t = $('end-time').value;
+  return !d && !t ? NaN : zonedToMs(d, t) || NaN;
+};
+/** The length of a show that starts at `startMs`, from the range typed in the form: { secs } (null: the show's own) or { error }. */
+const chosenDuration = (startMs) => {
+  const end = chosenEnd();
+  if (Number.isNaN(end) && ($('end-date').value || $('end-time').value)) return { error: 'bad_duration' };
+  return rangeSecs(startMs, end);
+};
 
 function paintLink() {
-  const kind = $('kind').value, seed = Number($('seed').value), d = chosenDuration();
-  $('dur-custom').hidden = $('dur').value !== 'custom';
+  const kind = $('kind').value, seed = Number($('seed').value), d = chosenDuration(zonedToMs($('date').value, $('time').value));
   $('try').href = `show.html?show=${encodeURIComponent(kind)}&seed=${Number.isInteger(seed) && seed >= 0 ? seed : 7}${d.secs ? `&dur=${d.secs}` : ''}`;
 }
 
@@ -147,7 +155,7 @@ async function schedule(ms) {
   const seed = Number($('seed').value);
   if (!Number.isInteger(seed) || seed < 0 || seed > 2147483647) { say(adminErrorText('bad_seed'), 'bad'); return; }
   if (ms <= serverNow()) { say(adminErrorText('start_in_the_past'), 'bad'); return; }
-  const d = chosenDuration();
+  const d = chosenDuration(ms);
   if (d.error) { say(adminErrorText(d.error), 'bad'); return; }
   $('add').disabled = $('now').disabled = true;
   const r = await api.save({ kind: $('kind').value, seed, start_at: new Date(ms).toISOString(), ...(d.secs ? { duration_s: d.secs } : {}) }, key);
@@ -182,9 +190,10 @@ async function main() {
   else api = createEventsApi({ base });
   const soon = msToZoned(Date.now() + 15 * 60000);
   $('date').value = soon.date; $('time').value = soon.time;
+  // the end stays empty (the show's own length) until the owner types one
   $('seed').value = String(randomSeed());
   $('zone-note').textContent = `Ahora en Chile: ${msToZoned(Date.now()).time} (UTC${zoneOffset(Date.now()) >= 0 ? '+' : '−'}${Math.abs(zoneOffset(Date.now()) / 60)}).`;
-  for (const id of ['kind', 'seed', 'dur', 'dur-min', 'dur-sec']) $(id).addEventListener('input', paintLink);
+  for (const id of ['kind', 'seed', 'date', 'time', 'end-date', 'end-time']) $(id).addEventListener('input', paintLink);
   $('reseed').addEventListener('click', () => { $('seed').value = String(randomSeed()); paintLink(); });
   $('new').addEventListener('submit', add);
   $('now').addEventListener('click', launchNow);

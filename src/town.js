@@ -499,8 +499,8 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
 
   return {
     onNetEvent,
-    /** The scheduled sky show: "Volver" winds it down on this screen only. */
-    events: { cut: () => events.cut() },
+    /** The scheduled sky show: "Volver al pueblo" winds it down on this screen only and "Ver show" brings it back. */
+    events: { cut: () => events.cut(), resume: () => events.resume(), toggle: () => events.toggle() },
     /** The HD-2D view: is it on, switch it (the page remembers the choice), and is it locked off (?flat=1). */
     hd: { get on() { return renderer.hd; }, set: (on, manual) => renderer.setHd(on, manual), stats: () => renderer.stats(), get locked() { return renderer.flat; } },
     /** The pets of this room for the radar (this pet first): [{ n, sp, st, s, a }]. */

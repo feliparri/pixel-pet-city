@@ -13,6 +13,7 @@ const cache = new Map();
 export function meteorSchedule(seed, dur = DURATION) {
   const key = `${seed}/${dur}`;
   if (cache.has(key)) return cache.get(key);
+  if (cache.size >= 8) cache.clear();                                  // long shows build their sky in chunks (layers.js): keep the memory bounded
   const list = [], trickle = Math.max(3, Math.round((16 * (dur - 16)) / 12)), showerAt = 15 + (dur - DURATION);
   for (let i = 0; i < trickle + 18; i++) {
     const shower = i >= trickle, k = shower ? i - trickle : i;

@@ -15,22 +15,25 @@ const TREE = [
   '...XXXXXXXXX...', '..XXXXXXXXXXX..', '....XXXXXXX....', '...XXXXXXXXX...', '..XXXXXXXXXXX..', '.XXXXXXXXXXXXX.', 'XXXXXXXXXXXXXXX', '......XXX......', '......XXX......',
 ];
 export const TREE_PTS = resample(gridPoints(TREE), FINALE.count);          // [-1, 1] x [-1, 1] (x right, z up), one light per point
-export const SLEIGHS = 4, SPARKLES = 28, COLORS = 5;                      // sleighs at the default length: a longer show has more (see sleighsOf)
-export const sleighsOf = (dur = DURATION) => Math.max(2, Math.round(SLEIGHS + (dur - DURATION) / 6));
-const SPACING = 5.8;
-
+export const SPARKLES = 28, COLORS = 5;
+// Santa crosses the sky ONE AT A TIME: every pass lasts at most PASS_MAX seconds, a new one starts SPACING seconds after the last started, and
+// SPACING is longer than PASS_MAX plus the start jitter, so two sleighs are never on screen together (they used to overlap: 9-11 s passes, 5.8 s apart).
+export const SPACING = 7.8, PASS_MIN = 6.4, PASS_JITTER = 0.6, START_JITTER = 0.6, FIRST = 3.5;
+export const PASS_MAX = PASS_MIN + PASS_JITTER;
+/** How many sleigh passes fit before the finale of a show of `dur` seconds (at least 1; the default show has 3). */
+export const sleighsOf = (dur = DURATION) => Math.max(1, Math.floor((finaleOf(dur).at - 1 - PASS_MAX - START_JITTER - FIRST) / SPACING) + 1);
 /** Where the star of Bethlehem is at time t: { u, v, a (0..1 brightness), k (a slow pulse, 0.85..1) }, or null before it appears and after it has set. */
 export function starAt(t, dur = DURATION) {
   const a = smooth(t / STAR.fadeIn) * (1 - smooth((t - (dur - STAR.fadeOut)) / STAR.fadeOut));
   return a > 0.001 ? { u: STAR.u, v: lerp(STAR.v0, STAR.v1, smooth((t - STAR.from) / (STAR.to - STAR.from))), a, k: 0.925 + 0.075 * Math.sin(t * 3.1) } : null;
 }
 
-/** The sleighs of a seed: { t0, dur, dir (1 flies to the right), v (height), hero (flies across the star) }. */
+/** The sleighs of a seed: { t0, dur, dir (1 flies to the right), v (height), hero (flies across the star) }, in time order and never overlapping. */
 export function sleighSchedule(seed, dur = DURATION) {
   const flip = hash(seed, 99) < 0.5 ? 1 : -1;
   return Array.from({ length: sleighsOf(dur) }, (_, i) => {
     const hero = i % 4 === 1;
-    return { t0: 3.5 + i * SPACING + hash(seed, i, 1) * 0.8, dur: 9 + hash(seed, i, 2) * 2, dir: i % 2 ? -flip : flip, hero, v: hero ? STAR.v1 + 0.08 + (hash(seed, i, 3) - 0.5) * 0.06 : i % 4 === 0 ? 0.22 + hash(seed, i, 3) * 0.1 : 0.42 + hash(seed, i, 3) * 0.3 };
+    return { t0: FIRST + i * SPACING + hash(seed, i, 1) * START_JITTER, dur: PASS_MIN + hash(seed, i, 2) * PASS_JITTER, dir: i % 2 ? -flip : flip, hero, v: hero ? STAR.v1 + 0.08 + (hash(seed, i, 3) - 0.5) * 0.06 : i % 4 === 0 ? 0.22 + hash(seed, i, 3) * 0.1 : 0.42 + hash(seed, i, 3) * 0.3 };
   });
 }
 

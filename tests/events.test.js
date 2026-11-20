@@ -163,6 +163,17 @@ test('the server and the town agree on the bounds of a show\'s length', () => {
   const sql = readFileSync(new URL('../supabase/migrations/20261030120000_town_events_duration.sql', import.meta.url), 'utf8');
   assert.match(sql, /alter table public\.town_events add column duration_s integer check \(duration_s between 20 and 600\)/);
   assert.doesNotMatch(sql, /not null/i, 'nullable: the events saved before it keep the kind\'s own length');
+  const wide = readFileSync(new URL('../supabase/migrations/20261120120000_town_events_duration_24h.sql', import.meta.url), 'utf8');
+  assert.match(wide, /check \(duration_s between 20 and 86400\)/);
+  assert.equal(MAX_DUR, 24 * 3600);
+});
+
+test('event-save: a show of 2 hours, of 24 hours, is stored and listed with its length; a running long show stays on the list', async () => {
+  const w = world({ adminKey: KEY });
+  for (const d of [7200, 86400]) assert.equal((await save(w, { seed: d, duration_s: d, start_at: at(w, 600 + d) })).body.event.duration_ms, d * 1000);
+  await save(w, { seed: 3, duration_s: 7200, start_at: at(w, 30) });
+  w.now += 30 + 7000;
+  assert.ok((await w.web().call('events', {})).body.events.some((e) => e.seed === 3), 'still running after 7000 s');
 });
 
 test('event-save: a length (20 s to 10 min) is stored and listed as duration_ms; left out it is the kind\'s and nothing is stored', async () => {
@@ -182,7 +193,7 @@ test('event-save: a length (20 s to 10 min) is stored and listed as duration_ms;
 
 test('event-save refuses a length out of the bounds or not a whole number of seconds', async () => {
   const w = world({ adminKey: KEY });
-  for (const d of [19, 0, -30, 601, 3600, 30.5, '60', true, [60]]) assert.equal((await save(w, { duration_s: d })).body.error, 'bad_duration', JSON.stringify(d));
+  for (const d of [19, 0, -30, 86401, 100000, 30.5, '60', true, [60]]) assert.equal((await save(w, { duration_s: d })).body.error, 'bad_duration', JSON.stringify(d));
   assert.equal(w.db.townEvents.size, 0);
 });
 
@@ -199,7 +210,7 @@ test('a long show is still listed while it runs, and a short one drops off the l
 test('a stored row with a length out of the bounds (edited by hand) falls back to the kind\'s', async () => {
   const w = world({ adminKey: KEY });
   const id = (await save(w, { seed: 1 })).body.event.id;
-  for (const d of [5, 9999, 12.5, 'x']) { w.db.townEvents.get(id).duration_s = d; assert.equal((await w.web().call('events', {})).body.events[0].duration_ms, 38000, String(d)); }
+  for (const d of [5, 99999, 12.5, 'x']) { w.db.townEvents.get(id).duration_s = d; assert.equal((await w.web().call('events', {})).body.events[0].duration_ms, 38000, String(d)); }
 });
 
 // ---- seasons ----------------------------------------------------------------------------------------------------------------------

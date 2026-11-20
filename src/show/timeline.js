@@ -10,7 +10,7 @@ export const SHOWS = {
   halloween: { dur: 40, label: 'Noche de Halloween' },
   christmas: { dur: 40, label: 'Noche de Navidad' },
 };
-export const MIN_DUR = 20, MAX_DUR = 600;                       // the bounds, in seconds, of a scheduled show's length (the server checks the same)
+export const MIN_DUR = 20, MAX_DUR = 86400;                     // the bounds, in seconds, of a scheduled show's length: 20 s to 24 h (the server checks the same; longer than 10 min plays in chunks, see layers.js)
 export const RISE = 2.6, FALL = 2.4;
 
 /** The length in seconds of a scheduled event: the `duration_ms` the server sent when it is within the bounds, else the kind's own length. */

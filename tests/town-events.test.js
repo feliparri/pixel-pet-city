@@ -153,7 +153,7 @@ test('a show runs for the length it was saved with: showAt, the cut and the dev 
   assert.equal(parseDevEvent('?dev=1&event=fireworks:5:42', T0)[0].duration_ms, 38_000);
   assert.equal(parseDevEvent('?dev=1&event=fireworks:5::90', T0)[0].seed, 7);
   assert.deepEqual(parseDevEvent('?dev=1&event=fireworks:5:42:10', T0), []);
-  assert.deepEqual(parseDevEvent('?dev=1&event=fireworks:5:42:601', T0), []);
+  assert.deepEqual(parseDevEvent('?dev=1&event=fireworks:5:42:86401', T0), []);
 });
 
 test('the controller hands the renderer the length of the show that runs', async () => {
@@ -173,4 +173,29 @@ test('the controller keeps the server\'s season overrides; a failed ask leaves t
   assert.deepEqual(good.seasons, rows);
   assert.deepEqual(bad.seasons, []);
   assert.deepEqual(old.seasons, [], 'a server that does not send them yet');
+});
+
+test('the event-mode button: leave the show, come back to it while it still runs, and only on the screen that draws it', async () => {
+  const seen = [];
+  const e = { ...ev('l', 'christmas', 0), duration_ms: 7_200_000 };
+  let now = T0 + 100_000;
+  const api = { list: async () => ({ ok: true, status: 200, body: { now, events: [e] } }) };
+  const ctl = createTownEvents({ api, nowMs: () => now, onShow: (on, running) => seen.push([on, running]), setTimer: () => 1, clearTimer: () => {} });
+  ctl.start(); await new Promise((x) => setImmediate(x));
+  assert.ok(ctl.tick('hd'));
+  assert.deepEqual(seen.at(-1), [true, true], 'in the show: the button reads "Volver al pueblo"');
+  assert.equal(ctl.toggle(), true);                                                          // leave
+  assert.deepEqual(seen.at(-1), [false, true], 'away but the show runs: the button reads "Ver show"');
+  assert.equal(ctl.tick('hd').cut != null, true);
+  now += (FALL + 1) * 1000;
+  assert.equal(ctl.tick('hd'), null, 'the town is back to normal');
+  assert.deepEqual(seen.at(-1), [false, true], 'and the button stays');
+  assert.equal(ctl.toggle(), true);                                                          // enter again, ts keeps counting from the shared clock
+  const back = ctl.tick('hd');
+  assert.deepEqual([back.cut, Math.round(back.ts)], [null, Math.round(100 + FALL + 1)]);
+  assert.deepEqual(seen.at(-1), [true, true]);
+  ctl.tick('flat'); assert.deepEqual(seen.at(-1), [true, false], 'a screen that does not draw the show has no button');
+  now = T0 + 7_300_000; ctl.tick('hd'); assert.deepEqual(seen.at(-1), [false, false], 'show over: no button');
+  assert.equal(ctl.toggle(), false);
+  ctl.stop();
 });
