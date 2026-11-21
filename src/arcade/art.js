@@ -234,3 +234,11 @@ export const skateIcon = memo(() => mk(46, 50, (g) => {
   for (let x = 0; x < 42; x++) { const kick = x < 6 ? 6 - x : x > 35 ? x - 35 : 0, y = 28 - Math.round(kick * 0.9); R(g, INK, 2 + x, y, 1, 7); R(g, '#1f6f78', 2 + x, y + 1, 1, 4); R(g, '#4ec9c0', 2 + x, y + 1, 1, 1); R(g, '#154a58', 2 + x, y + 4, 1, 1); }
   for (const x of [14, 22, 30]) R(g, '#ffcb6b', x, 31, 3, 1);
 }));
+
+/** A rail switch stand: a short post with a lever box and a lamp, 14 x 26. */
+export const switchStand = memo(() => mk(14, 26, (g) => {
+  R(g, INK, 6, 8, 3, 18); R(g, '#52597b', 7, 9, 1, 17);
+  R(g, INK, 2, 14, 11, 8); R(g, '#7b7d8c', 3, 15, 9, 6); R(g, '#ced7de', 3, 15, 9, 1); R(g, '#52597b', 3, 20, 9, 1);
+  R(g, INK, 1, 2, 12, 9); R(g, '#394963', 2, 3, 10, 7); R(g, '#5ad07a', 4, 4, 6, 5); R(g, '#c8ffd0', 4, 4, 2, 2);
+  R(g, INK, 0, 24, 14, 2);
+}));

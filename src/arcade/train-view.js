@@ -3,7 +3,7 @@
 // and a clock. Work happens on the logical canvas (src/arcade/lanes.js logicalSize), one logical pixel is a whole number of screen pixels.
 import { createProjection } from './lanes.js';
 import { roadside, hash, POLE_GAP, POST_GAP } from './scenery.js';
-import { TRAIN } from './train.js';
+import { TRAIN, nodeLat, sectionAt, upcomingFork } from './train.js';
 import { backCanvas, RUN_SEQ } from './back-sprites.js';
 import * as art from './art.js';
 
@@ -106,7 +106,14 @@ export function createTrainView({ w, h }) {
     g.fillStyle = '#2f6b3f'; g.fillRect(0, hy - 3, bw, 5);
   }
 
-  const cam = (s) => s.x * 0.5;
+  const cam = (s) => s.x;                                   // the camera rides the cart's track: it is always in the middle
+  /** The lateral extent of all tracks at distance z: { min, max } (absolute lanes). */
+  function extAt(s, z) {
+    const sec = s.sections[sectionAt(s, z)];
+    let min = 1e9, max = -1e9;
+    for (const n of sec.nodes) { const l = nodeLat(sec, n, z); if (l < min) min = l; if (l > max) max = l; }
+    return { min, max };
+  }
 
   function blit(ctx, cv, lane, z, c, { dy = 0, alpha = 1 } = {}) {
     const p = proj.project(lane, z, c), sc = p.s * U;
@@ -137,43 +144,48 @@ export function createTrainView({ w, h }) {
 
   // ---- the ground, a row at a time -------------------------------------------------------------------------------------------------------------------
   function ground(ctx, s) {
-    const c = cam(s), dist = s.dist;
+    const c = cam(s), dist = s.dist, secs = s.sections;
+    let si = secs.length - 1;
     for (let y = hy + 1; y < h; y++) {
       const r = rows[y], k = (y - hy) / span;
       const z = FOCAL * (span / (y - hy) - 1), dz = (FOCAL * span) / ((y - hy) * (y - hy));
       const wz = z + dist;
+      while (si > 0 && secs[si].z0 > wz) si--;
+      const sec = secs[si];
       const stripe = dz > STRIPE * 0.7 ? 0.5 : Math.floor(wz / STRIPE) & 1;
       ctx.fillStyle = stripe === 0.5 ? r.gAvg : stripe ? r.gB : r.gA;
       ctx.fillRect(0, y, w, 1);
-      const u = proj.laneW * k, cx0 = w / 2 - c * proj.laneW * k;
+      const u = proj.laneW * k, mid = w / 2;
       if (dz < 6) {                                         // grass tufts
         const b = Math.floor(wz / 5);
         for (let i = 0; i < 5; i++) { const hx = Math.floor(hash(b, i + 3) * w); ctx.fillStyle = hash(b, i + 40) < 0.7 ? r.gD : r.gL; ctx.fillRect(hx, y, k > 0.6 ? 2 : 1, 1); }
       }
-      // the dirt shoulder and the ballast bed under the three tracks
-      const bx0 = Math.round(cx0 - 2.0 * u), bx1 = Math.round(cx0 + 2.0 * u), sw = Math.max(1, Math.round(0.28 * u)), ew = Math.max(1, Math.round(0.07 * u));
-      ctx.fillStyle = r.dirt; ctx.fillRect(bx0 - sw, y, bx1 - bx0 + 2 * sw, 1);
-      ctx.fillStyle = r.dirtD; ctx.fillRect(bx0 - sw, y, ew, 1); ctx.fillRect(bx1 + sw - ew, y, ew, 1);
-      ctx.fillStyle = Math.floor(wz / 5) & 1 ? r.bal : r.balD;
-      ctx.fillRect(bx0, y, bx1 - bx0, 1);
+      const lcs = sec.nodes.map((n) => mid + (nodeLat(sec, n, wz) - c) * u);
+      const bedHalf = 0.66 * u, sw = Math.max(1, Math.round(0.24 * u)), ew = Math.max(1, Math.round(0.07 * u));
+      for (const lc of lcs) {                               // the dirt shoulder, then the ballast bed, under each track
+        ctx.fillStyle = r.dirt; ctx.fillRect(Math.round(lc - bedHalf - sw), y, Math.round(2 * (bedHalf + sw)), 1);
+      }
+      for (const lc of lcs) { ctx.fillStyle = r.dirtD; ctx.fillRect(Math.round(lc - bedHalf - sw), y, ew, 1); ctx.fillRect(Math.round(lc + bedHalf + sw) - ew, y, ew, 1); }
+      for (const lc of lcs) { ctx.fillStyle = Math.floor(wz / 5) & 1 ? r.bal : r.balD; ctx.fillRect(Math.round(lc - bedHalf), y, Math.round(2 * bedHalf), 1); }
       if (dz < 5) {
         const b = Math.floor(wz / 2.5);
-        for (let i = 0; i < 4 + Math.round(k * 5); i++) { const hx = bx0 + Math.floor(hash(b, i + 70) * (bx1 - bx0)); ctx.fillStyle = hash(b, i + 90) < 0.5 ? r.balK : r.balL; ctx.fillRect(hx, y, 1, 1); }
+        for (const lc of lcs) for (let i = 0; i < 2 + Math.round(k * 3); i++) { const hx = Math.round(lc - bedHalf + hash(b + Math.round(lc), i + 70) * 2 * bedHalf); ctx.fillStyle = hash(b, i + 90) < 0.5 ? r.balK : r.balL; ctx.fillRect(hx, y, 1, 1); }
       }
       // sleepers and rails of each track
       const ph = (((wz % SLEEPER_GAP) + SLEEPER_GAP) % SLEEPER_GAP) / SLEEPER_GAP, onSleeper = ph < 0.44;
       const sl = dz < SLEEPER_GAP * 0.6;
       const topEdge = onSleeper && ph + dz / SLEEPER_GAP >= 0.44, botEdge = onSleeper && ph < dz / SLEEPER_GAP;
       const rw = Math.max(1, Math.min(4, Math.round(u * 0.058)));
-      for (const L of [-1, 0, 1]) {
-        const lc = cx0 + L * u, sh = 0.46 * u;
+      let ni = 0;
+      for (const lc of lcs) {
+        const sh = 0.46 * u, L = ni++;
         if (sl) {
           if (onSleeper) {
             ctx.fillStyle = topEdge ? r.woodHi : botEdge ? r.woodLo : r.wood;
             ctx.fillRect(Math.round(lc - sh), y, Math.round(2 * sh), 1);
             if (!topEdge && !botEdge && hash(Math.floor(wz / SLEEPER_GAP) * 3 + L, 7) < 0.6) { ctx.fillStyle = r.woodSpeck; ctx.fillRect(Math.round(lc - sh + hash(Math.floor(wz / SLEEPER_GAP), L + 9) * sh * 1.8), y, 2, 1); }
             if (k > 0.5 && !topEdge) { ctx.fillStyle = r.woodLo; ctx.fillRect(Math.round(lc - sh), y, 1, 1); ctx.fillRect(Math.round(lc + sh) - 1, y, 1, 1); }
-          } else if (k > 0.4) { ctx.fillStyle = r.shadow; ctx.globalAlpha = 0.18; ctx.fillRect(Math.round(lc - sh), y, Math.round(2 * sh), 1); ctx.globalAlpha = 1; }
+          }
         } else { ctx.fillStyle = r.woodAvg; ctx.fillRect(Math.round(lc - sh), y, Math.round(2 * sh), 1); }
         for (const side of [-1, 1]) {                       // the two rails
           const rx = Math.round(lc + side * 0.3 * u - rw / 2);
@@ -191,7 +203,7 @@ export function createTrainView({ w, h }) {
     for (const o of items) {
       const z = o.z - s.dist;
       if (z < -14 || z > FAR) continue;
-      const lane = o.side * o.lane;
+      const ext = extAt(s, o.z), off = o.lane - 1.0, lane = o.side > 0 ? ext.max + off : ext.min - off;      // roadside things hug the outermost track
       list.push({ z, draw: (ctx) => {
         switch (o.kind) {
           case 'tree': blit(ctx, art.tree(String(o.variant)), lane, z, c); break;
@@ -222,10 +234,32 @@ export function createTrainView({ w, h }) {
         } });
       }
     }
-    for (const o of s.objs) {
-      if (o.z > FAR || o.z < -14) continue;
-      if (o.kind === 'coin') list.push({ z: o.z, draw: (ctx) => blit(ctx, art.coin(String(Math.floor(t / 110 + o.id) % 4)), o.lane, o.z, c, { dy: 7 }) });
-      else list.push({ z: o.z, draw: (ctx) => train(ctx, o, c) });
+    const latAt = (node, zAbs) => { const sec = s.sections[sectionAt(s, zAbs)], n = sec.nodes.find((q) => q.id === node); return n ? nodeLat(sec, n, zAbs) : null; };
+    for (const o of s.coinList) {
+      const z = o.z - s.dist, lat = latAt(o.node, o.z);
+      if (z > FAR || z < -14 || lat === null) continue;
+      list.push({ z, draw: (ctx) => blit(ctx, art.coin(String(Math.floor(t / 110 + o.id) % 4)), lat, z, c, { dy: 7 }) });
+    }
+    for (const o of s.trains) {
+      const z = o.z - s.dist, lat = latAt(o.node, o.z + o.len * 0.5);
+      if (z > FAR || z + o.len < -14 || lat === null) continue;
+      list.push({ z, draw: (ctx) => train(ctx, { ...o, lane: lat, z }, c) });
+    }
+    // the switch ahead: a stand beside the rails and a plain arrow board over each branch (the one the cart will take is lit and bobs)
+    const f = upcomingFork(s);
+    for (const sec of s.sections) {
+      if (sec.kind !== 'fork') continue;
+      const z = sec.z0 - s.dist;
+      if (z < 0 || z > FAR) continue;
+      const isNext = f && f.sec === sec, ch = sec.nodes.length === 2 ? sec.nodes : sec.nodes.filter((n) => n.parents.length && sec.nodes.filter((q) => q.parents[0] === n.parents[0]).length === 2);
+      const base = nodeLat(sec, ch[0], sec.z0), side = s.intent || s.lastSide;
+      list.push({ z: z - 6, draw: (ctx) => {
+        blit(ctx, art.switchStand(), base + 0.78, z, c);
+        for (const dir of [-1, 1]) {
+          const lit = isNext && dir === side, bob = lit ? Math.round(Math.sin(t / 120) * 1.5) : 0;
+          blit(ctx, art.arrowSign(dir < 0 ? 'left' : 'right'), base + dir * 1.15, z - 3, c, { dy: 16 + bob, alpha: isNext ? (lit ? 1 : 0.5) : 0.85 });
+        }
+      } });
     }
     return list.sort((a, b) => b.z - a.z);
   }
@@ -278,8 +312,8 @@ export function createTrainView({ w, h }) {
   // ---- the cart and the pet --------------------------------------------------------------------------------------------------------------------------
   function player(ctx, s, t, look) {
     if (s.invuln > 0 && Math.floor(s.invuln / 90) % 2 === 1 && !s.over) return;
-    const c = cam(s), px = Math.round(proj.x(s.x, 0, c)), seq = RUN_SEQ[Math.floor(t / 120) % RUN_SEQ.length];
-    const rumble = Math.round(Math.sin((t / 1000) * 38) * 0.5 + 0.5), lean = s.slide ? Math.sign(s.slide.to - s.x) || 0 : 0;
+    const c = cam(s), px = Math.round(w / 2), seq = RUN_SEQ[Math.floor(t / 120) % RUN_SEQ.length];
+    const rumble = Math.round(Math.sin((t / 1000) * 38) * 0.5 + 0.5), lean = (() => { const sec = s.sections[sectionAt(s, s.dist + 3)], n = sec.nodes.find((q) => q.id === s.node) || sec.nodes[0], d = nodeLat(sec, n, s.dist + 3) - s.x; return Math.abs(d) > 0.01 ? Math.sign(d) : 0; })();
     const base = gy + 1;
     ctx.fillStyle = '#000'; ctx.globalAlpha = 0.26;
     ctx.fillRect(px - 17, base - 2, 34, 2); ctx.fillRect(px - 13, base, 26, 2); ctx.globalAlpha = 1;
@@ -289,7 +323,7 @@ export function createTrainView({ w, h }) {
   }
 
   // ---- the whole picture --------------------------------------------------------------------------------------------------------------------------------
-  function draw(ctx, s, t, look, { hints = 0 } = {}) {
+  function draw(ctx, s, t, look) {
     ctx.imageSmoothingEnabled = false;
     ctx.save();
     if (s.flash > TRAIN.FLASH_MS * 0.4) ctx.translate(Math.round((hash(Math.floor(t / 30), 1) - 0.5) * 5), Math.round((hash(Math.floor(t / 30), 2) - 0.5) * 5));
@@ -304,11 +338,6 @@ export function createTrainView({ w, h }) {
     for (const d of drawables(s, t)) d.draw(ctx);
     ctx.globalAlpha = 1;
     player(ctx, s, t, look);
-    if (hints > 0.02) {                                        // the two left / right signs
-      ctx.globalAlpha = Math.min(1, hints);
-      ctx.drawImage(art.arrowSign('left'), 8, Math.round(h * 0.4)); ctx.drawImage(art.arrowSign('right'), w - 48, Math.round(h * 0.4));
-      ctx.globalAlpha = 1;
-    }
     ctx.restore();
     if (s.flash > 0) {                                        // the crash: a white flash that settles into a red edge
       const f = s.flash / TRAIN.FLASH_MS;

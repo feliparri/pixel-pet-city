@@ -250,7 +250,7 @@ function devArcade() {
   const q = new URLSearchParams(location.search);
   if (q.get('dev') !== '1' || !town) return;
   if (q.has('wear') && sprites.catalogue[q.get('wear')]) { town.wear(q.get('wear')); paintArcade(); }
-  if (q.has('arcade')) { const a = openArcade(q.has('seed') ? { seed: Number(q.get('seed')) } : {}); if (a) a.dev.go(q.get('arcade'), Number(q.get('at')) || 0, q.get('bot') !== '0', q.get('game') === 'skate' ? 'skate' : 'train', q.get('jump') === '1'); }
+  if (q.has('arcade')) { const a = openArcade(q.has('seed') ? { seed: Number(q.get('seed')) } : {}); if (a) a.dev.go(q.get('arcade'), Number(q.get('at')) || 0, q.get('bot') !== '0', q.get('game') === 'skate' ? 'skate' : 'train', q.get('shot') || (q.get('jump') === '1' ? 'jump' : '')); }
 }
 
 /** The "Efectos" switch (the HD-2D view): the choice is remembered in this browser; ?flat=1 locks it off. */

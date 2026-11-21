@@ -1,33 +1,34 @@
-// "Tren": the rules of the rail-cart game, with no drawing and no clock of its own. The pet's cart rides one of three parallel tracks and trains come down
-// the tracks towards it; the player slides left or right to a free track and picks up coins. Distances are in world units along the track (z = 0 is the cart,
-// larger is further away), speeds in units per second. A run is a pure function of its seed: the spawner draws only from a seeded generator and from the
-// run's own (fixed-step) time, so the same seed gives the same trains on every screen and in the tests.
-import { clampLane } from './lanes.js';
-
+// "Tren": the rules of the rail-cart game, with no drawing and no clock of its own. The cart rides ONE track. Every so often the track forks at a rail switch into
+// two branches and the player must pick left or right before the cart reaches the switch (a tap or arrow key sets the intent; with no input the cart takes the side
+// of its last choice, the left at the start). A train waits far ahead on one of the branches, its headlight visible early, so the player reads ahead which branch is
+// free. Sometimes the train's branch forks again before the train (an escape fork) and a wrong choice can still be saved. Branches merge back later. There is no free
+// lane switching. Distances are world units along the track (absolute z; the cart is at s.dist), speeds in units per second. A run is a function of its seed.
 export const TRAIN = {
   LIVES: 3,
-  SLIDE_MS: 170,                 // a lane change takes this long (eased)
   INVULN_MS: 1600,               // after a crash the cart is a ghost for this long
   FLASH_MS: 380,                 // the crash flash
   V0: 34, VMAX: 84, ACC: 0.8,    // start speed, top speed, units per second gained per second
-  SPAWN_Z: 230,                  // trains appear at this distance (the scene fades them in)
-  BUFFER: 70,                    // rows are generated this far beyond SPAWN_Z, so the player never sees a row being made
-  FIRST_Z: 140,                  // the first row's distance: a few seconds of free track at the start
+  SPAWN_Z: 230,                  // how far ahead the player can see (trains and branches fade in there)
+  BUFFER: 100,                   // layout is generated this far beyond SPAWN_Z
+  FIRST_Z: 150,                  // the first switch (no train on it: a free choice to learn the controls)
   DEPTH: 2.4,                    // the cart's own length along the track
-  HIT_X: 0.6,                    // a train hits when the cart is closer than this many lanes to its track
-  COIN_X: 0.55,
-  LEN_MIN: 24, LEN_MAX: 44,      // train lengths
-  GAP_EASY: 1.7, GAP_HARD: 0.8,  // seconds of free track between the end of one row and the next, at the speed the cart will have by then
-  MOVE_S: 0.45,                  // what the generator assumes it takes to change by one lane: the slide plus a thumb's reaction
+  TL: 46,                        // length of a fork's / merge's transition: the rails part (or join) over this distance
+  BR: 1.5,                       // how far a branch ends up from its parent, in lanes
+  LEN_MIN: 26, LEN_MAX: 42,      // train lengths
+  OFF_MIN: 18, OFF_MAX: 40,      // a train starts this far past the end of its fork's transition (close behind the switch: it is readable from the start)
+  ESC_GAP: 34, ESC_JITTER: 18,   // an escape fork comes this far past the first fork's transition
+  GAP_EASY: 1.8, GAP_HARD: 1.05, // seconds of plain track after a train, and between episodes, at the speed the cart will have by then
   RAMP_S: 70,                    // seconds until the run is as hard as it gets
-  SCORE_DIV: 4,                  // one score point per this many units travelled
-  COIN_POINTS: 5,
-  COIN_GAP: 7,                   // coins on a line are this far apart
-  LOOK_S: 1.5,                   // how far ahead (seconds) the demo bot looks
+  P_ESC_EASY: 0.65, P_ESC_HARD: 0.15,   // the chance that a train's branch has an escape fork, falling with difficulty
+  P_FREE: 0.1,                   // forks with no train at all (just a choice of coins)
+  COIN_GAP: 7, COIN_X: 3,        // coins on a line are this far apart; a coin counts when the cart is within COIN_X units
+  SCORE_DIV: 4, COIN_POINTS: 5,
+  READ_S: 1.4,                   // the layout guarantees at least this many seconds between seeing a train and reaching its switch (at top speed)
 };
 
-const ease = (p) => p * p * (3 - 2 * p);                 // smoothstep: the slide starts and ends softly
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const smooth = (t) => t * t * (3 - 2 * t);
 
 /** mulberry32: a small seeded generator. next(s) advances s.rng and returns [0, 1). */
 export function next(s) {
@@ -37,137 +38,173 @@ export function next(s) {
   t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 }
-const pick = (s, list) => list[Math.floor(next(s) * list.length)];
 
-/** The cart's speed after `t` seconds of running. */
 export const speedAt = (t) => Math.min(TRAIN.VMAX, TRAIN.V0 + TRAIN.ACC * t);
-/** 0 at the start of a run, 1 once it is as hard as it gets. */
 export const difficultyAt = (t) => clamp01(t / TRAIN.RAMP_S);
-/** Seconds of free track the generator leaves between two rows when the second arrives at run time t. */
-export const gapSeconds = (t) => TRAIN.GAP_EASY + (TRAIN.GAP_HARD - TRAIN.GAP_EASY) * difficultyAt(t);
-/** The score of a run so far. */
+export const gapSeconds = (t) => lerp(TRAIN.GAP_EASY, TRAIN.GAP_HARD, difficultyAt(t));
+/** The chance that a train's branch has an escape fork when the episode is met at run time t. */
+export const escapeChance = (t) => lerp(TRAIN.P_ESC_EASY, TRAIN.P_ESC_HARD, difficultyAt(t));
 export const scoreOf = (s) => Math.floor(s.dist / TRAIN.SCORE_DIV) + s.coins * TRAIN.COIN_POINTS;
 
-let ids = 0;
+/** The lateral position (lanes, absolute) of a node of section `sec` at distance z: it moves from xs to xe over the section's first TL units, then holds. */
+export const nodeLat = (sec, node, z) => lerp(node.xs, node.xe, smooth(clamp01((z - sec.z0) / TRAIN.TL)));
+
+/** The section a distance z falls in (the last one starting at or before z). */
+export function sectionAt(s, z) {
+  let i = s.sections.length - 1;
+  while (i > 0 && s.sections[i].z0 > z) i--;
+  return i;
+}
+
 export function createTrainGame(seed = 1) {
   const s = {
     seed: seed >>> 0, rng: seed >>> 0,
-    t: 0, dist: 0, v: TRAIN.V0, coins: 0, lives: TRAIN.LIVES, over: false,
-    lane: 0, x: 0, slide: null,                // lane: where the player is going (-1, 0, 1); x: where the cart is now, mid-slide in between
-    invuln: 0, flash: 0, hits: 0,
-    objs: [],                                  // { id, kind: 'train' | 'coin', lane, z, len?, look?, taken?, hit? }
-    nextFront: TRAIN.FIRST_Z,                  // where the next row's front will be
-    prevEnd: 0, prevFree: [-1, 0, 1], rows: 0,
+    t: 0, dist: 0, v: TRAIN.V0, coins: 0, lives: TRAIN.LIVES, over: false, hits: 0,
+    invuln: 0, flash: 0,
+    sections: [{ z0: -100, kind: 'start', nodes: [{ id: 0, xs: 0, xe: 0, parents: [] }] }],
+    node: 0, si: 0, x: 0,                     // the node the cart is on, the section it is in, its lateral position
+    intent: 0, lastSide: -1,                  // intent: the side picked for the next switch (-1 left, 1 right, 0 none); lastSide: the default
+    trains: [], coinList: [],                 // { id, node, z, len } and { id, node, z, taken }
+    episodes: [],                             // what was generated, for the tests: { z0, train, esc, ... }
+    cur: 0, nextZ: TRAIN.FIRST_Z, nid: 0, uid: 0, eps: 0,
     events: [],
   };
   fill(s);
   return s;
 }
 
-/** The lanes a row of `nBlocked` trains can leave free so that the cart can still get from where it was free to a free lane in the gap's time. */
-function freeChoices(prevFree, nBlocked, maxShift) {
-  const out = [];
-  const all = [-1, 0, 1];
-  const subsets = nBlocked === 1 ? [[-1], [0], [1]] : [[-1, 0], [-1, 1], [0, 1]];
-  for (const blocked of subsets) {
-    const free = all.filter((l) => !blocked.includes(l));
-    if (prevFree.some((a) => free.some((b) => Math.abs(a - b) <= maxShift))) out.push({ blocked, free });
-  }
-  return out;
+const addSection = (s, z0, kind, nodes) => s.sections.push({ z0, kind, nodes });
+const mkNode = (s, xs, xe, parents) => ({ id: ++s.nid, xs, xe, parents });
+const rnd = (s, a, b) => a + next(s) * (b - a);
+function coinLine(s, node, zFrom, zTo, max) {
+  let n = 0;
+  for (let z = zFrom; z <= zTo && n < max; z += TRAIN.COIN_GAP, n++) s.coinList.push({ id: ++s.uid, node: node.id, z, taken: false });
 }
 
-function genRow(s) {
-  const front = s.nextFront;
-  const arrival = s.t + Math.max(0, front) / Math.max(1, s.v);               // when the cart will get there (roughly)
-  const d = difficultyAt(arrival), vArr = speedAt(arrival);
-  const gapT = gapSeconds(arrival);
-  const maxShift = Math.floor((gapT + 1e-9) / TRAIN.MOVE_S);
-  const double = s.rows >= 2 && next(s) < 0.1 + 0.3 * d;
-  const options = freeChoices(s.prevFree, double ? 2 : 1, maxShift);
-  const { blocked, free } = options.length ? pick(s, options) : { blocked: [], free: [-1, 0, 1] };
-  let end = front;
-  const color = Math.floor(next(s) * 3);
-  for (const lane of blocked) {
-    const len = Math.round(TRAIN.LEN_MIN + next(s) * (TRAIN.LEN_MAX - TRAIN.LEN_MIN));
-    s.objs.push({ id: ++ids, kind: 'train', lane, z: front, len, look: (color + lane + 1 + 3) % 3 });
-    end = Math.max(end, front + len);
+function genEpisode(s) {
+  const z0 = s.nextZ, cur = s.cur;
+  const arrival = s.t + Math.max(0, z0 - s.dist) / Math.max(1, s.v);
+  const vArr = speedAt(arrival), gap = gapSeconds(arrival) * vArr;
+  const hasTrain = s.eps > 0 && next(s) >= TRAIN.P_FREE;
+  const esc = hasTrain && next(s) < escapeChance(arrival);
+  const tSide = next(s) < 0.5 ? -1 : 1;
+  const TL = TRAIN.TL, BR = TRAIN.BR;
+  const ep = { z0, t: arrival, train: hasTrain, esc, tSide, trainZ: null, escZ: null, trainNode: null };
+  s.episodes.push(ep);
+  s.eps++;
+  const L = mkNode(s, 0, -BR, [cur]), R = mkNode(s, 0, BR, [cur]);
+  addSection(s, z0, 'fork', [L, R]);
+  const T = tSide < 0 ? L : R, S = tSide < 0 ? R : L;
+  let end;
+  if (!esc) {
+    const len = Math.round(rnd(s, TRAIN.LEN_MIN, TRAIN.LEN_MAX)), off = rnd(s, TRAIN.OFF_MIN, TRAIN.OFF_MAX);
+    if (hasTrain) {
+      const z = z0 + TL + off;
+      s.trains.push({ id: ++s.uid, node: T.id, z, len, look: Math.floor(next(s) * 3) });
+      ep.trainZ = z; ep.trainNode = T.id;
+      coinLine(s, S, z0 + TL + 8, z0 + TL + 60, 5);
+      coinLine(s, T, z0 + TL + 4, z - 6, 3);
+      end = z + len;
+    } else {
+      coinLine(s, L, z0 + TL + 8, z0 + TL + 60, 5); coinLine(s, R, z0 + TL + 8, z0 + TL + 60, 6);
+      end = z0 + TL + 70;
+    }
+    const zm = end + gap;
+    const mL = mkNode(s, -BR, 0, [L.id]), mR = mkNode(s, BR, 0, [R.id]);
+    addSection(s, zm, 'merge', [mL, mR]);
+    const n = mkNode(s, 0, 0, [mL.id, mR.id]);
+    addSection(s, zm + TL, 'cont', [n]);
+    s.cur = n.id;
+    s.nextZ = zm + TL + gap;
+  } else {
+    // the train's branch forks again before the train: an escape. The train waits on the outer sub-branch; the inner one (towards the other branch) is free.
+    const ze = z0 + TL + TRAIN.ESC_GAP + next(s) * TRAIN.ESC_JITTER;
+    ep.escZ = ze;
+    coinLine(s, T, z0 + TL + 6, ze - 6, 5);                          // bait: the risky branch holds more coins
+    coinLine(s, S, z0 + TL + 8, z0 + TL + 50, 4);
+    const s2 = mkNode(s, S.xe, S.xe, [S.id]);
+    const t1 = mkNode(s, T.xe, T.xe + tSide * BR, [T.id]), t2 = mkNode(s, T.xe, T.xe - tSide * BR, [T.id]);
+    addSection(s, ze, 'fork', [s2, t1, t2]);
+    const len = Math.round(rnd(s, TRAIN.LEN_MIN, TRAIN.LEN_MAX)), off = rnd(s, TRAIN.OFF_MIN, TRAIN.OFF_MAX), z = ze + TL + off;
+    s.trains.push({ id: ++s.uid, node: t1.id, z, len, look: Math.floor(next(s) * 3) });
+    ep.trainZ = z; ep.trainNode = t1.id;
+    coinLine(s, t2, ze + TL + 6, ze + TL + 40, 4); coinLine(s, s2, ze + TL + 6, ze + TL + 40, 4);
+    end = z + len;
+    const zm1 = end + gap;
+    const s3 = mkNode(s, S.xe, S.xe, [s2.id]), m1 = mkNode(s, t1.xe, T.xe, [t1.id]), m2 = mkNode(s, t2.xe, T.xe, [t2.id]);
+    addSection(s, zm1, 'merge', [s3, m1, m2]);
+    const s4 = mkNode(s, S.xe, S.xe, [s3.id]), tn = mkNode(s, T.xe, T.xe, [m1.id, m2.id]);
+    addSection(s, zm1 + TL, 'cont', [s4, tn]);
+    const zm2 = zm1 + TL + gap * 0.6;
+    const mS = mkNode(s, S.xe, 0, [s4.id]), mT = mkNode(s, T.xe, 0, [tn.id]);
+    addSection(s, zm2, 'merge', [mS, mT]);
+    const n = mkNode(s, 0, 0, [mS.id, mT.id]);
+    addSection(s, zm2 + TL, 'cont', [n]);
+    s.cur = n.id;
+    s.nextZ = zm2 + TL + gap;
   }
-  // coins: a line in the gap before this row, on a lane reachable from where the previous row left the cart, then (sometimes) along the row in a free lane
-  const gapLen = front - s.prevEnd;
-  const reach = free.filter((b) => s.prevFree.some((a) => Math.abs(a - b) <= maxShift));
-  if (gapLen > 14 && reach.length) {
-    const lane = pick(s, reach), n = Math.min(6, Math.floor((gapLen - 8) / TRAIN.COIN_GAP));
-    for (let i = 0; i < n; i++) s.objs.push({ id: ++ids, kind: 'coin', lane, z: s.prevEnd + 5 + i * TRAIN.COIN_GAP, taken: false });
+}
+function fill(s) { while (s.nextZ <= s.dist + TRAIN.SPAWN_Z + TRAIN.BUFFER) genEpisode(s); }
+
+const childrenOf = (sec, id) => sec.nodes.filter((n) => n.parents.includes(id));
+
+/** The next switch ahead of the cart on its way: { sec, z, left, right } (the two children by lateral order), or null. Follows merges, not choices. */
+export function upcomingFork(s) {
+  let cur = s.node;
+  for (let j = s.si + 1; j < s.sections.length; j++) {
+    const sec = s.sections[j], ch = childrenOf(sec, cur);
+    if (!ch.length) return null;
+    if (sec.kind === 'fork' && ch.length === 2) { const [a, b] = [...ch].sort((p, q) => p.xe - q.xe); return { sec, z: sec.z0, left: a, right: b }; }
+    cur = ch[0].id;
   }
-  if (blocked.length && next(s) < 0.6) {
-    const lane = pick(s, free);
-    for (let z = front + 6, i = 0; z < end - 4 && i < 5; z += TRAIN.COIN_GAP + 2, i++) s.objs.push({ id: ++ids, kind: 'coin', lane, z, taken: false });
-  }
-  s.prevEnd = end;
-  s.prevFree = free;
-  s.rows++;
-  s.nextFront = end + gapT * vArr;
+  return null;
 }
 
-function fill(s) { while (s.nextFront <= TRAIN.SPAWN_Z + TRAIN.BUFFER) genRow(s); }
+/** The player's choice for the next switch: -1 left, 1 right. Input only counts before the switch is crossed. */
+export function setIntent(s, dir) { if (!s.over && (dir === -1 || dir === 1)) { s.intent = dir; return true; } return false; }
 
-/** Starts a slide to the next lane in `dir` (-1 left, +1 right). False when already at the edge, or the run is over. */
-export function moveLane(s, dir) {
-  if (s.over) return false;
-  const target = clampLane(s.lane + dir);
-  if (target === s.lane) return false;
-  s.lane = target;
-  s.slide = { from: s.x, to: target, t: 0 };
-  s.events.push('move');
-  return true;
-}
-
-/** One fixed step of `ms` milliseconds. Returns the events that happened ('move' is pushed by moveLane): 'coin' | 'hit' | 'over'. The array is s.events, emptied first. */
+/** One fixed step of `ms` ms. Returns the events: 'switch' (a fork was crossed), 'coin', 'hit', 'over' (s.events, emptied first). */
 export function step(s, ms) {
   s.events.length = 0;
   if (s.over) return s.events;
   const dt = ms / 1000;
-  s.t += dt;
-  s.v = speedAt(s.t);
-  const dz = s.v * dt;
-  s.dist += dz;
-  if (s.slide) {
-    s.slide.t += ms;
-    const p = clamp01(s.slide.t / TRAIN.SLIDE_MS);
-    s.x = s.slide.from + (s.slide.to - s.slide.from) * ease(p);
-    if (p >= 1) { s.x = s.slide.to; s.slide = null; }
+  s.t += dt; s.v = speedAt(s.t);
+  s.dist += s.v * dt;
+  // crossing section boundaries: a fork takes the branch of the intent (or of the last choice), anything else just continues
+  const i = sectionAt(s, s.dist);
+  for (let j = s.si + 1; j <= i; j++) {
+    const sec = s.sections[j], ch = childrenOf(sec, s.node);
+    if (sec.kind === 'fork' && ch.length === 2) {
+      const side = s.intent || s.lastSide, [a, b] = [...ch].sort((p, q) => p.xe - q.xe);
+      s.node = (side < 0 ? a : b).id; s.lastSide = side; s.intent = 0; s.events.push('switch');
+    } else if (ch.length) s.node = ch[0].id;
   }
-  s.invuln = Math.max(0, s.invuln - ms);
-  s.flash = Math.max(0, s.flash - ms);
-  s.nextFront -= dz;
-  for (const o of s.objs) o.z -= dz;
-  s.objs = s.objs.filter((o) => (o.kind === 'train' ? o.z + o.len > -10 : o.z > -8 && !o.taken));
+  s.si = i;
+  const sec = s.sections[i], me = sec.nodes.find((n) => n.id === s.node);
+  s.x = nodeLat(sec, me, s.dist);
+  s.invuln = Math.max(0, s.invuln - ms); s.flash = Math.max(0, s.flash - ms);
+  s.trains = s.trains.filter((t) => t.z + t.len > s.dist - 12);
+  s.coinList = s.coinList.filter((c) => c.z > s.dist - 10 && !c.taken);
+  while (s.sections.length > 2 && s.sections[1].z0 < s.dist - 60) { s.sections.shift(); s.si--; }
   fill(s);
-  let crashed = false;
-  for (const o of s.objs) {
-    if (o.kind === 'coin') {
-      if (o.z <= 3 && o.z >= -3 && Math.abs(s.x - o.lane) < TRAIN.COIN_X) { o.taken = true; s.coins++; s.events.push('coin'); }
-    } else if (!crashed && !o.hit && s.invuln <= 0 && o.z <= TRAIN.DEPTH && o.z + o.len >= 0 && Math.abs(s.x - o.lane) < TRAIN.HIT_X) {
-      o.hit = true; crashed = true;
-      s.lives--; s.hits++; s.invuln = TRAIN.INVULN_MS; s.flash = TRAIN.FLASH_MS;
-      s.events.push('hit');
+  for (const c of s.coinList) if (c.node === s.node && Math.abs(c.z - s.dist) < TRAIN.COIN_X) { c.taken = true; s.coins++; s.events.push('coin'); }
+  for (const t of s.trains) {
+    if (t.hit || t.node !== s.node || s.invuln > 0) continue;
+    if (t.z - s.dist <= TRAIN.DEPTH && t.z + t.len - s.dist >= 0) {
+      t.hit = true; s.lives--; s.hits++; s.invuln = TRAIN.INVULN_MS; s.flash = TRAIN.FLASH_MS; s.events.push('hit');
       if (s.lives <= 0) { s.over = true; s.events.push('over'); }
+      break;
     }
   }
   return s.events;
 }
 
-/** The demo bot (used by the tests and the previews): which way to slide now (-1, 0, 1) to stay clear of the trains in the next LOOK_S seconds. */
-export function botDir(s) {
-  const look = s.v * TRAIN.LOOK_S;
-  const trains = s.objs.filter((o) => o.kind === 'train' && !o.hit && o.z + o.len >= 0);
-  const soon = (L) => trains.some((o) => o.lane === L && o.z <= look);
-  const here = (L) => trains.some((o) => o.lane === L && o.z <= TRAIN.DEPTH + s.v * 0.3);     // a train is on this track right now (or about to be)
-  if (!soon(s.lane)) return 0;
-  const cands = [-1, 0, 1].filter((L) => L !== s.lane && !soon(L)).sort((a, b) => Math.abs(a - s.lane) - Math.abs(b - s.lane));
-  for (const L of cands) {
-    const dir = Math.sign(L - s.lane);
-    if (!here(s.lane + dir)) return dir;
-  }
-  return 0;
+/** The demo bot: reads the next switch and sets the intent for the branch without a train (when neither holds one, the one with more coins). */
+export function botIntent(s) {
+  const f = upcomingFork(s);
+  if (!f || f.z - s.dist > TRAIN.SPAWN_Z) return 0;
+  const score = (n) => (s.trains.some((t) => t.node === n.id) ? -1000 : 0) + s.coinList.filter((c) => c.node === n.id).length;
+  const side = score(f.left) >= score(f.right) ? -1 : 1;
+  setIntent(s, side);
+  return side;
 }

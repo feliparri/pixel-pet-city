@@ -5,7 +5,7 @@ import { attachInput } from './input.js';
 import { logicalSize } from './lanes.js';
 import { reduce, initialFlow, GAMES } from './flow.js';
 import { createBestStore, createDailyStars, starsFor } from './scores.js';
-import { createTrainGame, step as stepTrain, moveLane, scoreOf, botDir, TRAIN } from './train.js';
+import { createTrainGame, step as stepTrain, setIntent, scoreOf, botIntent, upcomingFork, TRAIN } from './train.js';
 import { createTrainView } from './train-view.js';
 import { createSkateGame, step as stepSkate, steer, jump, scoreOf as skateScore, botInput } from './skate.js';
 import { createSkateView } from './skate-view.js';
@@ -23,14 +23,20 @@ const WHOOSH = [note(W.TRI, 260, 980, 110, 120)];
 const ADAPTERS = {
   train: {
     create: createTrainGame, step: stepTrain, score: scoreOf, view: createTrainView,
-    act(g, a) { if (a === 'left' || a === 'right') return moveLane(g, a === 'left' ? -1 : 1); return false; },
-    hold() {}, bot(g) { const d = botDir(g); if (d) moveLane(g, d); },
+    act(g, a) { if (a === 'left' || a === 'right') return setIntent(g, a === 'left' ? -1 : 1); return false; },      // the choice for the next switch
+    hold() {}, bot(g) { botIntent(g); },
   },
   skate: {
     create: createSkateGame, step: stepSkate, score: skateScore, view: createSkateView,
     act(g, a) { if (a === 'jump') jump(g); return false; },
     hold(g, d) { steer(g, d); }, bot(g) { const b = botInput(g); steer(g, b.dir); if (b.jump) jump(g); },
   },
+};
+
+/** Preview moments for the dev hook (?arcade=play&shot=...): the run goes on until the picture asked for happens. */
+const SHOTS = {
+  'train:fork': (g) => { const f = upcomingFork(g); return !!f && f.z - g.dist > 70 && f.z - g.dist < 120 && g.trains.some((t) => t.z > f.z && t.z - g.dist < 230); },
+  'train:escape': (g) => { const f = upcomingFork(g); return !!f && f.sec.nodes.length === 3 && f.z - g.dist > 34 && f.z - g.dist < 48 && g.trains.some((t) => t.z > f.z); },
 };
 
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
@@ -58,7 +64,7 @@ export function startArcade({ root, sprites, font, look, sound, awardStars = () 
   const face = faceIcon(sprites, look);
   let flow = initialFlow(), game = null, views = {}, size = null, topPad = 0;
   let frozen = false, clock = 0, idleDist = 0, overAt = 0, runStars = 0, destroyed = false, hintsT = 0;
-  const idle = { dist: 0, x: 0, lane: 0, slide: null, objs: [], invuln: 0, flash: 0, lives: TRAIN.LIVES, over: false, t: 0 };
+  const idle = { dist: 0, x: 0, sections: [{ z0: -1e5, kind: 'start', nodes: [{ id: 0, xs: 0, xe: 0, parents: [] }] }], node: 0, si: 0, trains: [], coinList: [], intent: 0, lastSide: -1, invuln: 0, flash: 0, lives: TRAIN.LIVES, over: false, t: 0 };
 
   // ---- sizing ------------------------------------------------------------------------------------------------------------------------------------
   function resize() {
@@ -206,13 +212,13 @@ export function startArcade({ root, sprites, font, look, sound, awardStars = () 
     dev: {
       get flow() { return flow; },
       get game() { return game; },
-      go(name, seconds = 0, bot = true, gameId = 'train', jumpShot = false) {
+      go(name, seconds = 0, bot = true, gameId = 'train', shot = '') {
         if (name === 'select') dispatch({ type: 'start' });
         if (name === 'play' || name === 'pause' || name === 'over') {
           dispatch({ type: 'start' }); startRun(gameId);
           const A = ADAPTERS[gameId];
           for (let i = 0; i < seconds * 60; i++) { if (bot) A.bot(game); A.step(game, 1000 / 60); clock += 1000 / 60; }
-          if (jumpShot && gameId === 'skate') for (let i = 0; i < 6000 && !(game.h > 1.6 && game.objs.some((o) => o.kind === 'cone' && o.z > -14 && o.z < 3 && Math.abs(o.x - game.x) < 0.6)); i++) { A.bot(game); A.step(game, 1000 / 60); clock += 1000 / 60; }
+          if (shot && SHOTS[gameId + ':' + shot]) for (let i = 0; i < 30000 && !game.over && !SHOTS[gameId + ':' + shot](game); i++) { A.bot(game); A.step(game, 1000 / 60); clock += 1000 / 60; }
           if (seconds > 0) frozen = true;                          // a preview keeps the frame it was made for
           if (name === 'pause') dispatch({ type: 'pause' });
           if (name === 'over') { game.lives = 0; game.over = true; finishRun(); }
