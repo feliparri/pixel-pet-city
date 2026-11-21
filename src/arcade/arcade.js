@@ -35,7 +35,7 @@ const ADAPTERS = {
 
 /** Preview moments for the dev hook (?arcade=play&shot=...): the run goes on until the picture asked for happens. */
 const SHOTS = {
-  'train:fork': (g) => { const f = upcomingFork(g); return !!f && f.z - g.dist > 70 && f.z - g.dist < 120 && g.trains.some((t) => t.z > f.z && t.z - g.dist < 230); },
+  'train:fork': (g) => { const f = upcomingFork(g); return !!f && f.z - g.dist > 70 && f.z - g.dist < 120 && g.trains.some((t) => t.z > f.z && t.z - g.dist < 175); },
   'skate:pipe': (g) => g.grounded && Math.abs(g.p) < 0.15 && !g.objs.some((o) => o.all && o.z < 110) && g.objs.some((o) => isHazard(o) && !o.all && o.slot === 0 && o.z > 40 && o.z < 75),
   'skate:wall': (g) => Math.abs(g.p) > 0.9 && g.objs.some((o) => isHazard(o) && !o.all && o.slot === 0 && o.z > 12 && o.z < 45),
   'skate:jump': (g) => g.h > 1.6 && g.objs.some((o) => isHazard(o) && o.h < 2 && o.z > -12 && o.z < 3 && (o.all || Math.abs(o.slot - g.p) < 0.6)),

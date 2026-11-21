@@ -137,7 +137,8 @@ export const station = memo(() => mk(92, 66, (g) => {
   R(g, INK, 14, 26, 64, 1);
 }));
 
-const body = { red: ['#b8484f', '#8a3042', '#d96a62', '#5a2236'], blue: ['#4a63a0', '#34457a', '#6a84c0', '#252f55'], teal: ['#3f8c7c', '#2a6a62', '#62b09a', '#1d4a4a'] };
+// bold, warm colours that stand out from green grass and grey ballast: signal orange, yellow and red (body, shade, light, dark)
+const body = { red: ['#ff6a2e', '#c8401a', '#ffa05a', '#7a2410'], blue: ['#ffcf3a', '#d99a14', '#ffe888', '#8a5a08'], teal: ['#e0384a', '#a02034', '#ff7a88', '#5a0f1c'] };
 export const TRAIN_COLORS = ['red', 'blue', 'teal'];
 export const TRAIN_W = 46, TRAIN_H = 50;
 /** The front of a train, 46 x 50, head on, with lit headlights and a hazard-striped bumper (the game's own engine: a boxy diesel). */

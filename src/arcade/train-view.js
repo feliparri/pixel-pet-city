@@ -115,8 +115,8 @@ export function createTrainView({ w, h }) {
     return { min, max };
   }
 
-  function blit(ctx, cv, lane, z, c, { dy = 0, alpha = 1 } = {}) {
-    const p = proj.project(lane, z, c), sc = p.s * U;
+  function blit(ctx, cv, lane, z, c, { dy = 0, alpha = 1, mul = 1 } = {}) {
+    const p = proj.project(lane, z, c), sc = p.s * U * mul;
     const dw = Math.round(cv.width * sc), dh = Math.round(cv.height * sc);
     if (dw < 1 || dh < 1 || p.x + dw < 0 || p.x - dw > w) return;
     const a = z > FADE_FROM ? Math.max(0, 1 - (z - FADE_FROM) / (FAR - FADE_FROM)) * alpha : alpha;
@@ -256,20 +256,26 @@ export function createTrainView({ w, h }) {
       list.push({ z: z - 6, draw: (ctx) => {
         blit(ctx, art.switchStand(), base + 0.78, z, c);
         for (const dir of [-1, 1]) {
-          const lit = isNext && dir === side, bob = lit ? Math.round(Math.sin(t / 120) * 1.5) : 0;
-          blit(ctx, art.arrowSign(dir < 0 ? 'left' : 'right'), base + dir * 1.15, z - 3, c, { dy: 16 + bob, alpha: isNext ? (lit ? 1 : 0.5) : 0.85 });
+          const lit = isNext && dir === side, bob = lit ? Math.round(Math.sin(t / 120) * 2) : 0;
+          if (lit) {                                                                 // the chosen branch: a big gold-edged board with a halo
+            const p = proj.project(base + dir * 1.15, z - 3, c);
+            for (const [r, al] of [[34, 0.12], [24, 0.18], [16, 0.26]]) { ctx.fillStyle = `rgba(255,214,90,${al})`; ctx.beginPath(); ctx.arc(p.x, p.y - 26 * p.s * U, r * p.s * U, 0, Math.PI * 2); ctx.fill(); }
+          }
+          blit(ctx, art.arrowSign(dir < 0 ? 'left' : 'right'), base + dir * 1.15, z - 3, c, { dy: 16 + bob, alpha: isNext ? (lit ? 1 : 0.4) : 0.85, mul: lit ? 1.6 : 1 });
         }
       } });
     }
     return list.sort((a, b) => b.z - a.z);
   }
 
-  const TBODY = { red: ['#8a3042', '#6a2236', '#d96a62'], blue: ['#34457a', '#252f55', '#6a84c0'], teal: ['#2a6a62', '#1d4a4a', '#62b09a'] };
+  const TBODY = { red: ['#c8401a', '#7a2410', '#ffa05a'], blue: ['#d99a14', '#8a5a08', '#ffe888'], teal: ['#a02034', '#5a0f1c', '#ff7a88'] };
+  const TS = 1.18;                                          // trains are drawn a little bigger than their lane so they read from far
   function train(ctx, o, c) {
     const color = art.TRAIN_COLORS[o.look % 3], zf = Math.max(o.z, -3), zr = o.z + o.len;
     if (zr < -3) return;
     const pf = proj.project(o.lane, zf, c), pr = proj.project(o.lane, Math.min(zr, FAR + 60), c);
-    const kf = pf.s * U, kr = pr.s * U, tw = art.TRAIN_W / 2, th = art.TRAIN_H;
+    const farBoost = 1 + Math.max(0, Math.min(1, 1 - pf.s * 1.8)) * 0.9;          // a train far away is drawn bigger than perspective says, so it can be read
+    const kf = pf.s * U * TS * farBoost, kr = pr.s * U * TS, tw = art.TRAIN_W / 2, th = art.TRAIN_H;
     const xlF = pf.x - tw * kf, xrF = pf.x + tw * kf, xlR = pr.x - tw * kr, xrR = pr.x + tw * kr;
     const yFt = pf.y - th * kf, yRt = pr.y - th * kr;
     const fade = o.z > FADE_FROM ? Math.max(0, 1 - (o.z - FADE_FROM) / (FAR - FADE_FROM)) : 1;
@@ -306,6 +312,14 @@ export function createTrainView({ w, h }) {
     // the front
     const dw = Math.round(art.TRAIN_W * kf), dh = Math.round(art.TRAIN_H * kf);
     if (dw >= 1 && dh >= 1 && o.z > -2.5) ctx.drawImage(kf >= 0.999 && kf <= 1.001 ? art.trainFront(color) : scaled(art.trainFront(color), dw, dh), Math.round(pf.x - dw / 2), Math.round(pf.y - dh));
+    // the headlights glow: a soft halo that stays visible (2 px at least) however far the train is
+    if (o.z > -2.5) {
+      for (const hx of [-0.65, 0.65]) {
+        const gx = pf.x + hx * tw * kf, gyy = pf.y - 0.4 * th * kf, r = Math.max(2.2, 7 * kf);
+        for (const [m, al] of [[2.4, 0.1], [1.6, 0.16], [1, 0.34]]) { ctx.fillStyle = `rgba(255,244,170,${al * fade})`; ctx.beginPath(); ctx.arc(gx, gyy, r * m, 0, Math.PI * 2); ctx.fill(); }
+        ctx.fillStyle = `rgba(255,255,255,${0.95 * fade})`; ctx.fillRect(Math.round(gx - Math.max(1, r * 0.35)), Math.round(gyy - Math.max(1, r * 0.35)), Math.max(2, Math.round(r * 0.7)), Math.max(2, Math.round(r * 0.7)));
+      }
+    }
     ctx.globalAlpha = 1;
   }
 

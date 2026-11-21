@@ -17,9 +17,15 @@ const hexMix = (a, b, t) => { const x = hex(a), y = hex(b); return `#${[0, 1, 2]
 export const FAR = 270, FADE_FROM = 200;
 const HU = 13;                                   // pixels per height unit at the board's depth
 const PAVER = 9;                                 // paving stones are this long
-const LAMP_GAP = 40, LAMP_LANE = 2.05, POOL_Z = 15, POOL_X = 1.9;
+const LAMP_GAP = 40, LAMP_LANE = 2.15, POOL_Z = 15, POOL_X = 1.9;
 const RAIL_LANE = -2.55, WATER_EDGE = -2.7;
-const PIPE_FLOOR = 0.62, PIPE_TOP = 1.9, SLOT = 1.2, RAISE = 13;      // the half-pipe: floor half width, where the wall's lip is, how far out a wall position sits, how much higher on the screen
+const PIPE_FLOOR = 0.55, PIPE_TOP = 1.9, PIPE_H = 3.4, DECK = 0.5;     // the half-pipe: half width of the flat floor, where the coping is, how high it is (height units), the deck beyond it
+const PIPE_R = PIPE_TOP - PIPE_FLOOR, RIDE_T = 0.8, RIDE_A = PIPE_FLOOR + RIDE_T * PIPE_R;   // the wall is a quarter circle; a board on a wall rides at 80 % of the way up it
+const SLOT = RIDE_A;
+/** Height (height units) of the half-pipe's surface at lateral distance aa from the middle: flat floor, a quarter-circle wall, then the deck at the coping's height. */
+const surfaceH = (aa) => (aa <= PIPE_FLOOR ? 0 : aa >= PIPE_TOP ? PIPE_H : PIPE_H * (1 - Math.sqrt(1 - ((aa - PIPE_FLOOR) / PIPE_R) ** 2)));
+/** The wall's angle (radians) at lateral aa: 0 on the floor, 90 degrees at the coping. */
+const surfaceTilt = (aa) => (aa <= PIPE_FLOOR ? 0 : Math.asin(Math.min(1, (aa - PIPE_FLOOR) / PIPE_R)));
 const SKY = ['#10123a', '#171a4e', '#20256a', '#2c3282', '#3e3f98', '#58509f', '#7a5aa3', '#a86aa3'];
 
 export function createSkateView({ w, h }) {
@@ -95,7 +101,7 @@ export function createSkateView({ w, h }) {
 
   const cam = (s) => s.p * SLOT * 0.28;
   const latOf = (slot) => slot * SLOT;
-  const raiseOf = (slot) => RAISE * slot * slot;
+  const raiseOf = (slot) => surfaceH(Math.abs(slot) * SLOT) * HU;               // how many px (at the board's depth) the position is above the floor
 
   function blit(ctx, cv, lane, z, c, { dy = 0, alpha = 1, stretch = 1 } = {}) {
     const p = proj.project(lane, z, c), sc = p.s * U;
@@ -159,44 +165,63 @@ export function createSkateView({ w, h }) {
           for (let i = 0; i < 4 + Math.round(k * 5); i++) { const hx = Math.floor(hash(b, i + 11) * wr); ctx.fillStyle = hash(b, i + 21) < 0.2 ? r.waS : hash(b, i + 25) < 0.55 ? r.waL : r.waD; ctx.fillRect(hx, y, 1 + (hash(b, i + 30) < 0.5 ? 1 : 0) + Math.round(k * 2), 1); }
         }
       }
-      // the promenade strips beside the pipe, then the half-pipe itself: a floor in the middle and a curved wall each side up to a bright lip
-      ctx.fillStyle = r.pr; ctx.fillRect(Math.max(0, wr), y, Math.max(0, X(2.45) - Math.max(0, wr)), 1);
-      const fl = X(-PIPE_FLOOR), fr = X(PIPE_FLOOR), tl = X(-PIPE_TOP), tr = X(PIPE_TOP), wspan = fl - tl;
-      for (let b = 0; b < 8; b++) {                                              // each wall in eight shaded bands: lit at the foot where it faces up, darker towards the lip where it stands up
-        const x0 = Math.round(fl - wspan * ((b + 1) / 8)), x1 = Math.round(fl - wspan * (b / 8));
-        ctx.fillStyle = r.wb[b]; ctx.fillRect(x0, y, x1 - x0, 1);
-        const y0 = Math.round(fr + wspan * (b / 8)), y1 = Math.round(fr + wspan * ((b + 1) / 8));
-        ctx.fillRect(y0, y, y1 - y0, 1);
-      }
-      ctx.fillStyle = r.fe; ctx.fillRect(fl - 1, y, 1, 1); ctx.fillRect(fr, y, 1, 1);
-      ctx.fillStyle = r.lip; ctx.fillRect(tl - 1, y, 2, 1); ctx.fillRect(tr - 1, y, 2, 1);
-      ctx.fillStyle = r.lipD; ctx.fillRect(tl - 2, y, 1, 1); ctx.fillRect(tr + 1, y, 1, 1);
-      ctx.fillStyle = stripe === 0.5 ? r.pAvg : r.pA; ctx.fillRect(fl, y, fr - fl, 1);
-      if (stripe !== 0.5) {
-        const row = Math.floor(wz / PAVER), onJoint = ((wz % PAVER) + PAVER) % PAVER < dz + 0.3;
-        if ((row & 1) === 0) { ctx.fillStyle = r.pB; ctx.fillRect(fl, y, fr - fl, 1); }
-        if (onJoint) { ctx.fillStyle = r.pJ; ctx.fillRect(tl, y, tr - tl, 1); }
-        if (Math.floor(wz / 14) % 3 === 0) { ctx.fillStyle = r.cl; ctx.fillRect(X(0) - Math.max(1, Math.round(0.03 * u)), y, Math.max(1, Math.round(0.06 * u)), 1); }   // the painted centre line
-        for (const sd of [-1, 1]) {                                                // tags sprayed on the walls: a scribble of short runs
-          const tag = Math.floor(wz / 12), hs = hash(tag, sd * 7 + 3);
-          if (hs < 0.09) {
-            ctx.fillStyle = ['#ff7ab0', '#4ec9c0', '#ffcb6b'][Math.floor(hash(tag, 9) * 3)];
-            for (let i = 0; i < 2; i++) { const f = 0.15 + hash(Math.floor(wz), i + sd) * 0.6; ctx.fillRect(Math.round(sd < 0 ? fl - wspan * (f + 0.12) : fr + wspan * f), y, Math.max(1, Math.round(wspan * 0.1)), 1); }
-          }
+      // the promenade strips beside the pipe (the half-pipe itself is painted on top, pixel by pixel, by pipeLayer)
+      ctx.fillStyle = r.pr; ctx.fillRect(Math.max(0, wr), y, Math.max(0, X(2.9) - Math.max(0, wr)), 1);
+    }
+  }
+
+  // ---- the half-pipe: a height-map seen from behind, painted into a pixel buffer (nearest rows first, each pixel once) --------------------------------
+  const layer = document.createElement('canvas');
+  layer.width = w; layer.height = h;
+  const lctx = layer.getContext('2d'), img = lctx.createImageData(w, h), px = new Uint32Array(img.data.buffer), ymin = new Int16Array(w);
+  const rgba = (r, g, b) => (255 << 24) | (Math.max(0, Math.min(255, b | 0)) << 16) | (Math.max(0, Math.min(255, g | 0)) << 8) | Math.max(0, Math.min(255, r | 0));
+  const HZ = hex(HAZE);
+  const TAGS = [[255, 122, 176], [78, 201, 192], [255, 203, 107]];
+  function pipeLayer(ctx, s) {
+    px.fill(0); ymin.fill(h);
+    const c = cam(s), dist = s.dist, lamps = lampsIn(dist - POOL_Z - 12, dist + 300), aMax = PIPE_TOP + DECK;
+    for (let y = h - 1; y > hy; y--) {
+      const k = (y - hy) / span, z = FOCAL * (span / (y - hy) - 1), dz = (FOCAL * span) / ((y - hy) * (y - hy)), wz = z + dist;
+      const u = proj.laneW * k, cx0 = w / 2 - c * u, hk = HU * k * U;
+      const haze = Math.max(0, Math.min(0.7, 1 - k * 3.4));
+      const row = Math.floor(wz / PAVER), joint = ((wz % PAVER) + PAVER) % PAVER < dz + 0.4, dash = Math.floor(wz / 14) % 3 === 0;
+      const pools = lamps.filter((L) => Math.abs(wz - L.z) < POOL_Z);
+      const x0 = Math.max(0, Math.ceil(cx0 - aMax * u)), x1 = Math.min(w - 1, Math.floor(cx0 + aMax * u));
+      for (let x = x0; x <= x1; x++) {
+        const a = (x + 0.5 - cx0) / u, aa = Math.abs(a), hv = surfaceH(aa), yt = y - Math.round(hv * hk);
+        const lim = ymin[x] - 1;
+        if (yt > lim) continue;
+        let r, g, b;
+        if (aa <= PIPE_FLOOR) {                                                        // the floor: flat concrete with joints and a painted centre line
+          r = 108; g = 114; b = 172;
+          if (row & 1) { r += 8; g += 8; b += 8; }
+          if (joint) { r -= 42; g -= 42; b -= 38; }
+          else if (aa < 0.045 && dash) { r = 224; g = 216; b = 144; }
+        } else if (aa < PIPE_TOP) {                                                    // the wall: darker low, lighter towards the coping, a hint of seam, tags
+          const tt = (aa - PIPE_FLOOR) / PIPE_R, br = (0.3 + 0.78 * Math.pow(tt, 0.9)) * (a < 0 ? 1 : 0.92);
+          r = 150 * br; g = 156 * br; b = 210 * br;
+          if (joint) { r *= 0.7; g *= 0.7; b *= 0.72; }
+          else if (Math.abs(tt - 0.5) < 0.012) { r *= 0.8; g *= 0.8; b *= 0.82; }
+          const tag = Math.floor(wz / 12), sd = a < 0 ? 0 : 1;
+          if (tt > 0.18 && tt < 0.78 && hash(tag, sd * 7 + 3) < 0.1 && hash(Math.floor(wz) * 3 + x, sd + 11) < 0.45) { const T = TAGS[Math.floor(hash(tag, 9) * 3)]; r = T[0] * br + 20; g = T[1] * br + 20; b = T[2] * br + 20; }
+          if (tt > 0.955) { r = 222; g = 227; b = 247; if (tt > 0.985) { r = 255; g = 255; b = 255; } }        // the metal coping
+        } else {                                                                       // the deck beyond the coping
+          r = 172; g = 177; b = 222;
+          if (joint) { r -= 40; g -= 40; b -= 36; }
+          if (aa > aMax - 0.06) { r = 96; g = 100; b = 150; }
         }
-      }
-      // the pools of lamplight: three nested ellipses of warm light
-      for (const L of lamps) {
-        const dzr = Math.abs(wz - L.z);
-        if (dzr > POOL_Z) continue;
-        for (const [sc, a] of [[1, 0.1], [0.72, 0.1], [0.42, 0.13]]) {
-          if (dzr >= POOL_Z * sc) continue;
-          const hx = POOL_X * sc * Math.sqrt(1 - (dzr / (POOL_Z * sc)) ** 2), cxl = L.side * 0.95;
-          const x0 = Math.max(X(-PIPE_TOP), X(cxl - hx)), x1 = Math.min(X(PIPE_TOP), X(cxl + hx));
-          if (x1 > x0) { ctx.fillStyle = `rgba(255,190,90,${a})`; ctx.fillRect(x0, y, x1 - x0, 1); }
+        for (const L of pools) {                                                       // the lamplight: nested ellipses in (z, across) that follow the surface
+          const dzr = (wz - L.z) / POOL_Z, dxr = (a - L.side * 1.0) / POOL_X, q = dzr * dzr + dxr * dxr;
+          if (q < 1) { const lv = q < 0.18 ? 0.34 : q < 0.5 ? 0.22 : 0.12; r += (255 - r) * lv; g += (196 - g) * lv; b += (96 - b) * lv; }
         }
+        if (haze > 0.01) { r += (HZ[0] - r) * haze; g += (HZ[1] - g) * haze; b += (HZ[2] - b) * haze; }
+        const col = rgba(r, g, b);
+        for (let yy = Math.max(0, yt); yy <= Math.min(lim, y); yy++) px[yy * w + x] = col;
+        ymin[x] = yt;
       }
     }
+    lctx.putImageData(img, 0, 0);
+    ctx.drawImage(layer, 0, 0);
   }
 
   // ---- roadside and the things on the path --------------------------------------------------------------------------------------------------------
@@ -218,9 +243,9 @@ export function createSkateView({ w, h }) {
     for (const L of lampsIn(s.dist - 14, s.dist + FAR + 20)) {
       const z = L.z - s.dist;
       list.push({ z, draw: (ctx) => {
-        blit(ctx, sa.lamp(), L.side * LAMP_LANE, z, c);
+        blit(ctx, sa.lamp(), L.side * LAMP_LANE, z, c, { dy: PIPE_H * HU });
         const p = proj.project(L.side * LAMP_LANE, z, c), a = z > FADE_FROM ? Math.max(0, 1 - (z - FADE_FROM) / (FAR - FADE_FROM)) : 1;
-        const gy0 = p.y - 56 * p.s * U;                                                       // the lantern's height
+        const gy0 = p.y - (56 + PIPE_H * HU) * p.s * U;                                                       // the lantern's height
         for (const [r, al] of [[16, 0.08], [11, 0.11], [7, 0.16]]) { ctx.fillStyle = `rgba(255,214,130,${al * a})`; ctx.beginPath(); ctx.arc(p.x, gy0, r * p.s * U, 0, Math.PI * 2); ctx.fill(); }
       } });
     }
@@ -253,13 +278,13 @@ export function createSkateView({ w, h }) {
     }
     return list.sort((a, b) => b.z - a.z);
   }
-  const SPRITE = { rock: () => sa.nightify(sa.rock(), 0.3), bench: () => sa.nightify(sa.bench('44'), 0.45), crack: () => sa.crack(), plank: () => sa.nightify(sa.plank(), 0.3), cone: () => sa.nightify(sa.cone(), 0.2), pipe: () => sa.pipe(), ramp: () => sa.nightify(sa.ramp('46'), 0.25), gate: () => sa.nightify(sa.barrier(String(Math.round(2 * PIPE_TOP * 50 * 0.98))), 0.35) };
+  const SPRITE = { rock: () => sa.nightify(sa.rock(), 0.3), bench: () => sa.nightify(sa.bench('44'), 0.45), crack: () => sa.crack(), plank: () => sa.nightify(sa.plank(), 0.3), cone: () => sa.nightify(sa.cone(), 0.2), pipe: () => sa.pipe(), ramp: () => sa.nightify(sa.ramp('46'), 0.25), gate: () => sa.nightify(sa.barrier(String(Math.round(2 * (RIDE_A + 0.25) * 50))), 0.35) };
   function thing(ctx, o, c) {
     const z = Math.max(o.z, -3), al = o.hit ? 0.35 : 1, cv = SPRITE[o.kind] && SPRITE[o.kind]();
     if (!cv) return;
     if (o.all) { blit(ctx, cv, 0, z, c, { alpha: al }); return; }
     const wall = Math.abs(o.slot) === 1;
-    blitTilt(ctx, cv, latOf(o.slot), z, c, wall ? o.slot * -0.42 : 0, raiseOf(o.slot), al);
+    blitTilt(ctx, cv, latOf(o.slot), z, c, wall ? -o.slot * surfaceTilt(SLOT) * 0.85 : 0, raiseOf(o.slot), al);
   }
 
   // ---- the board and the pet ------------------------------------------------------------------------------------------------------------------------
@@ -268,7 +293,7 @@ export function createSkateView({ w, h }) {
     const c = cam(s), px = Math.round(proj.x(latOf(s.p), 0, c)), seq = RUN_SEQ[Math.floor(t / 130) % RUN_SEQ.length];
     const rumble = s.grounded ? Math.round(Math.sin((t / 1000) * 42) * 0.5 + 0.5) : 0;
     const lift = Math.round(s.h * HU), base = gy + 1 - Math.round(raiseOf(s.p));
-    const ang = -s.p * 0.62;                                                  // the board tips to the wall's angle; the pet leans into it
+    const ang = -Math.sign(s.p) * surfaceTilt(Math.abs(s.p) * SLOT) * 0.85;      // the board tips to the wall's local angle; the pet leans into it
     const sh = Math.max(0.35, 1 - s.h * 0.16);                                // the shadow stays on the surface and shrinks with the height
     ctx.fillStyle = '#000'; ctx.globalAlpha = 0.34 * sh;
     const sw = Math.round(30 * sh); ctx.fillRect(px - Math.round(sw / 2), base - 2, sw, 2); ctx.fillRect(px - Math.round(sw / 2) + 3, base, sw - 6, 2); ctx.globalAlpha = 1;
@@ -289,6 +314,7 @@ export function createSkateView({ w, h }) {
     const c = cam(s);
     ctx.drawImage(backdrop, -PAD - Math.round(c * 5), 0);
     ground(ctx, s, t);
+    pipeLayer(ctx, s);
     for (const d of drawables(s, t)) d.draw(ctx);
     ctx.globalAlpha = 1;
     player(ctx, s, t, look);
