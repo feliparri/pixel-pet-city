@@ -28,10 +28,25 @@ export function createProjection({ w, h, horizon, ground, laneW, focal = 52 }) {
 }
 
 /**
- * The logical canvas for a container of cw x ch css px: every logical pixel is `px` css px (a whole number, so the art stays crisp), the width is clamped
- * to a phone-like column and the height to a range that keeps the scene's proportions.
+ * The logical canvas for a container of cw x ch css px. Portrait (taller than wide): every logical pixel is `px` css px, the width is clamped to a
+ * phone-like column and the height to a range that keeps the scene's proportions (the canvas is stretched to the frame). Landscape: the canvas matches the
+ * frame's aspect with ONE whole-number scale (`px`, grown with the height so a big screen does not show a tiny world), so pixels stay square; `fit` is the
+ * canvas's exact css size (w * px by h * px, the leftover is under one logical pixel).
  */
-export function logicalSize(cw, ch, px = 2, { minW = 160, maxW = 250, minH = 260, maxH = 480 } = {}) {
-  if (!(cw > 0) || !(ch > 0)) return { w: 195, h: 340, px };
-  return { w: Math.max(minW, Math.min(maxW, Math.round(cw / px))), h: Math.max(minH, Math.min(maxH, Math.round(ch / px))), px };
+export function logicalSize(cw, ch, px = 2, { minW = 160, maxW = 250, minH = 260, maxH = 480, wideH = 195, maxWideW = 600 } = {}) {
+  if (!(cw > 0) || !(ch > 0)) return { w: 195, h: 340, px, wide: false };
+  if (cw > ch) {
+    const k = Math.max(px, Math.floor(ch / wideH)), w = Math.min(maxWideW, Math.max(minW, Math.floor(cw / k))), h = Math.max(100, Math.floor(ch / k));
+    return { w, h, px: k, wide: true, fit: { w: w * k, h: h * k } };
+  }
+  return { w: Math.max(minW, Math.min(maxW, Math.round(cw / px))), h: Math.max(minH, Math.min(maxH, Math.round(ch / px))), px, wide: false };
+}
+
+/**
+ * Where the pseudo-3D sits on a logical canvas: portrait uses the width for the lane size and a taller sky; a wide canvas sizes the lanes by its height (so the
+ * sprites keep the size they have in portrait), lifts the horizon to show more road ahead, and leaves the sides to scenery.
+ */
+export function viewLayout(w, h, { horizon = 0.36 } = {}) {
+  const wide = w > h;
+  return { horizon: Math.round(h * (wide ? horizon - 0.07 : horizon)), ground: Math.round(h * (wide ? 0.8 : 0.82)), laneW: Math.round((wide ? h : w) * 0.27) };
 }

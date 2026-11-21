@@ -1,7 +1,7 @@
 // Draws the skate game: a night promenade seen from behind the board. A starry sky with a moon over a lit skyline, then the ground a screen row at a time
 // (river with a railing on the left, the paved path with warm pools of lamplight, grass on the right), then the lamps, trees, planters and the things on the
 // path far to near, and the board with the pet. The board's shadow stays on the ground while the pet arcs. No rules here: it reads the game state and a clock.
-import { createProjection } from './lanes.js';
+import { createProjection, viewLayout } from './lanes.js';
 import { hash } from './scenery.js';
 import { SKATE, KINDS, isHazard } from './skate.js';
 import { backCanvas, RUN_SEQ } from './back-sprites.js';
@@ -31,8 +31,8 @@ const surfaceTilt = (aa) => (aa <= PIPE_FLOOR ? 0 : Math.asin(Math.min(1, (aa - 
 const SKY = ['#10123a', '#171a4e', '#20256a', '#2c3282', '#3e3f98', '#58509f', '#7a5aa3', '#a86aa3'];
 
 export function createSkateView({ w, h }) {
-  const hy = Math.round(h * 0.34), gy = Math.round(h * 0.82);
-  const proj = createProjection({ w, h, horizon: hy, ground: gy, laneW: Math.round(w * 0.27) });
+  const L = viewLayout(w, h, { horizon: 0.34 }), hy = L.horizon, gy = L.ground;
+  const proj = createProjection({ w, h, horizon: hy, ground: gy, laneW: L.laneW });
   const U = proj.laneW / 50, span = gy - hy, FOCAL = proj.focal;
   const wpx = (lanes) => String(Math.max(8, Math.round(lanes * 50)));      // widths of the wide sprites, at a 50 px lane
 

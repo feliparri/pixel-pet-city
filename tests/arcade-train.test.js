@@ -82,6 +82,17 @@ test('reading time: a train is in view long enough before its switch, even at to
   }
 });
 
+test('reading distance in landscape: a train at the reading distance is as big on screen as in portrait, and its row is well below the horizon', async () => {
+  const { createProjection, viewLayout, logicalSize } = await import('../src/arcade/lanes.js');
+  const z = T.TRAIN.VMAX * T.TRAIN.READ_S;                         // how far ahead a train must be readable at top speed
+  const px = (cw, ch) => { const s = logicalSize(cw, ch), L = viewLayout(s.w, s.h), p = createProjection({ w: s.w, h: s.h, horizon: L.horizon, ground: L.ground, laneW: L.laneW }); return { s, p, size: p.k(z) * p.laneW / 50, rows: p.y(z) - p.horizon, lane: p.x(1, z) - p.x(0, z) }; };
+  const port = px(390, 844), land = px(844, 390);
+  assert.ok(land.size >= port.size * 0.95, `sprite scale ${land.size} vs ${port.size}`);
+  assert.ok(land.rows >= 10, `${land.rows} rows below the horizon at ${z} units`);
+  assert.ok(land.lane >= port.lane * 0.95);
+  assert.ok(land.p.y(T.TRAIN.SPAWN_Z) - land.p.horizon >= 5);       // the far end of the view is still above the player's row, not on the horizon line
+});
+
 test('the first switch is free (no train), and the layout comes back to a single track after every episode', () => {
   const s = createTrainGame(5);
   assert.equal(s.episodes[0].train, false);

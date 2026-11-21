@@ -9,7 +9,7 @@ import { createTrainGame, step as stepTrain, setIntent, scoreOf, botIntent, upco
 import { createTrainView } from './train-view.js';
 import { createSkateGame, step as stepSkate, steer, jump, scoreOf as skateScore, botInput, isHazard, progressAt as skateProgress } from './skate.js';
 import { createSkateView } from './skate-view.js';
-import { drawHud, drawRouteBar, faceIcon, scoreText } from './hud.js';
+import { drawHud, drawRouteBar, routeBarBox, faceIcon, scoreText } from './hud.js';
 import { drawPet, petLayout } from '../sprites.js';
 import { note, W, N } from '../sound.js';
 import * as art from './art.js';
@@ -51,8 +51,12 @@ const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls)
 const button = (text, cls, onClick) => { const b = el('button', `btn ${cls || ''}`.trim(), text); b.type = 'button'; b.addEventListener('click', () => { onClick(); b.blur(); }); return b; };
 
 const dayString = () => { const d = new Date(); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
-const safeTopPx = (root) => {                        // the notch: env(safe-area-inset-top) resolved by the browser through a probe element
-  try { const p = el('div', 'arc-probe'); root.append(p); const v = parseFloat(getComputedStyle(p).paddingTop) || 0; p.remove(); return v; } catch { return 0; }
+const safeInsets = (root) => {                       // the notch: env(safe-area-inset-*) resolved by the browser through a probe element (css px)
+  try {
+    const p = el('div', 'arc-probe'); root.append(p); const c = getComputedStyle(p);
+    const v = { top: parseFloat(c.paddingTop) || 0, left: parseFloat(c.paddingLeft) || 0, right: parseFloat(c.paddingRight) || 0 };
+    p.remove(); return v;
+  } catch { return { top: 0, left: 0, right: 0 }; }
 };
 
 /**
@@ -70,7 +74,7 @@ export function startArcade({ root, sprites, font, look, sound, awardStars = () 
 
   const best = createBestStore(storage), daily = createDailyStars(storage, dayString);
   const face = faceIcon(sprites, look);
-  let flow = initialFlow(), game = null, views = {}, size = null, topPad = 0;
+  let flow = initialFlow(), game = null, views = {}, size = null, pad = { top: 0, left: 0, right: 0 };
   let frozen = false, clock = 0, idleDist = 0, overAt = 0, runStars = 0, destroyed = false, hintsT = 0;
   const idle = { dist: 0, x: 0, goal: 1e9, pick: null, lastFrac: 0, sections: [{ z0: -1e5, kind: 'start', nodes: [{ id: 0, xs: 0, xe: 0, parents: [] }] }], node: 0, si: 0, trains: [], coinList: [], invuln: 0, flash: 0, lives: TRAIN.LIVES, over: false, t: 0 };
 
@@ -78,9 +82,12 @@ export function startArcade({ root, sprites, font, look, sound, awardStars = () 
   function resize() {
     const r = frame.getBoundingClientRect();
     const s = logicalSize(r.width, r.height);
-    if (size && size.w === s.w && size.h === s.h) return;
+    if (size && size.w === s.w && size.h === s.h && size.px === s.px) return;
     size = s; canvas.width = s.w; canvas.height = s.h;
-    topPad = Math.round(safeTopPx(root) / s.px);
+    root.dataset.wide = s.wide ? '1' : '';
+    canvas.style.width = s.fit ? `${s.fit.w}px` : ''; canvas.style.height = s.fit ? `${s.fit.h}px` : '';      // wide: one whole-number scale, never stretched
+    const ins = safeInsets(root);
+    pad = { top: Math.round(ins.top / s.px), left: Math.round(ins.left / s.px), right: Math.round(ins.right / s.px) };
     views = {};
   }
   const viewFor = (id) => { if (!size) return null; return views[id] || (views[id] = ADAPTERS[id].view(size, { font })); };
@@ -105,7 +112,8 @@ export function startArcade({ root, sprites, font, look, sound, awardStars = () 
     drawPet(c.getContext('2d'), sprites, look, lay.origin.x, lay.origin.y, { frame: 'happy' });
     return c;
   };
-  const panel = (...kids) => { const p = el('div', 'arc-panel'); p.append(...kids); return p; };
+  /** A panel: `info` (headline, score...) and `actions` (buttons). Portrait stacks them as one column; a wide screen puts them side by side (style.css). */
+  const panel = (info, actions) => { const p = el('div', 'arc-panel'), a = el('div', 'arc-info'), b = el('div', 'arc-actions'); a.append(...info); b.append(...actions); p.append(a, b); return p; };
 
   function paint() {
     ui.replaceChildren();
@@ -114,7 +122,7 @@ export function startArcade({ root, sprites, font, look, sound, awardStars = () 
     root.dataset.screen = flow.screen;
     if (flow.screen === 'menu') {
       const title = el('h1', 'arc-title', 'Arcade');
-      ui.append(title, panel(petCanvas(), el('p', 'arc-sub', 'Con tus lentes VR puestos, ¡a jugar!'), button('Jugar', 'primary big', () => dispatch({ type: 'start' })), button('Volver a la ciudad', '', leave)));
+      ui.append(title, panel([petCanvas(), el('p', 'arc-sub', 'Con tus lentes VR puestos, ¡a jugar!')], [button('Jugar', 'primary big', () => dispatch({ type: 'start' })), button('Volver a la ciudad', '', leave)]));
     } else if (flow.screen === 'select') {
       const list = el('div', 'arc-cards');
       for (const g of GAMES) {
@@ -127,17 +135,17 @@ export function startArcade({ root, sprites, font, look, sound, awardStars = () 
         if (g.available) card.addEventListener('click', () => { startRun(g.id); });
         list.append(card);
       }
-      ui.append(el('h2', 'arc-head', 'Elige un juego'), list, panel(button('Atrás', '', () => dispatch({ type: 'title' })), button('Volver a la ciudad', '', leave)));
+      ui.append(el('h2', 'arc-head', 'Elige un juego'), list, panel([], [button('Atrás', '', () => dispatch({ type: 'title' })), button('Volver a la ciudad', '', leave)]));
     } else if (flow.screen === 'play') {
       tools.append(button('⏸', 'ico', () => dispatch({ type: 'pause' })), muteButton());
       tools.firstChild.setAttribute('aria-label', 'Pausa'); tools.firstChild.title = 'Pausa';
     } else if (flow.screen === 'pause') {
-      ui.append(panel(el('h2', 'arc-head', 'Pausa'), button('Seguir', 'primary big', () => dispatch({ type: 'resume' })), button('Otra vez', '', () => startRun(flow.game)), button('Menú', '', () => dispatch({ type: 'menu' })), button('Volver a la ciudad', '', leave)));
+      ui.append(panel([el('h2', 'arc-head', 'Pausa')], [button('Seguir', 'primary big', () => dispatch({ type: 'resume' })), button('Otra vez', '', () => startRun(flow.game)), button('Menú', '', () => dispatch({ type: 'menu' })), button('Volver a la ciudad', '', leave)]));
     } else if (flow.screen === 'over') {
       const gm = GAMES.find((x) => x.id === flow.game);
       const lines = [el('h2', `arc-head${flow.won ? ' win' : ''}`, flow.won ? gm.win : '¡Fin del juego!'), el('p', 'arc-score', scoreText(flow.score)), el('p', 'arc-best', flow.isNew ? '¡Nuevo récord!' : `Mejor: ${flow.best}`)];
       if (runStars) lines.push(el('p', 'arc-stars', `+${runStars} ⭐`));
-      ui.append(panel(...lines, button('Otra vez', 'primary big', () => startRun(flow.game)), button('Menú', '', () => dispatch({ type: 'menu' })), button('Volver a la ciudad', '', leave)));
+      ui.append(panel(lines, [button('Otra vez', 'primary big', () => startRun(flow.game)), button('Menú', '', () => dispatch({ type: 'menu' })), button('Volver a la ciudad', '', leave)]));
     }
     if (flow.screen === 'menu' || flow.screen === 'select') tools.append(muteButton());
     root.dataset.ready = '1';
@@ -201,8 +209,8 @@ export function startArcade({ root, sprites, font, look, sound, awardStars = () 
     const s = playing ? game : { ...idle, dist: idleDist };
     view.draw(ctx, s, clock, look, { hints: playing ? Math.max(0, Math.min(1, 1.6 - (clock - hintsT) / 3500)) : 0 });
     if (playing) {
-      drawHud(ctx, { w: size.w, lives: game.lives, score: ADAPTERS[flow.game].score(game), face, font, top: topPad });
-      drawRouteBar(ctx, { w: size.w, progress: ADAPTERS[flow.game].progress(game), goal: GAMES.find((x) => x.id === flow.game).goal, top: topPad });
+      drawHud(ctx, { w: size.w, lives: game.lives, score: ADAPTERS[flow.game].score(game), face, font, top: pad.top, left: pad.left, right: pad.right });
+      drawRouteBar(ctx, { w: size.w, progress: ADAPTERS[flow.game].progress(game), goal: GAMES.find((x) => x.id === flow.game).goal, ...routeBarBox(size.w, size.h, pad.top) });
     }
     if (flow.screen === 'pause' || flow.screen === 'over' || flow.screen === 'menu' || flow.screen === 'select') { ctx.fillStyle = flow.screen === 'menu' || flow.screen === 'select' ? 'rgba(18,22,40,0.28)' : 'rgba(18,22,40,0.55)'; ctx.fillRect(0, 0, size.w, size.h); }
   }

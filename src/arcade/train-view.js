@@ -1,7 +1,7 @@
 // Draws the train game: sky, mountains, trees, then the ground one screen row at a time (grass, ballast, sleepers and rails in perspective, see lanes.js),
 // then everything that stands on it, far to near (roadside objects, trains, coins), and the cart with the pet. No rules in here: it reads the game state
 // and a clock. Work happens on the logical canvas (src/arcade/lanes.js logicalSize), one logical pixel is a whole number of screen pixels.
-import { createProjection } from './lanes.js';
+import { createProjection, viewLayout } from './lanes.js';
 import { roadside, hash, POLE_GAP, POST_GAP } from './scenery.js';
 import { TRAIN, nodeLat, sectionAt, upcomingFork, branchesOf, chosenIndex } from './train.js';
 import { textCanvas, textWidth } from '../font.js';
@@ -43,8 +43,8 @@ export function scaled(cv, dw, dh) {
 }
 
 export function createTrainView({ w, h }, { font = null } = {}) {
-  const hy = Math.round(h * 0.36), gy = Math.round(h * 0.82);
-  const proj = createProjection({ w, h, horizon: hy, ground: gy, laneW: Math.round(w * 0.27) });
+  const L = viewLayout(w, h, { horizon: 0.36 }), hy = L.horizon, gy = L.ground;
+  const proj = createProjection({ w, h, horizon: hy, ground: gy, laneW: L.laneW });
   const U = proj.laneW / 50;                               // sprites are drawn for a 50 px lane
   const span = gy - hy;
   const FOCAL = proj.focal;

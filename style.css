@@ -169,7 +169,7 @@ a.btn { display: inline-block; text-decoration: none; }
 .confirm-actions { display: flex; gap: .6rem; }
 .play.modal .pad, .play.modal .stick-zone { display: none !important; }
 
-/* the arcade: a full-screen layer over the town (src/arcade/arcade.js); portrait first, a centred column on a desktop */
+/* the arcade: a full-screen layer over the town (src/arcade/arcade.js); landscape first (the town is landscape): the canvas fills the screen at one whole-number scale; portrait is a centred column */
 .arcade { position: fixed; inset: 0; z-index: 60; display: flex; justify-content: center; background: #0b0d16; touch-action: none; }
 .arcade[hidden] { display: none; }
 .arc-frame { position: relative; width: 100%; max-width: 30rem; height: 100%; overflow: hidden; background: #0e101a; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
@@ -178,7 +178,8 @@ a.btn { display: inline-block; text-decoration: none; }
 .arc-ui[data-screen="play"] { display: none; }
 .arc-ui[data-screen="menu"] { justify-content: space-between; }
 .arc-ui .btn, .arc-ui .arc-card { pointer-events: auto; }
-.arc-probe { position: absolute; visibility: hidden; padding-top: env(safe-area-inset-top); }
+.arc-probe { position: absolute; visibility: hidden; padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+.arc-info, .arc-actions { display: contents; }
 .arc-title { margin: 1.2rem 0 0; font-size: 3.4rem; letter-spacing: .12em; text-transform: uppercase; color: var(--gold); text-shadow: 0 4px 0 #8a4426, 3px 0 0 #312439, -3px 0 0 #312439, 0 -3px 0 #312439, 3px 7px 0 #312439, -3px 7px 0 #312439, 0 8px 0 #312439; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-weight: 900; }
 .arc-head { margin: 0; color: var(--gold); font-size: 1.6rem; text-shadow: 2px 2px 0 #181c2c; text-align: center; }
 .arc-head.win { color: #8bd97f; font-size: 1.8rem; }
@@ -202,5 +203,28 @@ a.btn { display: inline-block; text-decoration: none; }
 .arc-tools .btn { pointer-events: auto; min-width: 2.75rem; min-height: 2.75rem; font-size: 1.2rem; line-height: 1; padding: .2rem .5rem; background: rgba(38,44,68,.82); }
 .arc-tools .btn:only-child { margin-left: auto; }
 .arc-ui[data-screen="menu"] ~ .arc-tools, .arc-ui[data-screen="select"] ~ .arc-tools { justify-content: flex-end; bottom: auto; top: 0; padding-top: max(.6rem, env(safe-area-inset-top)); }
+/* wide screens (data-wide is set by arcade.js from the frame's own aspect): the frame fills the screen, the canvas is centred at its exact size, screens go sideways */
+.arcade[data-wide="1"] .arc-frame { max-width: none; background: #000; }
+.arcade[data-wide="1"] .arc-canvas { inset: 0; margin: auto; max-width: none; }
+.arcade[data-wide="1"] .arc-ui { flex-direction: row; justify-content: center; align-items: center; flex-wrap: wrap; gap: .5rem 1.2rem; padding: max(.5rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(.5rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left)); overflow: hidden; }
+.arcade[data-wide="1"] .arc-ui[data-screen="menu"] { flex-direction: column; justify-content: center; flex-wrap: nowrap; gap: .6rem; }
+.arcade[data-wide="1"] .arc-ui[data-screen="select"] { flex-direction: column; flex-wrap: nowrap; gap: .5rem; }
+.arcade[data-wide="1"] .arc-title { margin: 0; font-size: 2.4rem; }
+.arcade[data-wide="1"] .arc-head { font-size: 1.3rem; }
+.arcade[data-wide="1"] .arc-panel { max-width: 30rem; max-height: calc(100% - 1rem); grid-template-columns: 1fr 1fr; align-items: center; gap: .6rem 1rem; padding: .7rem .9rem; }
+.arcade[data-wide="1"] .arc-info, .arcade[data-wide="1"] .arc-actions { display: grid; gap: .4rem; justify-items: stretch; align-content: center; }
+.arcade[data-wide="1"] .arc-panel .btn { padding-top: .35rem; padding-bottom: .35rem; }
+.arcade[data-wide="1"] .arc-panel .btn.big { font-size: 1.15rem; }
+.arcade[data-wide="1"] .arc-pet { width: 88px; margin: 0 auto; }
+.arcade[data-wide="1"] .arc-score { font-size: 2rem; }
+.arcade[data-wide="1"] .arc-ui[data-screen="select"] .arc-panel { max-width: 36rem; grid-template-columns: 1fr; }
+.arcade[data-wide="1"] .arc-ui[data-screen="select"] .arc-info:empty { display: none; }
+.arcade[data-wide="1"] .arc-ui[data-screen="select"] .arc-actions { grid-template-columns: 1fr 1fr; }
+.arcade[data-wide="1"] .arc-ui[data-screen="pause"] .arc-panel { grid-template-columns: 1fr; max-width: 24rem; }
+.arcade[data-wide="1"] .arc-ui[data-screen="pause"] .arc-actions { grid-template-columns: 1fr 1fr; }
+.arcade[data-wide="1"] .arc-cards { max-width: 36rem; }
+.arcade[data-wide="1"] .arc-card { min-height: 0; padding: .4rem; }
+.arcade[data-wide="1"] .arc-card-icon { width: 58px; height: 64px; }
+.arcade[data-wide="1"] .arc-tools { padding-top: 0; }
 .arcade-open { position: absolute; top: 3.5rem; left: max(.6rem, env(safe-area-inset-left)); background: var(--gold); color: var(--bg); border-color: #b89420; z-index: 2; }
 .touch .arcade-open { top: 2.7rem; }

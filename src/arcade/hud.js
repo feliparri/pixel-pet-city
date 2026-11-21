@@ -30,17 +30,17 @@ export function bigText(ctx, font, text, x, y, scale, color = '#fff7de', outline
   return wpx;
 }
 
-/** The HUD for the logical canvas of width w: lives (maxLives faces, the lost ones faded) and the score. `top` is the room to leave for a device's notch. */
-export function drawHud(ctx, { w, lives, maxLives = 3, score, face, font, top = 0 }) {
+/** The HUD for the logical canvas of width w: lives (maxLives faces, the lost ones faded) and the score. `top`, `left` and `right` are the room to leave for a device's notch. */
+export function drawHud(ctx, { w, lives, maxLives = 3, score, face, font, top = 0, left = 0, right = 0 }) {
   ctx.imageSmoothingEnabled = false;
   const y = top + 5;
   for (let i = 0; i < maxLives; i++) {
     ctx.globalAlpha = i < lives ? 1 : 0.28;
-    ctx.drawImage(face, 5 + i * (FACE_W + 1), y);
+    ctx.drawImage(face, 5 + left + i * (FACE_W + 1), y);
   }
   ctx.globalAlpha = 1;
   const text = scoreText(score), sc = 2;
-  bigText(ctx, font, text, w - 5 - textWidth(font, text) * sc, y - 2, sc);
+  bigText(ctx, font, text, w - 5 - right - textWidth(font, text) * sc, y - 2, sc);
 }
 
 /** The goal's little icon (11 x 10, anchored at its top left): the station (a red roof over a pale body) or the house (a roof, a lit door and window). */
@@ -56,9 +56,15 @@ export function drawGoalIcon(ctx, kind, x, y) {
 }
 
 /** The route bar under the lives: a rail from the start to the goal's icon, filled as far as `progress` (0..1) with a small marker at the head. */
-export function drawRouteBar(ctx, { w, progress, goal, top = 0, face = null }) {
+/** The bar's span and row for a canvas: portrait puts it under the lives across the width; a wide canvas puts it at the top centre, between lives and score. */
+export function routeBarBox(w, h, top = 0) {
+  if (w > h) { const len = Math.min(220, Math.round(w * 0.36)); return { x0: Math.round((w - len - 12) / 2), x1: Math.round((w + len - 12) / 2), y: top + 12 }; }
+  return { x0: 8, x1: w - 8 - 12, y: top + 5 + FACE_H + 5 };
+}
+
+export function drawRouteBar(ctx, { w, progress, goal, top = 0, x0 = 8, x1 = w - 8 - 12, y = top + 5 + FACE_H + 5 }) {
   ctx.imageSmoothingEnabled = false;
-  const y = top + 5 + FACE_H + 5, x0 = 8, x1 = w - 8 - 12, len = x1 - x0, p = Math.max(0, Math.min(1, progress)), fx = Math.round(x0 + len * p);
+  const len = x1 - x0, p = Math.max(0, Math.min(1, progress)), fx = Math.round(x0 + len * p);
   ctx.fillStyle = '#312439'; ctx.fillRect(x0 - 1, y - 1, len + 2, 5);
   ctx.fillStyle = '#6c6590'; ctx.fillRect(x0, y, len, 3);
   ctx.fillStyle = '#ffd36a'; ctx.fillRect(x0, y, Math.max(0, fx - x0), 3);

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { advance, createLoop, STEP_MS } from '../src/arcade/loop.js';
-import { createProjection, logicalSize, clampLane } from '../src/arcade/lanes.js';
+import { createProjection, logicalSize, viewLayout, clampLane } from '../src/arcade/lanes.js';
 import { swipeDirection, tapSide, keyAction } from '../src/arcade/input.js';
 import { createBestStore, createDailyStars, starsFor, STAR_CAP_PER_DAY } from '../src/arcade/scores.js';
 import { reduce, initialFlow, GAMES } from '../src/arcade/flow.js';
@@ -37,9 +37,27 @@ test('projection: scale 1 at the player, shrinking to the horizon, rowZ inverts 
 });
 
 test('logicalSize: whole-number pixels, clamped', () => {
-  assert.deepEqual(logicalSize(390, 844), { w: 195, h: 422, px: 2 });
-  assert.equal(logicalSize(2000, 900).w, 250); assert.equal(logicalSize(100, 100).w, 160);
+  assert.deepEqual(logicalSize(390, 844), { w: 195, h: 422, px: 2, wide: false });
+  assert.equal(logicalSize(900, 2000).w, 250); assert.equal(logicalSize(100, 100).w, 160);
   assert.equal(logicalSize(0, 0).w, 195);
+});
+
+test('logicalSize in landscape: one whole-number scale, the canvas matches the frame (square pixels)', () => {
+  for (const [cw, ch] of [[844, 390], [932, 430], [667, 375], [1280, 720], [1440, 900], [2400, 1000]]) {
+    const s = logicalSize(cw, ch);
+    assert.ok(s.wide && Number.isInteger(s.px) && s.px >= 2, `${cw}x${ch}`);
+    assert.equal(s.fit.w, s.w * s.px); assert.equal(s.fit.h, s.h * s.px);
+    assert.ok(s.fit.w <= cw && cw - s.fit.w < s.px + (s.w === 600 ? cw : 0), `${cw}x${ch} width`);
+    assert.ok(s.fit.h <= ch && ch - s.fit.h < s.px, `${cw}x${ch} height`);
+  }
+  assert.deepEqual(logicalSize(844, 390), { w: 422, h: 195, px: 2, wide: true, fit: { w: 844, h: 390 } });
+  assert.equal(logicalSize(1280, 720).px, 3);
+});
+
+test('viewLayout: a wide canvas sizes the lanes by its height and shows more road than a portrait one at the same sprite size', () => {
+  const p = viewLayout(195, 422), l = viewLayout(422, 195);
+  assert.equal(p.laneW, Math.round(195 * 0.27)); assert.equal(l.laneW, Math.round(195 * 0.27));
+  assert.ok(l.ground > l.horizon && l.horizon < 0.36 * 195);
 });
 
 test('input decisions: swipes, taps, keys', () => {
