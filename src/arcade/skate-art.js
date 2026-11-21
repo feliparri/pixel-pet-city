@@ -92,3 +92,24 @@ export const board = memo((phase) => mk(34, 14, (g) => {
   R(g, INK, 0, 0, 4, 3); R(g, INK, 30, 0, 4, 3); R(g, '#1f6f78', 1, 1, 2, 2); R(g, '#1f6f78', 31, 1, 2, 2);
   for (const x of [8, 16, 24]) R(g, '#ffcb6b', x, 4, 3, 1);
 }));
+
+/** A boulder that fell into the pipe (tall: only another position gets past), 34 x 34. */
+export const rock = memo(() => mk(34, 34, (g) => { art.blob(g, [[12, 20, 11], [24, 22, 9], [18, 13, 11]], { o: INK, d: '#4a4f78', m: '#6d729f', l: '#8e93bd', h: '#c3c7e6' }, 5); R(g, 'rgba(0,0,0,0.25)', 4, 31, 26, 3); }));
+/** A crack across the floor with a dark gap, 36 x 9 (low). */
+export const crack = memo(() => mk(36, 9, (g) => {
+  const pts = [[0, 4], [5, 3], [9, 5], [14, 3], [19, 5], [24, 3], [29, 4], [35, 5]];
+  for (const [x, y] of pts) { R(g, INK, x, y - 1, 3, 4); R(g, '#1b1d3e', x + 1, y, 1, 2); }
+  R(g, '#2c2f5c', 12, 2, 12, 5); R(g, INK, 12, 2, 12, 1); R(g, INK, 12, 6, 12, 1); R(g, '#171936', 13, 3, 10, 3);
+}));
+/** A broken plank sticking out of the wall, 26 x 12 (low). */
+export const plank = memo(() => mk(26, 12, (g) => {
+  R(g, INK, 0, 4, 26, 6); R(g, P.w3, 1, 5, 24, 4); R(g, P.w4, 1, 5, 24, 1); R(g, P.w1, 1, 8, 24, 1);
+  for (const [x, y, w] of [[18, 1, 4], [21, 2, 3], [14, 3, 3]]) { R(g, INK, x, y, w + 1, 4); R(g, P.w4, x + 1, y + 1, w - 1, 3); }
+  R(g, '#d6dcec', 4, 6, 1, 1); R(g, '#d6dcec', 12, 6, 1, 1);
+}));
+/** A drain pipe sticking out of the wall, seen end on: tall, 28 x 30. */
+export const pipe = memo(() => mk(28, 30, (g) => {
+  art.blob(g, [[14, 15, 13]], { o: INK, d: '#3a3f66', m: '#6a70a0', l: '#9aa0cf', h: '#d6dcf6' }, 9);
+  for (let y = -8; y <= 8; y++) for (let x = -8; x <= 8; x++) if (x * x + y * y <= 64) R(g, x * x + y * y > 40 ? '#2c2f5c' : '#10122e', 14 + x, 15 + y, 1, 1);
+  R(g, '#4a7bd0', 11, 20, 6, 1); R(g, '#6bb0f0', 12, 21, 3, 1);
+}));

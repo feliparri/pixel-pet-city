@@ -3,7 +3,7 @@
 // path far to near, and the board with the pet. The board's shadow stays on the ground while the pet arcs. No rules here: it reads the game state and a clock.
 import { createProjection } from './lanes.js';
 import { hash } from './scenery.js';
-import { SKATE, KINDS } from './skate.js';
+import { SKATE, KINDS, isHazard } from './skate.js';
 import { backCanvas, RUN_SEQ } from './back-sprites.js';
 import { scaled } from './train-view.js';
 import * as art from './art.js';
@@ -13,11 +13,13 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const hex = (c) => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
 const mix = (a, b, t) => { const x = hex(a), y = hex(b); return `rgb(${Math.round(lerp(x[0], y[0], t))},${Math.round(lerp(x[1], y[1], t))},${Math.round(lerp(x[2], y[2], t))})`; };
 const HAZE = '#5a4f98';
+const hexMix = (a, b, t) => { const x = hex(a), y = hex(b); return `#${[0, 1, 2].map((i) => Math.round(lerp(x[i], y[i], t)).toString(16).padStart(2, '0')).join('')}`; };
 export const FAR = 270, FADE_FROM = 200;
 const HU = 13;                                   // pixels per height unit at the board's depth
 const PAVER = 9;                                 // paving stones are this long
 const LAMP_GAP = 40, LAMP_LANE = 2.05, POOL_Z = 15, POOL_X = 1.9;
-const RAIL_LANE = -2.55, WATER_EDGE = -2.7, CURB = 1.78;
+const RAIL_LANE = -2.55, WATER_EDGE = -2.7;
+const PIPE_FLOOR = 0.62, PIPE_TOP = 1.9, SLOT = 1.2, RAISE = 13;      // the half-pipe: floor half width, where the wall's lip is, how far out a wall position sits, how much higher on the screen
 const SKY = ['#10123a', '#171a4e', '#20256a', '#2c3282', '#3e3f98', '#58509f', '#7a5aa3', '#a86aa3'];
 
 export function createSkateView({ w, h }) {
@@ -35,7 +37,8 @@ export function createSkateView({ w, h }) {
       gr: m('#1d4743'), grD: m('#143a38'), grL: m('#2f6a53'),
       wa: m('#1d3b86'), waL: m('#4a7bd0'), waD: m('#162d6c'), waS: m('#9fc4ff'),
       pr: m('#474c7e'), prJ: m('#383d6a'),
-      pA: m('#6f74aa'), pB: m('#646a9f'), pJ: m('#474c7e'), pAvg: m('#6a6fa4'),
+      wb: Array.from({ length: 8 }, (_, i) => m(hexMix('#a8add9', '#2b2f5e', i / 7))), lip: m('#c4caf0'), lipD: m('#55598c'), fe: m('#2c3060'), cl: m('#e0d890'),
+      pA: m('#858abf'), pB: m('#7a80b5'), pJ: m('#575c90'), pAvg: m('#8085ba'),
       cu: m('#a0a6d6'), cuD: m('#6d73aa'),
     };
   }
@@ -90,7 +93,9 @@ export function createSkateView({ w, h }) {
     g.fillStyle = '#123a3a'; g.fillRect(0, hy - 2, bw, 4);
   }
 
-  const cam = (s) => s.x * 0.35;
+  const cam = (s) => s.p * SLOT * 0.28;
+  const latOf = (slot) => slot * SLOT;
+  const raiseOf = (slot) => RAISE * slot * slot;
 
   function blit(ctx, cv, lane, z, c, { dy = 0, alpha = 1, stretch = 1 } = {}) {
     const p = proj.project(lane, z, c), sc = p.s * U;
@@ -101,6 +106,17 @@ export function createSkateView({ w, h }) {
     ctx.globalAlpha = a;
     ctx.drawImage(sc >= 0.999 && sc <= 1.001 && stretch === 1 ? cv : scaled(cv, dw, dh), Math.round(p.x - dw / 2), Math.round(p.y - dh - dy * sc));
     ctx.globalAlpha = 1;
+  }
+  /** A sprite stuck to the wall: like blit, tipped by `ang` (radians) about its foot and lifted by `dy` px. */
+  function blitTilt(ctx, cv, lane, z, c, ang, dy, alpha = 1) {
+    const p = proj.project(lane, z, c), sc = p.s * U;
+    const dw = Math.round(cv.width * sc), dh = Math.round(cv.height * sc);
+    if (dw < 1 || dh < 1 || p.x + dw < 0 || p.x - dw > w) return;
+    const a = z > FADE_FROM ? Math.max(0, 1 - (z - FADE_FROM) / (FAR - FADE_FROM)) * alpha : alpha;
+    if (a <= 0.02) return;
+    ctx.save(); ctx.globalAlpha = a; ctx.translate(Math.round(p.x), Math.round(p.y - dy * sc)); ctx.rotate(ang);
+    ctx.drawImage(sc >= 0.999 && sc <= 1.001 ? cv : scaled(cv, dw, dh), -Math.round(dw / 2), -dh);
+    ctx.restore();
   }
   function line(ctx, x0, y0, x1, y1, color, thick = 1) {
     x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
@@ -143,20 +159,32 @@ export function createSkateView({ w, h }) {
           for (let i = 0; i < 4 + Math.round(k * 5); i++) { const hx = Math.floor(hash(b, i + 11) * wr); ctx.fillStyle = hash(b, i + 21) < 0.2 ? r.waS : hash(b, i + 25) < 0.55 ? r.waL : r.waD; ctx.fillRect(hx, y, 1 + (hash(b, i + 30) < 0.5 ? 1 : 0) + Math.round(k * 2), 1); }
         }
       }
-      // the promenade strips beside the path and the path itself
+      // the promenade strips beside the pipe, then the half-pipe itself: a floor in the middle and a curved wall each side up to a bright lip
       ctx.fillStyle = r.pr; ctx.fillRect(Math.max(0, wr), y, Math.max(0, X(2.45) - Math.max(0, wr)), 1);
-      ctx.fillRect(X(CURB), y, Math.max(0, X(2.45) - X(CURB)), 1);
-      const px0 = X(-CURB), px1 = X(CURB);
-      ctx.fillStyle = stripe === 0.5 ? r.pAvg : r.pA; ctx.fillRect(px0, y, px1 - px0, 1);
+      const fl = X(-PIPE_FLOOR), fr = X(PIPE_FLOOR), tl = X(-PIPE_TOP), tr = X(PIPE_TOP), wspan = fl - tl;
+      for (let b = 0; b < 8; b++) {                                              // each wall in eight shaded bands: lit at the foot where it faces up, darker towards the lip where it stands up
+        const x0 = Math.round(fl - wspan * ((b + 1) / 8)), x1 = Math.round(fl - wspan * (b / 8));
+        ctx.fillStyle = r.wb[b]; ctx.fillRect(x0, y, x1 - x0, 1);
+        const y0 = Math.round(fr + wspan * (b / 8)), y1 = Math.round(fr + wspan * ((b + 1) / 8));
+        ctx.fillRect(y0, y, y1 - y0, 1);
+      }
+      ctx.fillStyle = r.fe; ctx.fillRect(fl - 1, y, 1, 1); ctx.fillRect(fr, y, 1, 1);
+      ctx.fillStyle = r.lip; ctx.fillRect(tl - 1, y, 2, 1); ctx.fillRect(tr - 1, y, 2, 1);
+      ctx.fillStyle = r.lipD; ctx.fillRect(tl - 2, y, 1, 1); ctx.fillRect(tr + 1, y, 1, 1);
+      ctx.fillStyle = stripe === 0.5 ? r.pAvg : r.pA; ctx.fillRect(fl, y, fr - fl, 1);
       if (stripe !== 0.5) {
         const row = Math.floor(wz / PAVER), onJoint = ((wz % PAVER) + PAVER) % PAVER < dz + 0.3;
-        for (let j = 0; j < 7; j++) if ((row + j) & 1) { ctx.fillStyle = r.pB; ctx.fillRect(X(-1.5 + j * 0.5 - 0.25), y, Math.max(1, X(-1.5 + j * 0.5 + 0.25) - X(-1.5 + j * 0.5 - 0.25)), 1); }
-        ctx.fillStyle = r.pJ;
-        if (onJoint) ctx.fillRect(px0, y, px1 - px0, 1);
-        else for (let j = -3; j <= 3; j++) ctx.fillRect(X(j * 0.5 + 0.25 * ((row & 1) ? 1 : -1) + (j === 3 ? 0 : 0)) - 0, y, 1, 1);
+        if ((row & 1) === 0) { ctx.fillStyle = r.pB; ctx.fillRect(fl, y, fr - fl, 1); }
+        if (onJoint) { ctx.fillStyle = r.pJ; ctx.fillRect(tl, y, tr - tl, 1); }
+        if (Math.floor(wz / 14) % 3 === 0) { ctx.fillStyle = r.cl; ctx.fillRect(X(0) - Math.max(1, Math.round(0.03 * u)), y, Math.max(1, Math.round(0.06 * u)), 1); }   // the painted centre line
+        for (const sd of [-1, 1]) {                                                // tags sprayed on the walls: a scribble of short runs
+          const tag = Math.floor(wz / 12), hs = hash(tag, sd * 7 + 3);
+          if (hs < 0.09) {
+            ctx.fillStyle = ['#ff7ab0', '#4ec9c0', '#ffcb6b'][Math.floor(hash(tag, 9) * 3)];
+            for (let i = 0; i < 2; i++) { const f = 0.15 + hash(Math.floor(wz), i + sd) * 0.6; ctx.fillRect(Math.round(sd < 0 ? fl - wspan * (f + 0.12) : fr + wspan * f), y, Math.max(1, Math.round(wspan * 0.1)), 1); }
+          }
+        }
       }
-      ctx.fillStyle = r.cu; ctx.fillRect(px0 - Math.max(1, Math.round(0.14 * u)), y, Math.max(1, Math.round(0.14 * u)), 1); ctx.fillRect(px1, y, Math.max(1, Math.round(0.14 * u)), 1);
-      ctx.fillStyle = r.cuD; ctx.fillRect(px0 - Math.max(1, Math.round(0.14 * u)), y, 1, 1);
       // the pools of lamplight: three nested ellipses of warm light
       for (const L of lamps) {
         const dzr = Math.abs(wz - L.z);
@@ -164,7 +192,7 @@ export function createSkateView({ w, h }) {
         for (const [sc, a] of [[1, 0.1], [0.72, 0.1], [0.42, 0.13]]) {
           if (dzr >= POOL_Z * sc) continue;
           const hx = POOL_X * sc * Math.sqrt(1 - (dzr / (POOL_Z * sc)) ** 2), cxl = L.side * 0.95;
-          const x0 = Math.max(px0, X(cxl - hx)), x1 = Math.min(px1, X(cxl + hx));
+          const x0 = Math.max(X(-PIPE_TOP), X(cxl - hx)), x1 = Math.min(X(PIPE_TOP), X(cxl + hx));
           if (x1 > x0) { ctx.fillStyle = `rgba(255,190,90,${a})`; ctx.fillRect(x0, y, x1 - x0, 1); }
         }
       }
@@ -220,39 +248,37 @@ export function createSkateView({ w, h }) {
     }
     for (const o of s.objs) {
       if (o.z > FAR || o.z < -14) continue;
-      if (o.kind === 'coin') list.push({ z: o.z, draw: (ctx) => blit(ctx, art.coin(String(Math.floor(t / 110 + o.id) % 4)), o.x, o.z, c, { dy: 7 + o.h * HU }) });
+      if (o.kind === 'coin') list.push({ z: o.z, draw: (ctx) => blit(ctx, art.coin(String(Math.floor(t / 110 + o.id) % 4)), latOf(o.slot), o.z, c, { dy: 7 + o.h * HU + raiseOf(o.slot) }) });
       else list.push({ z: o.z, draw: (ctx) => thing(ctx, o, c) });
     }
     return list.sort((a, b) => b.z - a.z);
   }
+  const SPRITE = { rock: () => sa.nightify(sa.rock(), 0.3), bench: () => sa.nightify(sa.bench('44'), 0.45), crack: () => sa.crack(), plank: () => sa.nightify(sa.plank(), 0.3), cone: () => sa.nightify(sa.cone(), 0.2), pipe: () => sa.pipe(), ramp: () => sa.nightify(sa.ramp('46'), 0.25), gate: () => sa.nightify(sa.barrier(String(Math.round(2 * PIPE_TOP * 50 * 0.98))), 0.35) };
   function thing(ctx, o, c) {
-    const z = Math.max(o.z, -3), width = wpx(o.hw * 2), al = o.hit ? 0.35 : 1;
-    switch (o.kind) {
-      case 'cone': blit(ctx, sa.nightify(sa.cone(), 0.2), o.x, z, c, { alpha: al }); break;
-      case 'puddle': blit(ctx, sa.puddle(width), o.x, z, c, { alpha: al }); break;
-      case 'barrier': blit(ctx, nt(sa.barrier(width)), o.x, z, c, { alpha: al }); break;
-      case 'bench': blit(ctx, nt(sa.bench(width)), o.x, z, c, { alpha: al }); break;
-      case 'planter': blit(ctx, nt(sa.planter(width)), o.x, z, c, { alpha: al }); break;
-      case 'ramp': blit(ctx, sa.nightify(sa.ramp(width), 0.25), o.x, z, c, { alpha: al }); break;
-      default:
-    }
+    const z = Math.max(o.z, -3), al = o.hit ? 0.35 : 1, cv = SPRITE[o.kind] && SPRITE[o.kind]();
+    if (!cv) return;
+    if (o.all) { blit(ctx, cv, 0, z, c, { alpha: al }); return; }
+    const wall = Math.abs(o.slot) === 1;
+    blitTilt(ctx, cv, latOf(o.slot), z, c, wall ? o.slot * -0.42 : 0, raiseOf(o.slot), al);
   }
 
   // ---- the board and the pet ------------------------------------------------------------------------------------------------------------------------
   function player(ctx, s, t, look) {
     if (s.invuln > 0 && Math.floor(s.invuln / 90) % 2 === 1 && !s.over) return;
-    const c = cam(s), px = Math.round(proj.x(s.x, 0, c)), seq = RUN_SEQ[Math.floor(t / 130) % RUN_SEQ.length];
-    const lean = Math.abs(s.vx) > 0.7 ? Math.sign(s.vx) : 0, rumble = s.grounded ? Math.round(Math.sin((t / 1000) * 42) * 0.5 + 0.5) : 0;
-    const lift = Math.round(s.h * HU), base = gy + 1;
-    const sh = Math.max(0.35, 1 - s.h * 0.16);                                // the shadow stays on the ground and shrinks with the height
+    const c = cam(s), px = Math.round(proj.x(latOf(s.p), 0, c)), seq = RUN_SEQ[Math.floor(t / 130) % RUN_SEQ.length];
+    const rumble = s.grounded ? Math.round(Math.sin((t / 1000) * 42) * 0.5 + 0.5) : 0;
+    const lift = Math.round(s.h * HU), base = gy + 1 - Math.round(raiseOf(s.p));
+    const ang = -s.p * 0.62;                                                  // the board tips to the wall's angle; the pet leans into it
+    const sh = Math.max(0.35, 1 - s.h * 0.16);                                // the shadow stays on the surface and shrinks with the height
     ctx.fillStyle = '#000'; ctx.globalAlpha = 0.34 * sh;
     const sw = Math.round(30 * sh); ctx.fillRect(px - Math.round(sw / 2), base - 2, sw, 2); ctx.fillRect(px - Math.round(sw / 2) + 3, base, sw - 6, 2); ctx.globalAlpha = 1;
-    const boardTop = base - 14 - lift - rumble;
-    // squash on landing, stretch on the way up
-    const sq = s.squash > 0 ? 1 - 0.2 * (s.squash / SKATE.SQUASH_MS) : !s.grounded && s.vy > 4 ? 1.1 : 1;
-    const ph = Math.round(32 * sq);
-    ctx.drawImage(backCanvas(look.species, look.stage, s.grounded ? seq : 0, lean), 0, 0, 32, 32, px - 16 + (sq < 1 ? 0 : 0), boardTop + 2 - ph + 1, 32, ph);
-    ctx.drawImage(sa.board(String(Math.floor(t / 70) % 2)), px - 17 + lean, boardTop);
+    const sq = s.squash > 0 ? 1 - 0.2 * (s.squash / SKATE.SQUASH_MS) : !s.grounded && s.vy > 4 ? 1.1 : 1, ph = Math.round(32 * sq);
+    const lean = Math.abs(s.p) > 0.35 ? -Math.sign(s.p) : 0;
+    ctx.save();
+    ctx.translate(px, base - lift - rumble); ctx.rotate(ang);
+    ctx.drawImage(backCanvas(look.species, look.stage, s.grounded ? seq : 0, lean), 0, 0, 32, 32, -16, -14 + 2 - ph + 1, 32, ph);
+    ctx.drawImage(sa.board(String(Math.floor(t / 70) % 2)), -17, -14);
+    ctx.restore();
   }
 
   // ---- the whole picture ---------------------------------------------------------------------------------------------------------------------------------
@@ -266,11 +292,6 @@ export function createSkateView({ w, h }) {
     for (const d of drawables(s, t)) d.draw(ctx);
     ctx.globalAlpha = 1;
     player(ctx, s, t, look);
-    if (hints > 0.02) {
-      ctx.globalAlpha = Math.min(1, hints);
-      ctx.drawImage(art.arrowSign('left'), 8, Math.round(h * 0.4)); ctx.drawImage(art.arrowSign('right'), w - 48, Math.round(h * 0.4));
-      ctx.globalAlpha = 1;
-    }
     ctx.restore();
     if (s.flash > 0) {
       const f = s.flash / SKATE.FLASH_MS;

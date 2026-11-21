@@ -1,33 +1,36 @@
-// "Patineta": the rules of the skateboard run, no drawing, no clock. Unlike the rail cart (discrete lanes), the board has momentum: steering is an
-// acceleration that builds sideways speed, friction bleeds it off, the path's edges stop it; and it can JUMP: a gravity arc with hang time (steering is weaker
-// in the air) and a squash on landing. Low obstacles (cones, puddles, barriers) are cleared by height, tall ones (planters, benches) only by steering; ramps
-// launch a higher jump; some coins hang in the air. Positions: x across the path (-EDGE..EDGE, in lanes), z ahead of the board in world units, h the board's
-// height above the ground in height units. Everything is a function of the seed and the fixed steps, so a run is repeatable.
+// "Patineta": the rules of the half-pipe run, no drawing, no clock. The board rides in a U-shaped chute with three positions: the left wall (-1), the floor
+// (0) and the right wall (+1), and its position `p` is a continuous swing: holding left or right pushes it up that wall along a smooth arc, letting go lets the
+// pipe's gravity swing it back down to the floor with a little overshoot. It can also JUMP (a gravity arc with hang time and a landing squash; allowed on a wall
+// too: the board pops straight up off the surface and lands on the same spot) and ramps launch a higher jump. Obstacles lie at a position: low ones (cracks,
+// cones, planks, a low barricade across the whole pipe) are cleared by height, tall ones (rocks, benches, pipes sticking out of the wall) only by changing position;
+// coins hang in all three positions and some in the air. Everything is a function of the seed and the fixed steps, so a run is repeatable.
 import { next } from './train.js';
 
 export const SKATE = {
   LIVES: 3, INVULN_MS: 1600, FLASH_MS: 380,
   V0: 30, VMAX: 72, ACC: 0.75,
   SPAWN_Z: 230, BUFFER: 70, FIRST_Z: 130,
-  CORRIDOR: 0.8,                    // half width of the gap the generator always leaves free
-  EDGE: 1.4,                       // the board can go this far from the middle
-  PW: 0.26, DEPTH: 1.6,            // the board's half width (lanes) and length (units)
-  STEER_ACC: 11, BRAKE_MULT: 1.6, AIR_STEER: 0.55, FRICTION: 4.2, AIR_FRICTION: 1.2, VMAX_X: 3.2, EDGE_BOUNCE: 0.2,
+  SPRING: 18, PUSH: 36, DAMP: 4.6, AIR_PIPE: 0.5,     // the swing: gravity pulls towards the floor, a held direction pushes up the wall, damping settles it
+  HW: 0.46, DEPTH: 1.6,                               // how close (in positions) the board must be to an obstacle to touch it, and the board's length
   G: 28, JUMP_V: 11.2, RAMP_V: 16,
   COYOTE_MS: 90, BUFFER_MS: 130, SQUASH_MS: 150,
-  GAP_EASY: 1.9, GAP_HARD: 1.05, RAMP_S: 70, STEER_SAFETY: 0.7, MAX_SHIFT: 2.2,
-  SCORE_DIV: 4, COIN_POINTS: 5, AIR_POINTS: 8,   // points per second in the air
-  LOOK_S: 1.6,
+  GAP_EASY: 1.9, GAP_HARD: 1.05, RAMP_S: 70,
+  HOP_S: 0.32, CROSS_S: 0.6, REACT_S: 0.3,            // what the generator assumes a floor <-> wall hop, a wall <-> wall crossing and a reaction take
+  SCORE_DIV: 4, COIN_POINTS: 5, AIR_POINTS: 8,        // points per second in the air
+  LOOK_S: 1.6, P_TALL_EASY: 0.35, P_TALL_HARD: 0.6, P_DOUBLE_EASY: 0.15, P_DOUBLE_HARD: 0.5,
 };
-/** What can lie on the path: half width (lanes), height (height units a board must be above to pass), depth along the path. */
+/** The obstacles: the positions they can stand at, the height a board must be above to pass, the depth along the pipe. */
 export const KINDS = {
-  cone: { hw: 0.22, h: 0.9, d: 1 },
-  puddle: { hw: 0.45, h: 0.3, d: 2 },
-  barrier: { hw: SKATE.EDGE + 0.35, h: 1.25, d: 1.2 },
-  bench: { hw: 0.8, h: 2.7, d: 2 },
-  planter: { hw: 0.55, h: 3.2, d: 2 },
-  ramp: { hw: 0.7, h: 0, d: 4 },
+  rock: { at: [0], h: 3.0, d: 2 },
+  bench: { at: [0], h: 2.7, d: 2 },
+  crack: { at: [0], h: 0.35, d: 2 },
+  plank: { at: [-1, 1], h: 0.4, d: 2 },              // a broken plank in the wall
+  cone: { at: [-1, 0, 1], h: 0.9, d: 1 },
+  pipe: { at: [-1, 1], h: 3.0, d: 2 },               // a drain pipe sticking out of the wall
+  gate: { at: [-1, 0, 1], h: 1.25, d: 1.2, all: true },   // a barricade across the whole pipe: only a jump gets over
+  ramp: { at: [-1, 0, 1], h: 0, d: 4 },
 };
+const FLOOR_LOW = ['crack', 'cone'], FLOOR_TALL = ['rock', 'bench'], WALL_LOW = ['plank', 'cone'], WALL_TALL = ['pipe'];
 export const isHazard = (o) => o.kind !== 'ramp' && o.kind !== 'coin';
 
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
@@ -35,9 +38,8 @@ const lerp = (a, b, t) => a + (b - a) * t;
 export const speedAt = (t) => Math.min(SKATE.VMAX, SKATE.V0 + SKATE.ACC * t);
 export const difficultyAt = (t) => clamp(t / SKATE.RAMP_S, 0, 1);
 export const gapSeconds = (t) => lerp(SKATE.GAP_EASY, SKATE.GAP_HARD, difficultyAt(t));
-/** How far sideways a board can get from rest in `t` seconds of steering with a stop at the end (accelerate half, brake half), less a safety margin. */
-export const reachX = (t) => Math.min(SKATE.MAX_SHIFT, SKATE.STEER_SAFETY * (SKATE.STEER_ACC * Math.max(0, t) ** 2) / 4);
-/** Jump physics, for tests and the generator: the apex height and the time in the air of a launch at `v`. */
+/** What the generator assumes it takes to get from position a to position b. */
+export const swingTime = (a, b) => (a === b ? 0 : Math.abs(a - b) === 2 ? SKATE.CROSS_S : SKATE.HOP_S);
 export const apexOf = (v) => (v * v) / (2 * SKATE.G);
 export const airtimeOf = (v) => (2 * v) / SKATE.G;
 export const heightAt = (v, t) => v * t - 0.5 * SKATE.G * t * t;
@@ -48,76 +50,72 @@ export function createSkateGame(seed = 1) {
   const s = {
     seed: seed >>> 0, rng: seed >>> 0,
     t: 0, dist: 0, v: SKATE.V0, coins: 0, lives: SKATE.LIVES, over: false, hits: 0, air: 0,
-    x: 0, vx: 0, hold: 0,                       // hold: the steering input, -1 left, 0 none, 1 right
+    p: 0, vp: 0, hold: 0,                        // the swing: position (-1 left wall, 0 floor, 1 right wall), its speed, the held direction
     h: 0, vy: 0, grounded: true, sinceGround: 0, jumpBuf: 0, squash: 0, ramps: 0,
     invuln: 0, flash: 0,
-    objs: [], nextFront: SKATE.FIRST_Z, prevEnd: 0, prevC: 0, rows: 0, lastBarrier: false,
+    objs: [], nextFront: SKATE.FIRST_Z, prevEnd: 0, prevFree: [-1, 0, 1], rows: 0,
     events: [],
   };
   fill(s);
   return s;
 }
 
-const put = (s, kind, x, z, extra = {}) => { const k = KINDS[kind]; s.objs.push({ id: ++ids, kind, x, z, hw: k.hw, h: k.h, d: k.d, ...extra }); return s.objs[s.objs.length - 1]; };
-const coin = (s, x, z, h) => s.objs.push({ id: ++ids, kind: 'coin', x, z, h, taken: false });
+const put = (s, kind, slot, z) => { const k = KINDS[kind]; const o = { id: ++ids, kind, slot, z, h: k.h, d: k.d, all: !!k.all, row: s.rows }; s.objs.push(o); return o; };
+const coin = (s, slot, z, h) => s.objs.push({ id: ++ids, kind: 'coin', slot, z, h, d: 0, taken: false });
+const pickOf = (s, list) => list[Math.floor(next(s) * list.length)];
 
 function genRow(s) {
   const front = s.nextFront;
   const arrival = s.t + Math.max(0, front) / Math.max(1, s.v);
   const d = difficultyAt(arrival), vArr = speedAt(arrival), gapT = gapSeconds(arrival);
-  const shift = reachX(gapT - 0.3);
+  const budget = gapT - SKATE.REACT_S;
   const r = next(s);
-  const kind = s.rows < 2 ? 'corridor' : r < 0.5 ? 'corridor' : r < 0.68 ? 'barrier' : r < 0.8 ? 'ramp' : 'cones';
-  const c = clamp(s.prevC + (next(s) * 2 - 1) * shift, -1, 1);          // the corridor the board can always follow
-  let end = front, extra = 0, cMid = s.prevC;
+  const kind = s.rows < 2 ? 'blocks' : r < 0.55 ? 'blocks' : r < 0.72 ? 'gate' : r < 0.86 ? 'ramp' : 'cones';
+  let end = front, extra = 0, nextFree = [-1, 0, 1];
   const gapLen = front - s.prevEnd;
-  if (kind === 'barrier') {
-    put(s, 'barrier', 0, front);
-    end = front + KINDS.barrier.d;
-    for (let i = 0; i < 5; i++) coin(s, clamp(s.prevC, -1, 1), front - 7 + i * 4.5, 1.9 - Math.abs(i - 2) * 0.12);   // an arc only a jump collects
-    s.lastBarrier = true;
+  if (kind === 'gate') {
+    put(s, 'gate', 0, front);
+    end = front + KINDS.gate.d;
+    const at = pickOf(s, s.prevFree);
+    for (let i = 0; i < 5; i++) coin(s, at, front - 7 + i * 4.5, 1.9 - Math.abs(i - 2) * 0.12);    // an arc only a jump collects
   } else if (kind === 'ramp') {
-    const rx = clamp(c, -1, 1);
-    put(s, 'ramp', rx, front);
+    const slot = pickOf(s, [-1, 0, 1].filter((b) => s.prevFree.some((a) => swingTime(a, b) <= budget)));
+    put(s, 'ramp', slot, front);
     end = front + KINDS.ramp.d;
     const air = airtimeOf(SKATE.RAMP_V);
-    for (let i = 1; i <= 5; i++) { const tt = (air * i) / 6; coin(s, rx, front + tt * vArr, heightAt(SKATE.RAMP_V, tt) * 0.9); }
+    for (let i = 1; i <= 5; i++) { const tt = (air * i) / 6; coin(s, slot, front + tt * vArr, heightAt(SKATE.RAMP_V, tt) * 0.9); }
     extra = air * vArr;
-    cMid = rx; s.lastBarrier = false;
   } else {
-    const lo = c - SKATE.CORRIDOR, hi = c + SKATE.CORRIDOR;
-    const wl = lo + SKATE.EDGE, wr = SKATE.EDGE - hi;
-    const tall = (w, side) => {
-      if (w < 0.55) return;
-      const hw = Math.min(0.8, w / 2 - 0.02), cx = side < 0 ? -SKATE.EDGE + w / 2 : SKATE.EDGE - w / 2;
-      put(s, hw > 0.65 && next(s) < 0.5 ? 'bench' : 'planter', cx, front, { hw: Math.min(hw, w / 2), edge: side });
-    };
-    if (kind === 'corridor') {
-      tall(wl, -1); tall(wr, 1);
-      if (next(s) < 0.25 + 0.3 * d) put(s, next(s) < 0.5 ? 'cone' : 'puddle', c, front + 0.5);   // low, in the way: steer round or jump
-      end = front + 2.2;
-    } else {
-      const spots = [c - 0.9, c + 0.9, c - 1.15, c + 1.15].filter((x) => Math.abs(x) <= SKATE.EDGE);
-      spots.slice(0, 3).forEach((x, i) => put(s, 'cone', x, front + i * 4));
-      end = front + 9;
-    }
-    cMid = c; s.lastBarrier = false;
+    // a row of blocked positions: one or two of the three, never all (an all-low row is the gate)
+    const nBlocked = kind === 'cones' ? 1 : next(s) < lerp(SKATE.P_DOUBLE_EASY, SKATE.P_DOUBLE_HARD, d) ? 2 : 1;
+    const subsets = nBlocked === 1 ? [[-1], [0], [1]] : [[-1, 0], [-1, 1], [0, 1]];
+    const ok = subsets.filter((b) => { const f = [-1, 0, 1].filter((x) => !b.includes(x)); return s.prevFree.some((a) => f.some((x) => swingTime(a, x) <= budget)); });
+    const blocked = pickOf(s, ok.length ? ok : subsets);
+    nextFree = [-1, 0, 1].filter((x) => !blocked.includes(x));
+    const pTall = lerp(SKATE.P_TALL_EASY, SKATE.P_TALL_HARD, d);
+    blocked.forEach((slot, i) => {
+      const tall = kind !== 'cones' && next(s) < pTall;
+      const list = slot === 0 ? (tall ? FLOOR_TALL : FLOOR_LOW) : (tall ? WALL_TALL : WALL_LOW);
+      put(s, kind === 'cones' ? 'cone' : pickOf(s, list), slot, front + (kind === 'cones' ? i * 3 : 0));
+    });
+    end = front + (kind === 'cones' ? 5 : 2.4);
   }
-  // coins in the gap before the row: a trail that bends from where the board was to where the corridor is
+  // coins in the gap before the row: the first half in the position the board was likely in, the second half in the position it should move to
   const n = Math.min(6, Math.floor((gapLen - 8) / 7));
-  for (let i = 0; i < n; i++) coin(s, lerp(s.prevC, cMid, (i + 1) / (n + 1)), s.prevEnd + 5 + i * 7, 0.4);
-  s.prevEnd = end; s.prevC = cMid; s.rows++;
+  const to = pickOf(s, nextFree), from = pickOf(s, s.prevFree);
+  for (let i = 0; i < n; i++) coin(s, i < n / 2 ? from : to, s.prevEnd + 5 + i * 7, 0.4);
+  s.prevEnd = end; s.prevFree = nextFree; s.rows++;
   s.nextFront = end + extra + gapT * vArr;
 }
 function fill(s) { while (s.nextFront <= SKATE.SPAWN_Z + SKATE.BUFFER) genRow(s); }
 
-/** Steering input: -1 left, 0 none, 1 right (held). */
+/** Steering input: -1 up the left wall, 0 let go, 1 up the right wall (held). */
 export function steer(s, dir) { s.hold = dir; }
 
-/** Jump now (or a little before landing: it is remembered for BUFFER_MS). True when the board left the ground. */
+/** Jump now (or a little before landing: it is remembered for BUFFER_MS). On the floor or on a wall. True when the board left the surface. */
 export function jump(s) {
   if (s.over) return false;
-  if (s.grounded || s.sinceGround * 1000 <= SKATE.COYOTE_MS && s.vy <= 0 && s.h < 0.3) {
+  if (s.grounded || (s.sinceGround * 1000 <= SKATE.COYOTE_MS && s.vy <= 0 && s.h < 0.3)) {
     s.vy = SKATE.JUMP_V; s.h = Math.max(s.h, 0.001); s.grounded = false; s.sinceGround = 9; s.events.push('jump');
     return true;
   }
@@ -132,16 +130,11 @@ export function step(s, ms) {
   s.t += dt; s.v = speedAt(s.t);
   const dz = s.v * dt;
   s.dist += dz;
-  // sideways: acceleration, braking when reversing, friction when not steering, the edges
-  const air = !s.grounded;
-  let ax = s.hold * SKATE.STEER_ACC * (air ? SKATE.AIR_STEER : 1);
-  if (s.hold && s.vx * s.hold < 0) ax *= SKATE.BRAKE_MULT;
-  s.vx += ax * dt;
-  if (!s.hold) s.vx *= Math.exp(-(air ? SKATE.AIR_FRICTION : SKATE.FRICTION) * dt);
-  s.vx = clamp(s.vx, -SKATE.VMAX_X, SKATE.VMAX_X);
-  s.x += s.vx * dt;
-  if (Math.abs(s.x) > SKATE.EDGE) { s.x = Math.sign(s.x) * SKATE.EDGE; s.vx = -s.vx * SKATE.EDGE_BOUNCE; }
-  // vertical
+  // the swing: a held direction pushes up the wall, gravity pulls back to the floor, damping settles it (a little overshoot); in the air the pipe has less grip
+  const k = s.grounded ? 1 : SKATE.AIR_PIPE;
+  const acc = (s.hold * SKATE.PUSH - SKATE.SPRING * s.p) * k - SKATE.DAMP * s.vp;
+  s.vp += acc * dt; s.p += s.vp * dt;
+  if (s.p > 1) { s.p = 1; if (s.vp > 0) s.vp = 0; } else if (s.p < -1) { s.p = -1; if (s.vp < 0) s.vp = 0; }
   s.squash = Math.max(0, s.squash - ms);
   s.jumpBuf = Math.max(0, s.jumpBuf - ms);
   if (!s.grounded) {
@@ -160,10 +153,10 @@ export function step(s, ms) {
   let crashed = false;
   for (const o of s.objs) {
     if (o.kind === 'coin') {
-      if (o.z <= 2.5 && o.z >= -2.5 && Math.abs(s.x - o.x) < 0.5 && Math.abs(s.h - o.h) < 1.1) { o.taken = true; s.coins++; s.events.push('coin'); }
+      if (o.z <= 2.5 && o.z >= -2.5 && Math.abs(s.p - o.slot) < 0.55 && Math.abs(s.h - o.h) < 1.1) { o.taken = true; s.coins++; s.events.push('coin'); }
     } else if (o.kind === 'ramp') {
-      if (!o.used && s.grounded && o.z <= SKATE.DEPTH && o.z + o.d >= 0 && Math.abs(s.x - o.x) < o.hw + 0.15) { o.used = true; s.vy = SKATE.RAMP_V; s.h = 0.001; s.grounded = false; s.sinceGround = 9; s.ramps++; s.events.push('ramp'); }
-    } else if (!crashed && !o.hit && s.invuln <= 0 && o.z <= SKATE.DEPTH && o.z + o.d >= 0 && Math.abs(s.x - o.x) < o.hw + SKATE.PW && s.h < o.h) {
+      if (!o.used && s.grounded && o.z <= SKATE.DEPTH && o.z + o.d >= 0 && Math.abs(s.p - o.slot) < SKATE.HW + 0.1) { o.used = true; s.vy = SKATE.RAMP_V; s.h = 0.001; s.grounded = false; s.sinceGround = 9; s.ramps++; s.events.push('ramp'); }
+    } else if (!crashed && !o.hit && s.invuln <= 0 && o.z <= SKATE.DEPTH && o.z + o.d >= 0 && (o.all || Math.abs(s.p - o.slot) < SKATE.HW) && s.h < o.h) {
       o.hit = true; crashed = true;
       s.lives--; s.hits++; s.invuln = SKATE.INVULN_MS; s.flash = SKATE.FLASH_MS;
       s.events.push('hit');
@@ -173,32 +166,28 @@ export function step(s, ms) {
   return s.events;
 }
 
-/** The demo bot: { dir, jump } for the next step. It looks LOOK_S ahead, steers (with a damped controller) to the nearest x clear of the tall and the low things,
- * or, when only low things block the way, jumps them just before they arrive. */
+/** The demo bot: { dir, jump } for the next step. It keeps to a position that is free in the row passing now and in the next one, holds up a wall to get there and
+ * lets go for the floor, and jumps a low thing it cannot ride round (a gate, or lows in the way). */
 export function botInput(s) {
-  const look = s.v * SKATE.LOOK_S;
-  const ahead = s.objs.filter((o) => isHazard(o) && !o.hit && o.z + o.d >= -1 && o.z <= look);
-  const clear = (x, only, m = 0.12) => ahead.every((o) => (only && !only(o)) || Math.abs(x - o.x) >= o.hw + SKATE.PW + m);
-  const tallOnly = (o) => o.h >= 2;
-  let target = s.x;
-  const lowOk = (o) => o.h < 2;
-  const full = ahead.some((o) => o.kind === 'barrier');
-  const cands = [];
-  for (let x = -SKATE.EDGE; x <= SKATE.EDGE + 1e-9; x += 0.1) cands.push(+x.toFixed(2));
-  const pickFrom = (pred) => cands.filter(pred).sort((a, b) => Math.abs(a - s.x) - Math.abs(b - s.x))[0];
-  // all hazards avoided if possible, else at least the tall ones (the low ones are jumped)
-  const free = pickFrom((x) => clear(x, full ? tallOnly : null, 0.3)) ?? pickFrom((x) => clear(x, full ? tallOnly : null));
-  target = free !== undefined ? free : (pickFrom((x) => clear(x, tallOnly)) ?? s.x);
-  if (!clear(s.x, full ? tallOnly : null) || Math.abs(target - s.x) > 0.05) {
-    const want = clamp((target - s.x) * 3.2, -SKATE.VMAX_X, SKATE.VMAX_X), diff = want - s.vx;
-    var dir = Math.abs(diff) < 0.25 ? 0 : Math.sign(diff);
-  } else dir = 0;
-  // jump a low thing that is about to be under the board
+  const hz = s.objs.filter((o) => isHazard(o) && !o.hit && o.z + o.d >= -0.3 && o.z <= s.v * SKATE.LOOK_S).sort((a, b) => a.z - b.z);
+  const passing = (o) => o.z <= SKATE.DEPTH + s.v * 0.12;
+  const cur = hz.filter(passing), nxt = hz.filter((o) => !passing(o));
+  const nextRow = nxt.length ? nxt.filter((o) => o.z - nxt[0].z < 1.5) : [];
+  const blocks = (row, slot) => row.some((o) => !o.all && o.slot === slot);
+  const near = [-1, 0, 1].sort((a, b) => Math.abs(a - s.p) - Math.abs(b - s.p));
+  const here = Math.round(s.p);
+  // while a row is passing, only move to a position that is free in it and not through a blocked one (crossing wall to wall goes over the floor)
+  const reachable = (slot) => !blocks(cur, slot) && (Math.abs(slot - here) < 2 || !blocks(cur, 0));
+  let target;
+  if (cur.length) target = near.find((slot) => reachable(slot) && !blocks(nextRow, slot)) ?? near.find(reachable) ?? near[0];
+  else target = near.find((slot) => !blocks(nextRow, slot)) ?? near[0];
   let doJump = false;
-  for (const o of ahead) {
-    if (!lowOk(o) || s.h > 0.3 || !s.grounded) continue;
-    const ttf = o.z / s.v;
-    if (Math.abs(s.x + s.vx * Math.max(0, ttf) - o.x) < o.hw + SKATE.PW + 0.1 && ttf <= 0.2 && ttf > -0.02) doJump = true;
+  if (s.grounded && s.h < 0.3) {
+    for (const o of hz) {
+      if (o.h >= 2 || !(o.all || Math.abs(s.p - o.slot) < SKATE.HW + 0.12)) continue;
+      const ttf = o.z / s.v;
+      if (ttf <= 0.2 && ttf > -0.02) doJump = true;
+    }
   }
-  return { dir, jump: doJump };
+  return { dir: target, jump: doJump };
 }

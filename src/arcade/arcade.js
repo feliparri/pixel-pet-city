@@ -7,7 +7,7 @@ import { reduce, initialFlow, GAMES } from './flow.js';
 import { createBestStore, createDailyStars, starsFor } from './scores.js';
 import { createTrainGame, step as stepTrain, setIntent, scoreOf, botIntent, upcomingFork, TRAIN } from './train.js';
 import { createTrainView } from './train-view.js';
-import { createSkateGame, step as stepSkate, steer, jump, scoreOf as skateScore, botInput } from './skate.js';
+import { createSkateGame, step as stepSkate, steer, jump, scoreOf as skateScore, botInput, isHazard } from './skate.js';
 import { createSkateView } from './skate-view.js';
 import { drawHud, faceIcon, scoreText } from './hud.js';
 import { drawPet, petLayout } from '../sprites.js';
@@ -36,6 +36,9 @@ const ADAPTERS = {
 /** Preview moments for the dev hook (?arcade=play&shot=...): the run goes on until the picture asked for happens. */
 const SHOTS = {
   'train:fork': (g) => { const f = upcomingFork(g); return !!f && f.z - g.dist > 70 && f.z - g.dist < 120 && g.trains.some((t) => t.z > f.z && t.z - g.dist < 230); },
+  'skate:pipe': (g) => g.grounded && Math.abs(g.p) < 0.15 && !g.objs.some((o) => o.all && o.z < 110) && g.objs.some((o) => isHazard(o) && !o.all && o.slot === 0 && o.z > 40 && o.z < 75),
+  'skate:wall': (g) => Math.abs(g.p) > 0.9 && g.objs.some((o) => isHazard(o) && !o.all && o.slot === 0 && o.z > 12 && o.z < 45),
+  'skate:jump': (g) => g.h > 1.6 && g.objs.some((o) => isHazard(o) && o.h < 2 && o.z > -12 && o.z < 3 && (o.all || Math.abs(o.slot - g.p) < 0.6)),
   'train:escape': (g) => { const f = upcomingFork(g); return !!f && f.sec.nodes.length === 3 && f.z - g.dist > 34 && f.z - g.dist < 48 && g.trains.some((t) => t.z > f.z); },
 };
 
