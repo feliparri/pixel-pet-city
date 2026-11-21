@@ -94,20 +94,29 @@ test('flow: the two cards exist and both can be played', () => {
   assert.deepEqual(GAMES.map((g) => [g.id, g.available]), [['train', true], ['skate', true]]);
 });
 
-test('back art: every pet and stage is a clean 32 x 32 paletted drawing', () => {
-  for (const sp of ['frog', 'seal', 'cat']) for (const st of ['baby', 'child', 'adult']) {
-    const rows = BACK_ART[`${sp}-${st}`];
+test('back art: each pet is a clean 32 x 32 drawing in the board\'s palette indices', () => {
+  for (const sp of ['frog', 'seal', 'cat']) {
+    const rows = BACK_ART[sp];
     assert.equal(rows.length, BACK_CELL);
-    for (const r of rows) { assert.equal(r.length, BACK_CELL); for (const ch of r) assert.ok(ch === '.' || ch in PALETTE[sp], `${sp}-${st} char ${ch}`); }
-    assert.ok(rows.join('').includes('o'), 'has an outline');
-    assert.ok(rows[BACK_CELL - 1].replace(/\./g, '').length > 0 || rows[BACK_CELL - 2].replace(/\./g, '').length > 0, 'feet near the bottom');
+    for (const r of rows) { assert.equal(r.length, BACK_CELL); for (const ch of r) assert.ok(ch === '.' || ch in PALETTE[sp], `${sp} char ${ch}`); }
+    assert.ok(rows.join('').includes('1'), 'has the outline colour');
+    assert.ok(rows[BACK_CELL - 1].replace(/\./g, '').length > 0, 'feet on the last row');
+    assert.deepEqual(Object.keys(PALETTE[sp]), Object.keys(ELDER_PALETTE[sp]));
+    assert.match(PALETTE[sp][1], /^#[0-9a-f]{6}$/);
   }
-  assert.deepEqual(Object.keys(PALETTE.cat), Object.keys(ELDER_PALETTE.cat));
+  assert.equal(PALETTE.frog[1], '#295d39', 'the board\'s frog outline, as pets.png has it');
 });
-test('back art: elder is the adult with the paler palette; unknown pets have none', () => {
-  const adult = backArt('cat', 2), elder = backArt('cat', 3);
-  assert.equal(adult.rows, elder.rows); assert.notEqual(adult.palette.f, elder.palette.f);
-  assert.equal(backArt('bear', 2), null);
+test('back art: the generator reads the board\'s art and palette formats', async () => {
+  const { parseArt, parsePalettes } = await import('../tools/make-back-sprites.mjs');
+  assert.deepEqual(parseArt('# 2x2\n.1\n21\n'), ['.1', '21']);
+  assert.throws(() => parseArt('# 3x2\n.1\n21\n'));
+  const p = parsePalettes('const gfx_palette_t PAL_X = {\n    0,\n    RGB565(0x2E, 0x5E, 0x3E),   /* o */\n};\n');
+  assert.deepEqual(p.PAL_X, ['#295d39']);
+});
+test('back art: elder is the same drawing with the paler palette; unknown pets and stages have none', () => {
+  const adult = backArt('cat', 2), elder = backArt('cat', 3), baby = backArt('cat', 0);
+  assert.equal(adult.rows, elder.rows); assert.equal(adult.rows, baby.rows); assert.notEqual(adult.palette[3], elder.palette[3]); assert.equal(adult.palette, baby.palette);
+  assert.equal(backArt('bear', 2), null); assert.equal(backArt('cat', 9), null);
 });
 test('poses move the art by whole pixels and stay in the cell', () => {
   const rows = backArt('frog', 2).rows;
