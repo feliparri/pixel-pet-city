@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { advance, createLoop, STEP_MS } from '../src/arcade/loop.js';
 import { createProjection, logicalSize, viewLayout, clampLane } from '../src/arcade/lanes.js';
-import { swipeDirection, tapSide, keyAction } from '../src/arcade/input.js';
+import { swipeDirection, tapSide, keyAction, attachInput } from '../src/arcade/input.js';
 import { createBestStore, createDailyStars, starsFor, STAR_CAP_PER_DAY } from '../src/arcade/scores.js';
 import { reduce, initialFlow, GAMES } from '../src/arcade/flow.js';
 import { poseRows, pixelsOf, backArt, BACK_CELL } from '../src/arcade/back-sprites.js';
@@ -159,4 +159,16 @@ test('score text and roadside are stable', () => {
   assert.deepEqual(roadside(100, 400), roadside(100, 400));
   assert.ok(roadside(0, 6400).every((o) => o.kind !== 'station'), 'the only station is the one at the end of the route');
   assert.ok(roadside(0, 300).some((o) => o.kind === 'pole'));
+});
+
+test('a swipe up jumps and lets go of the wall the finger started holding', () => {
+  const on = {}, fake = () => ({ addEventListener: (t, f) => { on[t] = f; }, removeEventListener() {} });
+  const el = { ...fake(), getBoundingClientRect: () => ({ left: 0, top: 0, width: 400, height: 200 }), setPointerCapture() {} };
+  const actions = [], holds = [];
+  attachInput(el, (a) => actions.push(a), { win: fake(), hold: (d) => holds.push(d) });
+  on.pointerdown({ button: 0, pointerId: 1, clientX: 80, clientY: 150 });
+  assert.deepEqual(holds, [-1]);                         // a finger on the left half starts up the left wall
+  on.pointermove({ pointerId: 1, clientX: 82, clientY: 110 });
+  assert.deepEqual(actions, ['jump']);
+  assert.equal(holds.at(-1), 0);                         // the swipe up let go of it
 });

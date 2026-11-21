@@ -33,7 +33,10 @@ export function attachInput(el, onAction, { win = window, hold = null } = {}) {
   const move = (e) => {
     if (!start || start.done || e.pointerId !== start.id) return;
     const a = swipeDirection(e.clientX - start.x, e.clientY - start.y);
-    if (a) { start.done = true; onAction(a); }
+    if (!a) return;
+    start.done = true;
+    if (a === 'jump' && hold) { touchDir = 0; pushHold(0); }   // a swipe up is a jump, not a press on a half: let go of the wall the finger started climbing
+    onAction(a);
   };
   const up = (e) => {
     if (!start || e.pointerId !== start.id) return;
