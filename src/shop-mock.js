@@ -7,7 +7,7 @@ import { TOOLS, isTool, toolKeys } from './tools.js';
 import { DAILY_CAP, parseMission } from './missions.js';
 import { parseDevSeasons } from './seasons.js';
 import { dayOf } from './npc-world.js';
-import { parseGiftId, slotAccepted, walkAccepted, GIFT_DAILY_CAP } from './gifts.js';
+import { parseGiftId, slotAccepted, walkAccepted, santaItemFor, GIFT_DAILY_CAP } from './gifts.js';
 import { activeSeasons } from './seasons.js';
 
 export function createMockShop(search = '') {
@@ -54,14 +54,17 @@ export function createMockShop(search = '') {
     },
     /** trip-gift: a valid id of the current slot, of a season that is on (the default windows, or the page's ?dev=1&season=...), one payment per id and GIFT_DAILY_CAP coins. */
     async claimGift(id, nowMs = pinned ?? Date.now()) {
-      let r;
+      let r, prize;
       const g = parseGiftId(id), on = devSeasons || activeSeasons(nowMs);
       if (!shop.canSpend) r = { ok: false, error: 'shop_closed' };
       else if (!g) r = { ok: false, error: 'bad_gift' };
       else if (!(g.kind === 'santa' ? walkAccepted(g.slot, nowMs) : slotAccepted(g.slot, nowMs))) r = { ok: false, error: 'gift_expired' };
       else if (!on.has(g.season)) r = { ok: false, error: 'season_off' };
       else if (giftsOpened.includes(g.id)) r = { ok: false, error: 'claimed' };
-      else if (giftPaid >= GIFT_DAILY_CAP) r = { ok: false, error: 'gift_cap', gift_earned: giftPaid, cap: GIFT_DAILY_CAP };
+      else if ((prize = g.kind === 'santa' ? santaItemFor(g.id, (k) => !(SHOP[k].needs && items < SHOP[k].needs) && !shop.owned.includes(k) && !bought.includes(k) && packed + bought.length < GIFT_MAX) : null)) {
+        giftsOpened = [...giftsOpened, g.id]; bought = [...bought, prize];                  // like the server: an item, no gold, no cap
+        r = { ok: true, gold: 0, capped: false, item: prize, gift: g.id, gift_earned: giftPaid, cap: GIFT_DAILY_CAP, gold_left: gold - spent + earned };
+      } else if (giftPaid >= GIFT_DAILY_CAP) r = { ok: false, error: 'gift_cap', gift_earned: giftPaid, cap: GIFT_DAILY_CAP };
       else {
         const pay = Math.min(g.reward, GIFT_DAILY_CAP - giftPaid);
         giftPaid += pay; giftsOpened = [...giftsOpened, g.id]; earned += pay;

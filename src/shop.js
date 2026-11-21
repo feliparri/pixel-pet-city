@@ -74,7 +74,9 @@ export function shopAfterMission(shop, m, r) {
 /** What a finished gift claim (trip-gift answers { gold, capped, gift, gift_earned, cap, gold_left }) changes in the state: the gold left (gifts have no ledger in the state: the town keeps the opened ids). */
 export function shopAfterGift(shop, r) {
   if (r.error === 'shop_closed') return { ...shop, canSpend: false, gold: null };
-  return r.ok && int(r.gold_left) !== null ? { ...shop, gold: r.gold_left } : shop;
+  if (!r.ok || int(r.gold_left) === null) return shop;
+  const item = typeof r.item === 'string' && Object.hasOwn(SHOP, r.item) && !shop.bought.includes(r.item) ? [r.item] : [];       // Santa's gift held an item: it is bought-like, it comes home with the pet
+  return { ...shop, gold: r.gold_left, bought: [...shop.bought, ...item], full: shop.full || shop.bought.length + item.length >= GIFT_MAX };
 }
 
 /** What a finished tool purchase changes in the state (trip-buy-tool answers { gold_left, tools }); same rules as shopAfterBuy. */

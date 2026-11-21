@@ -7,7 +7,7 @@ import { cleanRadar } from './radar.js';
 import { SHOP, isForSale, boardKnows, knownItems } from './shop.js';
 import { TOOLS, isTool } from './tools.js';
 import { DAILY_CAP, parseMission, townDay } from './missions.js';
-import { slotAccepted, slotStart, walkAccepted, walkSlotStart, parseGiftId, seasonsOn, GIFT_DAILY_CAP } from './gifts.js';
+import { slotAccepted, slotStart, walkAccepted, walkSlotStart, parseGiftId, seasonsOn, santaHoldsItem, santaItemFor, GIFT_DAILY_CAP } from './gifts.js';
 import { events, eventSave, eventCancel, seasonSave, seasonClear } from './events.js';
 
 export const BODY_MAX = 12288;                 // a 6144-byte package is 8192 base64 characters, plus the JSON around it
@@ -283,6 +283,20 @@ async function tripMission(req, deps) {
   return err(409, t && t.status === 'active' ? 'conflict' : 'trip_over');
 }
 
+/**
+ * The item one of Santa's gifts holds for this trip (src/gifts.js santaItemFor), or null (the gift pays gold): not a Santa gift, not its 1 in 20, every item owned or already
+ * bought, a board whose firmware predates it, a full bag, or a package that does not parse.
+ */
+function santaPrize(trip, g) {
+  if (g.kind !== 'santa' || !santaHoldsItem(g.id)) return null;
+  const bytes = trip.package_b64 ? fromBase64(trip.package_b64) : null;
+  const parsed = bytes && parsePackage(bytes);
+  if (!parsed || !parsed.ok) return null;
+  const { pkg } = parsed, bought = trip.bought ?? [];
+  if (pkg.gifts.length + bought.length >= GIFT_MAX || bytes.length + 5 * (bought.length + 1) > BYTES_MAX) return null;
+  return santaItemFor(g.id, (k) => boardKnows(k, trip.items) && !pkg.petInfo.core.includes(k) && !bought.includes(k));
+}
+
 // ---- trip-gift ----------------------------------------------------------------------------------------------------------------
 // A seasonal gift found in the town (src/gifts.js; docs/trip-api.md). Same rail as the missions: the gold goes into the trip's `earned`, and a ledger row of
 // pet_days (per board and town day) is claimed first with a conditional update. The server cannot see the town, so it checks the claim's SHAPE (a season that is
@@ -313,6 +327,20 @@ async function tripGift(req, deps) {
   }
   const opened = Array.isArray(row.gifts) ? row.gifts : [], paid = row.gift_earned ?? 0;
   if (opened.includes(g.id)) return err(409, 'claimed', { gift_earned: paid, cap: GIFT_DAILY_CAP });
+  const prize = santaPrize(trip, g);
+  if (prize) {                                                                // a rare item instead of gold: no gold, no daily cap, the id is still spent in the ledger
+    const day2 = await deps.db.updatePetDay(trip.device_id, day, { gift_earned: [paid] }, { gifts: [...opened, g.id], updated_at: iso(deps.nowS()) });
+    if (!day2) return err(409, 'conflict');
+    let t = trip, key = prize;
+    for (let attempt = 0; attempt < 2 && key; attempt++) {                      // like trip-buy: the key joins this trip's bought list, the board takes it home as a gift
+      const r = await deps.db.updateTrip(t.id, { status: ['active'], spent: [t.spent ?? 0], earned: [t.earned ?? 0] }, { bought: [...(t.bought ?? []), key], session_seen_at: iso(deps.nowS()) });
+      if (r) return reply(200, { gold: 0, capped: false, item: key, gift: g.id, gift_earned: day2.gift_earned, cap: GIFT_DAILY_CAP, gold_left: goldLeft(r) });
+      t = await deps.db.getTripById(trip.id);
+      key = t && t.status === 'active' ? santaPrize(t, g) : null;
+    }
+    deps.log?.('trip-gift', new Error('item counted in the day but not in the trip'));
+    return err(409, t && t.status === 'active' ? 'conflict' : 'trip_over');
+  }
   const room = GIFT_DAILY_CAP - paid;
   if (room <= 0) return err(409, 'gift_cap', { gift_earned: paid, cap: GIFT_DAILY_CAP });
   const pay = Math.min(g.reward, room);

@@ -5,6 +5,7 @@
 // room, so it mirrors only what it must check (slots, ids, prices, which seasons are on: supabase/functions/trip/gifts.js; tests/gifts.test.js keeps them equal).
 import { SEASON_KEYS } from './seasons.js';
 import { hashSeed, mulberry32 } from './life.js';
+import { SHOP } from './shop.js';
 
 // ---- slots ------------------------------------------------------------------------------------------------------------------------------
 // A slot is a fixed 2 h window of UTC time: slot = floor((ms - ANCHOR_MS) / SLOT_MS). It is a plain UTC grid, so Chile's clock changes (two a year, at midnight of
@@ -49,6 +50,16 @@ export const giftId = (season, slot, n) => `${season}:${slot}:${n}`;
 export const rewardOf = (id) => REWARD_MIN + (hashSeed(id) % (REWARD_MAX - REWARD_MIN + 1));
 /** The gold one of Santa's gifts pays: 20..30, a pure function of its id. */
 export const santaRewardOf = (id) => SANTA_REWARD_MIN + (hashSeed(id) % (SANTA_REWARD_MAX - SANTA_REWARD_MIN + 1));
+
+// ---- the rare item in one of Santa's gifts ----------------------------------------------------------------------------------------------
+export const SANTA_ITEMS = ['elf_hat', 'headphones', 'vr_goggles'];   // the wearables a Santa gift can hold instead of gold
+export const SANTA_ITEM_ODDS = 20;                                    // about 1 gift in 20 holds one
+/** Does this Santa gift hold an item (a pure function of its id, salted so it does not follow the gold)? */
+export const santaHoldsItem = (id) => hashSeed(`${id}:item`) % SANTA_ITEM_ODDS === 0;
+/** The items in the order this gift would give them: by a hash of the id and the key (ties by list order). */
+export const santaItemOrder = (id) => SANTA_ITEMS.map((k, i) => [hashSeed(`${id}:${k}`), i, k]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map((x) => x[2]);
+/** The item this gift gives: the first of santaItemOrder that `can(key)` accepts (not owned, not bought, board knows it), or null: the gift pays gold. */
+export const santaItemFor = (id, can) => (santaHoldsItem(id) ? santaItemOrder(id).find(can) ?? null : null);
 
 const ID_RE = /^([a-z]+):(\d{1,7}):(\d)$/;
 /**
@@ -137,6 +148,8 @@ export function createOpened(storage = null, key = 'city.gifts') {
 export const HINT_NO_TRIP = 'Viaja con tu mascota para abrir regalos';
 export const GIFT_CAP_LINE = 'Ya abriste muchos regalos hoy';
 export const GIFT_POP = (gold) => `+${gold} monedas`;
+/** What Santa says when his gift holds an item (the wearable's name). */
+export const GIFT_ITEM = (name) => `¡Santa te dejó ${name}!`;
 /** The Spanish line for a refused claim (`r` is { error }), or null when the gift just goes away (opened already, or too late). */
 export function giftErrorText(r) {
   switch (r.error) {
@@ -152,6 +165,7 @@ export function giftErrorText(r) {
 
 /** What the town does with the server's answer to a claim: { kind: 'paid', text } (sparkles and "+N monedas"), 'gone' (the gift just goes), 'cap' (said once a day, no more asking today) or 'retry' (said, and asked again in a while). */
 export function giftOutcome(r) {
+  if (r.ok && typeof r.item === 'string' && SHOP[r.item]) return { kind: 'paid', item: r.item, text: GIFT_ITEM(SHOP[r.item].name) };
   if (r.ok) return { kind: 'paid', text: GIFT_POP(r.gold) };
   const text = giftErrorText(r);
   if (text === null) return { kind: 'gone', text: null };

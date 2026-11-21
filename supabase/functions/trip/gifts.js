@@ -49,6 +49,16 @@ export const rewardOf = (id) => REWARD_MIN + (hashSeed(id) % (REWARD_MAX - REWAR
 /** The gold one of Santa's gifts pays: 20..30. */
 export const santaRewardOf = (id) => SANTA_REWARD_MIN + (hashSeed(id) % (SANTA_REWARD_MAX - SANTA_REWARD_MIN + 1));
 
+// ---- the rare item in one of Santa's gifts ----------------------------------------------------------------------------------------------
+export const SANTA_ITEMS = ['elf_hat', 'headphones', 'vr_goggles'];   // the wearables a Santa gift can hold instead of gold
+export const SANTA_ITEM_ODDS = 20;                                    // about 1 gift in 20 holds one
+/** Does this Santa gift hold an item (a pure function of its id, salted so it does not follow the gold)? */
+export const santaHoldsItem = (id) => hashSeed(`${id}:item`) % SANTA_ITEM_ODDS === 0;
+/** The items in the order this gift would give them: by a hash of the id and the key (ties by list order). */
+export const santaItemOrder = (id) => SANTA_ITEMS.map((k, i) => [hashSeed(`${id}:${k}`), i, k]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map((x) => x[2]);
+/** The item this gift gives: the first of santaItemOrder that `can(key)` accepts (not owned, not bought, board knows it), or null: the gift pays gold. */
+export const santaItemFor = (id, can) => (santaHoldsItem(id) ? santaItemOrder(id).find(can) ?? null : null);
+
 const ID_RE = /^([a-z]+):(\d{1,7}):(\d)$/;
 /**
  * A gift id as { id, season, kind ('hidden' | 'santa'), slot, n, reward }, or null when it is not a valid one (an id has one spelling only: no leading zeros).
