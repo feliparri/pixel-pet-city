@@ -200,6 +200,13 @@ export const cart = memo((phase) => mk(40, 22, (g) => {
 
 /** A wooden arrow board for the left / right hints, 40 x 26, plain arrow, no numbers. */
 export const arrowSign = memo((dir) => mk(40, 26, (g, w, h) => {
+  if (dir === 'up') {                                              // straight on: a plank with an arrow pointing up
+    R(g, INK, 2, 0, 36, 26); R(g, P.w3, 3, 1, 34, 24); R(g, P.w4, 3, 1, 34, 1); R(g, P.w2, 3, 22, 34, 3);
+    R(g, INK, 17, 9, 6, 14); R(g, P.cream, 18, 10, 4, 12);              // the stem
+    for (let i = 0; i < 7; i++) R(g, INK, 19 - i, 3 + i, 2 * i + 2, 1);          // the head: rows widening downwards
+    for (let i = 1; i < 7; i++) R(g, P.cream, 21 - i, 3 + i, 2 * i - 0, 1);
+    return;
+  }
   const left = dir === 'left';
   const shape = (x, y) => {
     const nx = left ? x : w - 1 - x;                               // pointing left: the tip at x = 0

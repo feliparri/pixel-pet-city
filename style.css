@@ -181,6 +181,7 @@ a.btn { display: inline-block; text-decoration: none; }
 .arc-probe { position: absolute; visibility: hidden; padding-top: env(safe-area-inset-top); }
 .arc-title { margin: 1.2rem 0 0; font-size: 3.4rem; letter-spacing: .12em; text-transform: uppercase; color: var(--gold); text-shadow: 0 4px 0 #8a4426, 3px 0 0 #312439, -3px 0 0 #312439, 0 -3px 0 #312439, 3px 7px 0 #312439, -3px 7px 0 #312439, 0 8px 0 #312439; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-weight: 900; }
 .arc-head { margin: 0; color: var(--gold); font-size: 1.6rem; text-shadow: 2px 2px 0 #181c2c; text-align: center; }
+.arc-head.win { color: #8bd97f; font-size: 1.8rem; }
 .arc-panel { width: 100%; max-width: 22rem; display: grid; gap: .6rem; justify-items: stretch; text-align: center; background: rgba(24,28,44,.9); border: 3px solid var(--gold); box-shadow: 0 6px 0 rgba(0,0,0,.35); padding: .9rem; pointer-events: auto; }
 .arc-panel .btn.big { font-size: 1.3rem; }
 .arc-sub { margin: 0; color: var(--muted); }

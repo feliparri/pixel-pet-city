@@ -5,16 +5,17 @@ import { attachInput } from './input.js';
 import { logicalSize } from './lanes.js';
 import { reduce, initialFlow, GAMES } from './flow.js';
 import { createBestStore, createDailyStars, starsFor } from './scores.js';
-import { createTrainGame, step as stepTrain, setIntent, scoreOf, botIntent, upcomingFork, TRAIN } from './train.js';
+import { createTrainGame, step as stepTrain, setIntent, scoreOf, botIntent, upcomingFork, progressAt, TRAIN } from './train.js';
 import { createTrainView } from './train-view.js';
 import { createSkateGame, step as stepSkate, steer, jump, scoreOf as skateScore, botInput, isHazard } from './skate.js';
 import { createSkateView } from './skate-view.js';
-import { drawHud, faceIcon, scoreText } from './hud.js';
+import { drawHud, drawRouteBar, faceIcon, scoreText } from './hud.js';
 import { drawPet, petLayout } from '../sprites.js';
 import { note, W, N } from '../sound.js';
 import * as art from './art.js';
 
 const OVER_DELAY_MS = 1100;                           // the crash plays out before the game over panel appears
+const WIN_DELAY_MS = 1000;                            // the arrival stays on screen this long before the win panel
 const MENU_SPEED = 24;                                // the scenery drifts under the menus (units per second)
 const JINGLE = [note(W.SQ25, N.E5, N.E5, 80, 140), note(W.SQ25, N.G5, N.G5, 80, 140), note(W.SQ25, N.C6, N.C6, 80, 140), note(W.SQ25, N.E6, N.E6, 130, 140), note(W.REST, 0, 0, 40, 0), note(W.SQ25, N.G5, N.G5, 60, 140), note(W.SQ25, N.C6, N.C6, 240, 140)];
 
@@ -22,12 +23,12 @@ const JINGLE = [note(W.SQ25, N.E5, N.E5, 80, 140), note(W.SQ25, N.G5, N.G5, 80, 
 const WHOOSH = [note(W.TRI, 260, 980, 110, 120)];
 const ADAPTERS = {
   train: {
-    create: createTrainGame, step: stepTrain, score: scoreOf, view: createTrainView,
+    create: createTrainGame, step: stepTrain, score: scoreOf, view: createTrainView, progress: (g) => progressAt(g.dist),
     act(g, a) { if (a === 'left' || a === 'right') return setIntent(g, a === 'left' ? -1 : 1); return false; },      // the choice for the next switch
     hold() {}, bot(g) { botIntent(g); },
   },
   skate: {
-    create: createSkateGame, step: stepSkate, score: skateScore, view: createSkateView,
+    create: createSkateGame, step: stepSkate, score: skateScore, view: createSkateView, progress: () => 0,
     act(g, a) { if (a === 'jump') jump(g); return false; },
     hold(g, d) { steer(g, d); }, bot(g) { const b = botInput(g); steer(g, b.dir); if (b.jump) jump(g); },
   },
@@ -35,11 +36,14 @@ const ADAPTERS = {
 
 /** Preview moments for the dev hook (?arcade=play&shot=...): the run goes on until the picture asked for happens. */
 const SHOTS = {
+  'train:fork3': (g) => { const f = upcomingFork(g); return !!f && f.branches.length === 3 && f.z - g.dist > 42 && f.z - g.dist < 62 && g.trains.filter((t) => t.z > f.z && t.z - g.dist < 190).length >= 2; },
+  'train:fork4': (g) => { const f = upcomingFork(g); return !!f && f.branches.length === 4 && f.z - g.dist > 42 && f.z - g.dist < 62 && g.trains.filter((t) => t.z > f.z && t.z - g.dist < 190).length >= 2; },
+  'train:station': (g) => g.goal - g.dist < 60,
   'train:fork': (g) => { const f = upcomingFork(g); return !!f && f.z - g.dist > 70 && f.z - g.dist < 120 && g.trains.some((t) => t.z > f.z && t.z - g.dist < 175); },
   'skate:pipe': (g) => g.grounded && Math.abs(g.p) < 0.15 && !g.objs.some((o) => o.all && o.z < 110) && g.objs.some((o) => isHazard(o) && !o.all && o.slot === 0 && o.z > 40 && o.z < 75),
   'skate:wall': (g) => Math.abs(g.p) > 0.9 && g.objs.some((o) => isHazard(o) && !o.all && o.slot === 0 && o.z > 12 && o.z < 45),
   'skate:jump': (g) => g.h > 1.6 && g.objs.some((o) => isHazard(o) && o.h < 2 && o.z > -12 && o.z < 3 && (o.all || Math.abs(o.slot - g.p) < 0.6)),
-  'train:escape': (g) => { const f = upcomingFork(g); return !!f && f.sec.nodes.length === 3 && f.z - g.dist > 34 && f.z - g.dist < 48 && g.trains.some((t) => t.z > f.z); },
+  'train:escape': (g) => { const f = upcomingFork(g); return !!f && f.sec.esc && f.z - g.dist > 34 && f.z - g.dist < 48 && g.trains.some((t) => t.z > f.z); },
 };
 
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
@@ -67,7 +71,7 @@ export function startArcade({ root, sprites, font, look, sound, awardStars = () 
   const face = faceIcon(sprites, look);
   let flow = initialFlow(), game = null, views = {}, size = null, topPad = 0;
   let frozen = false, clock = 0, idleDist = 0, overAt = 0, runStars = 0, destroyed = false, hintsT = 0;
-  const idle = { dist: 0, x: 0, sections: [{ z0: -1e5, kind: 'start', nodes: [{ id: 0, xs: 0, xe: 0, parents: [] }] }], node: 0, si: 0, trains: [], coinList: [], intent: 0, lastSide: -1, invuln: 0, flash: 0, lives: TRAIN.LIVES, over: false, t: 0 };
+  const idle = { dist: 0, x: 0, goal: 1e9, pick: null, lastFrac: 0, sections: [{ z0: -1e5, kind: 'start', nodes: [{ id: 0, xs: 0, xe: 0, parents: [] }] }], node: 0, si: 0, trains: [], coinList: [], invuln: 0, flash: 0, lives: TRAIN.LIVES, over: false, t: 0 };
 
   // ---- sizing ------------------------------------------------------------------------------------------------------------------------------------
   function resize() {
@@ -78,7 +82,7 @@ export function startArcade({ root, sprites, font, look, sound, awardStars = () 
     topPad = Math.round(safeTopPx(root) / s.px);
     views = {};
   }
-  const viewFor = (id) => { if (!size) return null; return views[id] || (views[id] = ADAPTERS[id].view(size)); };
+  const viewFor = (id) => { if (!size) return null; return views[id] || (views[id] = ADAPTERS[id].view(size, { font })); };
   const ro = new ResizeObserver(resize);
   ro.observe(frame);
   resize();
@@ -129,7 +133,8 @@ export function startArcade({ root, sprites, font, look, sound, awardStars = () 
     } else if (flow.screen === 'pause') {
       ui.append(panel(el('h2', 'arc-head', 'Pausa'), button('Seguir', 'primary big', () => dispatch({ type: 'resume' })), button('Otra vez', '', () => startRun(flow.game)), button('Menú', '', () => dispatch({ type: 'menu' })), button('Volver a la ciudad', '', leave)));
     } else if (flow.screen === 'over') {
-      const lines = [el('h2', 'arc-head', '¡Fin del juego!'), el('p', 'arc-score', scoreText(flow.score)), el('p', 'arc-best', flow.isNew ? '¡Nuevo récord!' : `Mejor: ${flow.best}`)];
+      const gm = GAMES.find((x) => x.id === flow.game);
+      const lines = [el('h2', `arc-head${flow.won ? ' win' : ''}`, flow.won ? gm.win : '¡Fin del juego!'), el('p', 'arc-score', scoreText(flow.score)), el('p', 'arc-best', flow.isNew ? '¡Nuevo récord!' : `Mejor: ${flow.best}`)];
       if (runStars) lines.push(el('p', 'arc-stars', `+${runStars} ⭐`));
       ui.append(panel(...lines, button('Otra vez', 'primary big', () => startRun(flow.game)), button('Menú', '', () => dispatch({ type: 'menu' })), button('Volver a la ciudad', '', leave)));
     }
@@ -152,12 +157,11 @@ export function startArcade({ root, sprites, font, look, sound, awardStars = () 
   }
   function finishRun() {
     const id = flow.game, score = ADAPTERS[id].score(game), r = best.submit(id, score);
-    const g = GAMES.find((x) => x.id === id);
-    const n = starsFor(score, g.starScore, daily.earned());
+    const won = game.won === true, n = starsFor(won, daily.earned());
     runStars = 0;
     if (n > 0) { daily.award(n); try { awardStars(n); } catch { /* the town is gone */ } runStars = n; }
-    dispatch({ type: 'over', score, best: r.best, isNew: r.isNew });
-    if (r.isNew || n > 0) tap('win');
+    dispatch({ type: 'over', score, best: r.best, isNew: r.isNew, won });
+    if (won) tap('win');
   }
 
   // ---- input -----------------------------------------------------------------------------------------------------------------------------------------
@@ -185,7 +189,7 @@ export function startArcade({ root, sprites, font, look, sound, awardStars = () 
         if (e === 'coin') tap('coin'); else if (e === 'hit') tap('lose'); else if (e === 'move') tap('bounce3');
         else if (e === 'jump') { try { sound.playNotes(WHOOSH); } catch { /* optional */ } } else if (e === 'ramp') tap('bounce'); else if (e === 'land') tap('bounce3');
       }
-      if (game.over && !overAt) overAt = clock + OVER_DELAY_MS;
+      if (game.over && !overAt) overAt = clock + (game.won ? WIN_DELAY_MS : OVER_DELAY_MS);
       if (overAt && clock >= overAt) { overAt = 0; finishRun(); }
     } else if (flow.screen !== 'over') idleDist += (MENU_SPEED * ms) / 1000;
   }
@@ -195,7 +199,10 @@ export function startArcade({ root, sprites, font, look, sound, awardStars = () 
     if (!view) return;
     const s = playing ? game : { ...idle, dist: idleDist };
     view.draw(ctx, s, clock, look, { hints: playing ? Math.max(0, Math.min(1, 1.6 - (clock - hintsT) / 3500)) : 0 });
-    if (playing) drawHud(ctx, { w: size.w, lives: game.lives, score: ADAPTERS[flow.game].score(game), face, font, top: topPad });
+    if (playing) {
+      drawHud(ctx, { w: size.w, lives: game.lives, score: ADAPTERS[flow.game].score(game), face, font, top: topPad });
+      drawRouteBar(ctx, { w: size.w, progress: ADAPTERS[flow.game].progress(game), goal: GAMES.find((x) => x.id === flow.game).goal, top: topPad });
+    }
     if (flow.screen === 'pause' || flow.screen === 'over' || flow.screen === 'menu' || flow.screen === 'select') { ctx.fillStyle = flow.screen === 'menu' || flow.screen === 'select' ? 'rgba(18,22,40,0.28)' : 'rgba(18,22,40,0.55)'; ctx.fillRect(0, 0, size.w, size.h); }
   }
   const loop = createLoop({ step: onStep, render: onRender });
@@ -217,7 +224,7 @@ export function startArcade({ root, sprites, font, look, sound, awardStars = () 
       get game() { return game; },
       go(name, seconds = 0, bot = true, gameId = 'train', shot = '') {
         if (name === 'select') dispatch({ type: 'start' });
-        if (name === 'play' || name === 'pause' || name === 'over') {
+        if (name === 'play' || name === 'pause' || name === 'over' || name === 'win') {
           dispatch({ type: 'start' }); startRun(gameId);
           const A = ADAPTERS[gameId];
           for (let i = 0; i < seconds * 60; i++) { if (bot) A.bot(game); A.step(game, 1000 / 60); clock += 1000 / 60; }
@@ -225,6 +232,7 @@ export function startArcade({ root, sprites, font, look, sound, awardStars = () 
           if (seconds > 0) frozen = true;                          // a preview keeps the frame it was made for
           if (name === 'pause') dispatch({ type: 'pause' });
           if (name === 'over') { game.lives = 0; game.over = true; finishRun(); }
+          if (name === 'win') { for (let i = 0; i < 60 * 400 && !game.over; i++) { A.bot(game); A.step(game, 1000 / 60); clock += 1000 / 60; } frozen = true; finishRun(); }
         }
       },
     },

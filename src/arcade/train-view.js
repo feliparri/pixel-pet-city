@@ -3,7 +3,8 @@
 // and a clock. Work happens on the logical canvas (src/arcade/lanes.js logicalSize), one logical pixel is a whole number of screen pixels.
 import { createProjection } from './lanes.js';
 import { roadside, hash, POLE_GAP, POST_GAP } from './scenery.js';
-import { TRAIN, nodeLat, sectionAt, upcomingFork } from './train.js';
+import { TRAIN, nodeLat, sectionAt, upcomingFork, branchesOf, chosenIndex } from './train.js';
+import { textCanvas, textWidth } from '../font.js';
 import { backCanvas, RUN_SEQ } from './back-sprites.js';
 import * as art from './art.js';
 
@@ -14,6 +15,7 @@ const HAZE = '#cfe7e4';
 export const FAR = 270;                                    // nothing is drawn beyond this distance
 const FADE_FROM = 200;                                     // objects fade in between here and FAR
 const SLEEPER_GAP = 7, STRIPE = 26;
+const PLAT_L = 1.0, PLAT_R = 2.9, PLAT_BEFORE = 130, PLAT_AFTER = 24;     // the station platform: lanes right of the track, and how far before / after the goal it runs
 
 const SKY = ['#4e9be0', '#5fa9e6', '#74b9ee', '#8ac8f3', '#a2d6f6', '#bde4f8', '#d6eff9'];
 
@@ -40,7 +42,7 @@ export function scaled(cv, dw, dh) {
   return c;
 }
 
-export function createTrainView({ w, h }) {
+export function createTrainView({ w, h }, { font = null } = {}) {
   const hy = Math.round(h * 0.36), gy = Math.round(h * 0.82);
   const proj = createProjection({ w, h, horizon: hy, ground: gy, laneW: Math.round(w * 0.27) });
   const U = proj.laneW / 50;                               // sprites are drawn for a 50 px lane
@@ -58,6 +60,7 @@ export function createTrainView({ w, h }) {
       bal: m('#9c9284'), balD: m('#8f8576'), balL: m('#bdb4a2'), balK: m('#6f6558'),
       wood: m('#8f4a28'), woodHi: m('#c57a45'), woodLo: m('#5a2a1c'), woodAvg: m('#7a4a34'), woodSpeck: m('#6b3421'),
       rA: m('#59617f'), rB: m('#d0d7ea'), rC: m('#8a93ad'), shadow: m('#3a3550'),
+      plat: m('#b9b3c4'), platD: m('#9b94ab'), platL: m('#d8d3e2'), edge: m('#f0c63c'),
     };
   }
 
@@ -193,7 +196,32 @@ export function createTrainView({ w, h }) {
           else { ctx.fillStyle = rw === 2 ? r.rC : r.rB; ctx.fillRect(rx, y, rw, 1); }
         }
       }
+      // the station's platform: a paved strip beside the last stretch of track, with a yellow safety edge
+      if (wz > s.goal - PLAT_BEFORE && wz < s.goal + PLAT_AFTER) {
+        const pl = mid + (PLAT_L - c) * u, pr = mid + (PLAT_R - c) * u, joint = ((wz % 8) + 8) % 8 < Math.max(dz, 0.8);
+        ctx.fillStyle = joint ? r.platD : r.plat; ctx.fillRect(Math.round(pl), y, Math.round(pr - pl), 1);
+        ctx.fillStyle = r.platL; ctx.fillRect(Math.round(pr) - 1, y, 1, 1);
+        ctx.fillStyle = r.edge; ctx.fillRect(Math.round(pl), y, Math.max(1, Math.round(0.1 * u)), 1);
+        if (wz > s.goal + PLAT_AFTER - 3) { ctx.fillStyle = r.platD; ctx.fillRect(Math.round(pl), y, Math.round(pr - pl), 1); }
+      }
     }
+  }
+
+  /** The station gantry: two posts and a green board over the track, "Estación" on it once it is near enough to read. */
+  function gantry(ctx, z, c) {
+    const L = proj.project(-1.55, z, c), Rr = proj.project(1.55, z, c), k = L.s * U, H = 70 * k, fade = z > FADE_FROM ? Math.max(0, 1 - (z - FADE_FROM) / (FAR - FADE_FROM)) : 1;
+    ctx.globalAlpha = fade;
+    const pw = Math.max(1, Math.round(4 * k));
+    for (const p of [L, Rr]) { ctx.fillStyle = '#312439'; ctx.fillRect(Math.round(p.x - pw / 2 - 1), Math.round(p.y - H), pw + 2, Math.round(H)); ctx.fillStyle = '#7b7d8c'; ctx.fillRect(Math.round(p.x - pw / 2), Math.round(p.y - H), pw, Math.round(H)); }
+    const bx = Math.round(L.x - pw), bw = Math.round(Rr.x - L.x + 2 * pw), bh = Math.max(4, Math.round(36 * k)), by = Math.round(L.y - H - bh * 0.15);
+    ctx.fillStyle = '#312439'; ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+    ctx.fillStyle = '#e8e4d0'; ctx.fillRect(bx, by, bw, bh);
+    ctx.fillStyle = '#1d6a52'; ctx.fillRect(bx + 1, by + 1, bw - 2, bh - 2);
+    if (font && bh >= 13) {
+      const txt = 'Estación', tw = textWidth(font, txt), sc = Math.max(1, Math.floor((bw * 0.8) / tw));
+      if (tw * sc <= bw - 4 && font.h * sc <= bh) { const cv = textCanvas(font, txt, '#fff7de'); ctx.drawImage(cv, Math.round(bx + (bw - tw * sc) / 2), Math.round(by + (bh - font.h * sc) / 2), tw * sc, font.h * sc); }
+    } else { ctx.fillStyle = '#fff7de'; ctx.fillRect(bx + Math.round(bw * 0.2), by + Math.round(bh * 0.4), Math.round(bw * 0.6), Math.max(1, Math.round(bh * 0.2))); }
+    ctx.globalAlpha = 1;
   }
 
   // ---- roadside and train drawables -------------------------------------------------------------------------------------------------------------------
@@ -245,25 +273,30 @@ export function createTrainView({ w, h }) {
       if (z > FAR || z + o.len < -14 || lat === null) continue;
       list.push({ z, draw: (ctx) => train(ctx, { ...o, lane: lat, z }, c) });
     }
-    // the switch ahead: a stand beside the rails and a plain arrow board over each branch (the one the cart will take is lit and bobs)
+    // the switch ahead: a stand beside the rails and an arrow board over each branch (the one the cart will take is lit and bobs)
     const f = upcomingFork(s);
     for (const sec of s.sections) {
       if (sec.kind !== 'fork') continue;
       const z = sec.z0 - s.dist;
       if (z < 0 || z > FAR) continue;
-      const isNext = f && f.sec === sec, ch = sec.nodes.length === 2 ? sec.nodes : sec.nodes.filter((n) => n.parents.length && sec.nodes.filter((q) => q.parents[0] === n.parents[0]).length === 2);
-      const base = nodeLat(sec, ch[0], sec.z0), side = s.intent || s.lastSide;
+      const isNext = f && f.sec === sec, br = branchesOf(sec), base = nodeLat(sec, br[0], sec.z0), pickIdx = isNext ? chosenIndex(s, f) : -1;
       list.push({ z: z - 6, draw: (ctx) => {
         blit(ctx, art.switchStand(), base + 0.78, z, c);
-        for (const dir of [-1, 1]) {
-          const lit = isNext && dir === side, bob = lit ? Math.round(Math.sin(t / 120) * 2) : 0;
+        br.forEach((node, i) => {
+          const lit = i === pickIdx, bob = lit ? Math.round(Math.sin(t / 120) * 2) : 0, off = (node.xe - node.xs) * 0.77, dir = Math.abs(off) < 0.01 ? 'up' : off < 0 ? 'left' : 'right';
           if (lit) {                                                                 // the chosen branch: a big gold-edged board with a halo
-            const p = proj.project(base + dir * 1.15, z - 3, c);
+            const p = proj.project(base + off, z - 3, c);
             for (const [r, al] of [[34, 0.12], [24, 0.18], [16, 0.26]]) { ctx.fillStyle = `rgba(255,214,90,${al})`; ctx.beginPath(); ctx.arc(p.x, p.y - 26 * p.s * U, r * p.s * U, 0, Math.PI * 2); ctx.fill(); }
           }
-          blit(ctx, art.arrowSign(dir < 0 ? 'left' : 'right'), base + dir * 1.15, z - 3, c, { dy: 16 + bob, alpha: isNext ? (lit ? 1 : 0.4) : 0.85, mul: lit ? 1.6 : 1 });
-        }
+          blit(ctx, art.arrowSign(dir), base + off, z - 3, c, { dy: 16 + bob, alpha: isNext ? (lit ? 1 : 0.55) : 0.85, mul: lit ? 1.6 : 1 });
+        });
       } });
+    }
+    // the station at the end of the route: the building by the platform, and a gantry with the name over the track
+    const zg = s.goal - s.dist;
+    if (zg < FAR && zg > -20) {
+      list.push({ z: zg + 14, draw: (ctx) => blit(ctx, art.station(), 2.5, zg + 14, c, { mul: 1.15 }) });
+      list.push({ z: zg + 5, draw: (ctx) => gantry(ctx, zg + 5, c) });
     }
     return list.sort((a, b) => b.z - a.z);
   }

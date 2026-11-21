@@ -42,3 +42,28 @@ export function drawHud(ctx, { w, lives, maxLives = 3, score, face, font, top = 
   const text = scoreText(score), sc = 2;
   bigText(ctx, font, text, w - 5 - textWidth(font, text) * sc, y - 2, sc);
 }
+
+/** The goal's little icon (11 x 10, anchored at its top left): the station (a red roof over a pale body) or the house (a roof, a lit door and window). */
+export function drawGoalIcon(ctx, kind, x, y) {
+  const R = (c, a, b, w, h) => { ctx.fillStyle = c; ctx.fillRect(x + a, y + b, w, h); };
+  if (kind === 'house') {
+    R('#312439', 4, 0, 3, 1); R('#312439', 2, 1, 7, 1); R('#312439', 0, 2, 11, 3); R('#c8584a', 1, 3, 9, 1); R('#e8806a', 2, 2, 7, 1); R('#8f3a3a', 1, 4, 9, 1);
+    R('#312439', 1, 5, 9, 5); R('#fff0c0', 2, 5, 7, 4); R('#8f4a28', 4, 6, 3, 3); R('#ffd36a', 2, 6, 2, 2); R('#ffd36a', 7, 6, 2, 2);
+  } else {
+    R('#312439', 0, 1, 11, 3); R('#d96a62', 1, 2, 9, 1); R('#8a3042', 1, 3, 9, 1); R('#312439', 4, 0, 3, 2); R('#fff0c0', 5, 0, 1, 1);
+    R('#312439', 1, 4, 9, 6); R('#fff0c0', 2, 4, 7, 5); R('#8f4a28', 4, 5, 3, 4); R('#ffd36a', 2, 5, 2, 2); R('#ffd36a', 7, 5, 2, 2); R('#312439', 0, 9, 11, 1);
+  }
+}
+
+/** The route bar under the lives: a rail from the start to the goal's icon, filled as far as `progress` (0..1) with a small marker at the head. */
+export function drawRouteBar(ctx, { w, progress, goal, top = 0, face = null }) {
+  ctx.imageSmoothingEnabled = false;
+  const y = top + 5 + FACE_H + 5, x0 = 8, x1 = w - 8 - 12, len = x1 - x0, p = Math.max(0, Math.min(1, progress)), fx = Math.round(x0 + len * p);
+  ctx.fillStyle = '#312439'; ctx.fillRect(x0 - 1, y - 1, len + 2, 5);
+  ctx.fillStyle = '#6c6590'; ctx.fillRect(x0, y, len, 3);
+  ctx.fillStyle = '#ffd36a'; ctx.fillRect(x0, y, Math.max(0, fx - x0), 3);
+  ctx.fillStyle = '#fff7de'; ctx.fillRect(x0, y, Math.max(0, fx - x0), 1);
+  for (const q of [0.25, 0.5, 0.75]) { ctx.fillStyle = '#312439'; ctx.fillRect(Math.round(x0 + len * q), y, 1, 3); }
+  ctx.fillStyle = '#312439'; ctx.fillRect(fx - 2, y - 2, 5, 7); ctx.fillStyle = '#fff7de'; ctx.fillRect(fx - 1, y - 1, 3, 5); ctx.fillStyle = '#e0485a'; ctx.fillRect(fx - 1, y, 3, 3);
+  drawGoalIcon(ctx, goal, x1 + 2, y - 4);
+}

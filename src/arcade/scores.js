@@ -1,5 +1,5 @@
 // The arcade's small memories, all kept in this browser and all guarded (private mode, a full disk or no storage at all must never break a run):
-// the best score of each game, and the stars the arcade pays (one per good run, a few a day, the same local-only rule as the town's other games).
+// the best score of each game, and the stars the arcade pays (one per run that reaches its goal, a few a day, the same local-only rule as the town's other games).
 export const BEST_PREFIX = 'city.arcade.best.';
 export const STARS_KEY = 'city.arcade.stars';
 export const STAR_CAP_PER_DAY = 3;
@@ -27,8 +27,8 @@ export function createBestStore(storage) {
   };
 }
 
-/** Stars for a run: one when the score reaches the game's threshold and today's cap is not spent. */
-export const starsFor = (score, threshold, earnedToday, cap = STAR_CAP_PER_DAY) => (whole(score) >= threshold && earnedToday < cap ? 1 : 0);
+/** Stars for a run: one when it reached the goal (the station, the house) and today's cap is not spent. A run that ended in a crash earns none, whatever its score. */
+export const starsFor = (arrived, earnedToday, cap = STAR_CAP_PER_DAY) => (arrived === true && earnedToday < cap ? 1 : 0);
 
 /** Today's stars from this arcade, per local day: { earned(), award(n) }. `today()` gives the day string (e.g. 2026-11-21). */
 export function createDailyStars(storage, today) {

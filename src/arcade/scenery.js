@@ -10,7 +10,6 @@ export const POST_GAP = 15;           // fence posts: every this many units, bot
 export const POLE_GAP = 64;           // telegraph poles: left side on the multiples, right side half a gap later
 export const TREE_GAP = 11;
 export const SIGNAL_GAP = 210;
-export const STATION_GAP = 520;
 export const FENCE_LANE = 2.3, POLE_LANE = 2.75, SIGNAL_LANE = 2.1;
 
 /** { kind, side (-1 left, 1 right), lane, z (absolute along the track), ... } of every roadside object with a z in [from, to]. */
@@ -29,6 +28,5 @@ export function roadside(from, to) {
     each(TREE_GAP * 2, side * 9 + 3, (i, z) => { if (hash(i, side * 77) < 0.5) out.push({ kind: hash(i, 5) < 0.5 ? 'flowers' : 'rock', side, lane: 2.55 + hash(i, 6) * 1.2, z }); });
   }
   each(SIGNAL_GAP, 90, (i, z) => out.push({ kind: 'signal', side: i % 2 ? 1 : -1, lane: SIGNAL_LANE, z, red: hash(i, 4) < 0.7 }));
-  each(STATION_GAP, 230, (i, z) => out.push({ kind: 'station', side: i % 2 ? -1 : 1, lane: 3.9, z }));
   return out;
 }

@@ -65,8 +65,10 @@ test('best store: survives a missing or throwing storage and junk values', () =>
   assert.equal(createBestStore(bad).submit('train', 7).best, 7);
   assert.equal(createBestStore(memStore({ 'city.arcade.best.train': 'abc' })).get('train'), 0);
 });
-test('stars: threshold and a daily cap, per local day', () => {
-  assert.equal(starsFor(249, 250, 0), 0); assert.equal(starsFor(250, 250, 0), 1); assert.equal(starsFor(900, 250, STAR_CAP_PER_DAY), 0);
+test('stars: only for reaching the goal, with a daily cap, per local day', () => {
+  assert.equal(starsFor(true, 0), 1); assert.equal(starsFor(false, 0), 0, 'a crash earns none, however high the score');
+  assert.equal(starsFor(undefined, 0), 0); assert.equal(starsFor(1, 0), 0, 'only a real arrival counts');
+  assert.equal(starsFor(true, STAR_CAP_PER_DAY - 1), 1); assert.equal(starsFor(true, STAR_CAP_PER_DAY), 0);
   let day = 'a'; const st = memStore(), d = createDailyStars(st, () => day);
   assert.equal(d.earned(), 0); d.award(1); d.award(1); assert.equal(d.earned(), 2);
   assert.equal(createDailyStars(st, () => day).earned(), 2);
@@ -83,7 +85,11 @@ test('flow: menu -> select -> play -> pause -> play -> over -> again / menu', ()
   s = reduce(s, { type: 'pick', game: 'train' }); assert.equal(s.screen, 'play'); assert.equal(s.game, 'train');
   s = reduce(s, { type: 'pause' }); assert.equal(s.screen, 'pause');
   s = reduce(s, { type: 'resume' }); assert.equal(s.screen, 'play');
-  s = reduce(s, { type: 'over', score: 300, best: 300, isNew: true }); assert.deepEqual([s.screen, s.score, s.best, s.isNew], ['over', 300, 300, true]);
+  s = reduce(s, { type: 'over', score: 300, best: 300, isNew: true }); assert.deepEqual([s.screen, s.score, s.best, s.isNew, s.won], ['over', 300, 300, true, false]);
+  assert.equal(reduce(reduce(initialFlow(), { type: 'start' }), { type: 'pick', game: 'train' }).won, false);
+  assert.equal(reduce(reduce(reduce(initialFlow(), { type: 'start' }), { type: 'pick', game: 'skate' }), { type: 'over', score: 9, best: 9, won: true }).won, true);
+  assert.equal(reduce(s, { type: 'again' }).won, false);
+  assert.ok(GAMES.every((g) => g.win && g.goal), 'every game has an arrival screen and a goal icon');
   assert.equal(reduce(s, { type: 'again' }).screen, 'play');
   assert.equal(reduce(s, { type: 'menu' }).screen, 'select');
   assert.equal(reduce(reduce(s, { type: 'menu' }), { type: 'title' }).screen, 'menu');
@@ -133,5 +139,6 @@ test('poses move the art by whole pixels and stay in the cell', () => {
 test('score text and roadside are stable', () => {
   assert.equal(scoreText(500), '00500'); assert.equal(scoreText(-3), '00000'); assert.equal(scoreText(1e9), '99999');
   assert.deepEqual(roadside(100, 400), roadside(100, 400));
-  assert.ok(roadside(0, 600).some((o) => o.kind === 'station') && roadside(0, 300).some((o) => o.kind === 'pole'));
+  assert.ok(roadside(0, 6400).every((o) => o.kind !== 'station'), 'the only station is the one at the end of the route');
+  assert.ok(roadside(0, 300).some((o) => o.kind === 'pole'));
 });
