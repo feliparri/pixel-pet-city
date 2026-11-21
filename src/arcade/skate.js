@@ -1,4 +1,4 @@
-// "Patineta": the rules of the half-pipe run, no drawing, no clock. The board rides in a U-shaped chute with three positions: the left wall (-1), the floor
+// "Patineta": the rules of the half-pipe run (a finite route that ends at the pet's house: reaching it wins), no drawing, no clock. The board rides in a U-shaped chute with three positions: the left wall (-1), the floor
 // (0) and the right wall (+1), and its position `p` is a continuous swing: holding left or right pushes it up that wall along a smooth arc, letting go lets the
 // pipe's gravity swing it back down to the floor with a little overshoot. It can also JUMP (a gravity arc with hang time and a landing squash; allowed on a wall
 // too: the board pops straight up off the surface and lands on the same spot) and ramps launch a higher jump. Obstacles lie at a position: low ones (cracks,
@@ -8,16 +8,21 @@ import { next } from './train.js';
 
 export const SKATE = {
   LIVES: 3, INVULN_MS: 1600, FLASH_MS: 380,
-  V0: 30, VMAX: 72, ACC: 0.75,
+  V0: 30, VMAX: 78, ACC: 0.75,
+  ROUTE_LEN: 5400,                                    // the house is this far from the start (about 90 s at the speeds below)
+  HOME_CLEAR: 200,                                    // no row starts closer than this to the house: the last stretch is clear
+  HOLD_MS: 1000,                                      // how long the arrival stays on screen before the win panel
   SPAWN_Z: 230, BUFFER: 70, FIRST_Z: 130,
   SPRING: 18, PUSH: 36, DAMP: 4.6, AIR_PIPE: 0.5,     // the swing: gravity pulls towards the floor, a held direction pushes up the wall, damping settles it
   HW: 0.46, DEPTH: 1.6,                               // how close (in positions) the board must be to an obstacle to touch it, and the board's length
   G: 28, JUMP_V: 11.2, RAMP_V: 16,
   COYOTE_MS: 90, BUFFER_MS: 130, SQUASH_MS: 150,
-  GAP_EASY: 1.9, GAP_HARD: 1.05, RAMP_S: 70,
+  GAP_EASY: 1.9, GAP_HARD: 0.95, RAMP_S: 75,
   HOP_S: 0.32, CROSS_S: 0.6, REACT_S: 0.3,            // what the generator assumes a floor <-> wall hop, a wall <-> wall crossing and a reaction take
   SCORE_DIV: 4, COIN_POINTS: 5, AIR_POINTS: 8,        // points per second in the air
-  LOOK_S: 1.6, P_TALL_EASY: 0.35, P_TALL_HARD: 0.6, P_DOUBLE_EASY: 0.15, P_DOUBLE_HARD: 0.5,
+  LOOK_S: 1.6, P_TALL_EASY: 0.35, P_TALL_HARD: 0.6, P_DOUBLE_EASY: 0.15, P_DOUBLE_HARD: 0.55,
+  P_GATE_EASY: 0.12, P_GATE_HARD: 0.26, P_RAMP_EASY: 0.16, P_RAMP_HARD: 0.08, P_CONES_EASY: 0.17, P_CONES_HARD: 0.08,   // what a row is: the odds move from easy to hard along the route
+  WALL_BIAS: 1.6,                                     // late in the route, rows that block the walls are this much more likely (weight 1 + bias * wall share)
 };
 /** The obstacles: the positions they can stand at, the height a board must be above to pass, the depth along the pipe. */
 export const KINDS = {
@@ -43,13 +48,16 @@ export const swingTime = (a, b) => (a === b ? 0 : Math.abs(a - b) === 2 ? SKATE.
 export const apexOf = (v) => (v * v) / (2 * SKATE.G);
 export const airtimeOf = (v) => (2 * v) / SKATE.G;
 export const heightAt = (v, t) => v * t - 0.5 * SKATE.G * t * t;
+/** How far along the route a distance is, 0..1. */
+export const progressAt = (dist) => clamp(dist / SKATE.ROUTE_LEN, 0, 1);
 export const scoreOf = (s) => Math.floor(s.dist / SKATE.SCORE_DIV) + s.coins * SKATE.COIN_POINTS + Math.floor(s.air * SKATE.AIR_POINTS);
 
 let ids = 0;
 export function createSkateGame(seed = 1) {
   const s = {
     seed: seed >>> 0, rng: seed >>> 0,
-    t: 0, dist: 0, v: SKATE.V0, coins: 0, lives: SKATE.LIVES, over: false, hits: 0, air: 0,
+    t: 0, dist: 0, v: SKATE.V0, coins: 0, lives: SKATE.LIVES, over: false, won: false, hits: 0, air: 0,
+    goal: SKATE.ROUTE_LEN,                       // the house
     p: 0, vp: 0, hold: 0,                        // the swing: position (-1 left wall, 0 floor, 1 right wall), its speed, the held direction
     h: 0, vy: 0, grounded: true, sinceGround: 0, jumpBuf: 0, squash: 0, ramps: 0,
     invuln: 0, flash: 0,
@@ -63,6 +71,13 @@ export function createSkateGame(seed = 1) {
 const put = (s, kind, slot, z) => { const k = KINDS[kind]; const o = { id: ++ids, kind, slot, z, h: k.h, d: k.d, all: !!k.all, row: s.rows }; s.objs.push(o); return o; };
 const coin = (s, slot, z, h) => s.objs.push({ id: ++ids, kind: 'coin', slot, z, h, d: 0, taken: false });
 const pickOf = (s, list) => list[Math.floor(next(s) * list.length)];
+/** One of `list` by weight (one roll). */
+function pickWeighted(s, list, weight) {
+  const ws = list.map(weight), total = ws.reduce((a, b) => a + b, 0);
+  let r = next(s) * total;
+  for (let i = 0; i < list.length; i++) { r -= ws[i]; if (r < 0) return list[i]; }
+  return list[list.length - 1];
+}
 
 function genRow(s) {
   const front = s.nextFront;
@@ -70,7 +85,8 @@ function genRow(s) {
   const d = difficultyAt(arrival), vArr = speedAt(arrival), gapT = gapSeconds(arrival);
   const budget = gapT - SKATE.REACT_S;
   const r = next(s);
-  const kind = s.rows < 2 ? 'blocks' : r < 0.55 ? 'blocks' : r < 0.72 ? 'gate' : r < 0.86 ? 'ramp' : 'cones';
+  const pG = lerp(SKATE.P_GATE_EASY, SKATE.P_GATE_HARD, d), pR = lerp(SKATE.P_RAMP_EASY, SKATE.P_RAMP_HARD, d), pC = lerp(SKATE.P_CONES_EASY, SKATE.P_CONES_HARD, d);
+  const kind = s.rows < 2 || r < 1 - pG - pR - pC ? 'blocks' : r < 1 - pR - pC ? 'gate' : r < 1 - pC ? 'ramp' : 'cones';
   let end = front, extra = 0, nextFree = [-1, 0, 1];
   const gapLen = front - s.prevEnd;
   if (kind === 'gate') {
@@ -90,7 +106,8 @@ function genRow(s) {
     const nBlocked = kind === 'cones' ? 1 : next(s) < lerp(SKATE.P_DOUBLE_EASY, SKATE.P_DOUBLE_HARD, d) ? 2 : 1;
     const subsets = nBlocked === 1 ? [[-1], [0], [1]] : [[-1, 0], [-1, 1], [0, 1]];
     const ok = subsets.filter((b) => { const f = [-1, 0, 1].filter((x) => !b.includes(x)); return s.prevFree.some((a) => f.some((x) => swingTime(a, x) <= budget)); });
-    const blocked = pickOf(s, ok.length ? ok : subsets);
+    const wallShare = (b) => b.filter((x) => x !== 0).length / b.length;
+    const blocked = pickWeighted(s, ok.length ? ok : subsets, (b) => 1 + SKATE.WALL_BIAS * d * wallShare(b));
     nextFree = [-1, 0, 1].filter((x) => !blocked.includes(x));
     const pTall = lerp(SKATE.P_TALL_EASY, SKATE.P_TALL_HARD, d);
     blocked.forEach((slot, i) => {
@@ -107,7 +124,7 @@ function genRow(s) {
   s.prevEnd = end; s.prevFree = nextFree; s.rows++;
   s.nextFront = end + extra + gapT * vArr;
 }
-function fill(s) { while (s.nextFront <= SKATE.SPAWN_Z + SKATE.BUFFER) genRow(s); }
+function fill(s) { while (s.nextFront <= SKATE.SPAWN_Z + SKATE.BUFFER && s.dist + s.nextFront <= s.goal - SKATE.HOME_CLEAR) genRow(s); }
 
 /** Steering input: -1 up the left wall, 0 let go, 1 up the right wall (held). */
 export function steer(s, dir) { s.hold = dir; }
@@ -163,6 +180,7 @@ export function step(s, ms) {
       if (s.lives <= 0) { s.over = true; s.events.push('over'); }
     }
   }
+  if (!s.over && s.dist >= s.goal) { s.dist = s.goal; s.over = true; s.won = true; s.events.push('win'); }
   return s.events;
 }
 

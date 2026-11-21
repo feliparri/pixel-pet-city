@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createSkateGame, step, steer, jump, botInput, scoreOf, SKATE, KINDS, apexOf, airtimeOf, heightAt, speedAt, gapSeconds, swingTime, isHazard } from '../src/arcade/skate.js';
+import { createSkateGame, step, steer, jump, botInput, scoreOf, SKATE, KINDS, apexOf, airtimeOf, heightAt, speedAt, gapSeconds, swingTime, isHazard, progressAt, difficultyAt } from '../src/arcade/skate.js';
 
 const MS = 1000 / 60;
 const fresh = (seed = 1, objs = []) => {
@@ -139,12 +139,52 @@ test('fair spacing: the next free position is always reachable by swinging in th
     }
   }
 });
-test('fairness: the demo bot survives two minutes on 40 seeds, riding the walls and jumping', () => {
+test('fairness: the demo bot reaches the house unhurt on 40 seeds, riding the walls and jumping', () => {
   let wallTime = 0, air = 0;
   for (let seed = 1; seed <= 40; seed++) {
     const s = createSkateGame(seed);
     for (let i = 0; i < 120 * 60 && !s.over; i++) { const b = botInput(s); steer(s, b.dir); if (b.jump) jump(s); step(s, MS); if (Math.abs(s.p) > 0.9) wallTime++; }
-    assert.equal(s.hits, 0, `seed ${seed} was hit at ${s.t.toFixed(1)} s`); air += s.air;
+    assert.equal(s.hits, 0, `seed ${seed} was hit at ${s.t.toFixed(1)} s`); assert.equal(s.won, true); air += s.air;
   }
   assert.ok(wallTime > 500 && air > 40, 'the bot used the walls and the jump');
+});
+
+// ---- the route and the house ----------------------------------------------------------------------------------------------------------------------
+
+test('the route is finite: the board arrives at the house at about 90 s, the run ends as a win once and nothing moves afterwards', () => {
+  assert.equal(createSkateGame(1).goal, SKATE.ROUTE_LEN);
+  const s = createSkateGame(3); let wins = 0, at = 0;
+  for (let i = 0; i < 200 * 60 && !s.over; i++) { const b = botInput(s); steer(s, b.dir); if (b.jump) jump(s); const ev = step(s, MS); if (ev.includes('win')) { wins++; at = s.t; } }
+  assert.equal(wins, 1); assert.equal(s.won, true); assert.equal(s.over, true); assert.equal(s.dist, SKATE.ROUTE_LEN); assert.equal(s.hits, 0);
+  assert.ok(at > 80 && at < 100, `arrived at ${at.toFixed(1)} s`);
+  const d = s.dist; step(s, MS); assert.equal(s.dist, d);
+  assert.equal(progressAt(0), 0); assert.equal(progressAt(SKATE.ROUTE_LEN * 3), 1); assert.ok(Math.abs(progressAt(SKATE.ROUTE_LEN / 4) - 0.25) < 1e-9);
+});
+test('losing every life ends the run without a win; the last stretch before the house is clear', () => {
+  const s = fresh(1, [{ kind: 'rock', slot: 0, z: 1 }]);
+  for (let n = 0; n < 3; n++) { s.invuln = 0; s.objs = [{ id: 8100 + n, kind: 'rock', slot: 0, z: 1, d: 2, h: 3, all: false }]; step(s, MS); }
+  assert.equal(s.over, true); assert.equal(s.won, false);
+  for (let seed = 1; seed <= 10; seed++) {
+    const r = createSkateGame(seed); run(r, 100, true);
+    assert.ok(r.won);
+    assert.equal(r.objs.filter((o) => isHazard(o) && o.z + r.dist > SKATE.ROUTE_LEN - SKATE.HOME_CLEAR + 5).length, 0, 'no obstacle in the final stretch');
+  }
+});
+test('difficulty rises along the route: more gates, more wall obstacles and a faster board late than early', () => {
+  assert.ok(speedAt(70) > speedAt(10) && gapSeconds(75) < gapSeconds(5) && difficultyAt(75) === 1);
+  const early = { rows: 0, gates: 0, walls: 0, blocks: 0 }, late = { rows: 0, gates: 0, walls: 0, blocks: 0 };
+  for (let seed = 1; seed <= 40; seed++) {
+    const s = createSkateGame(seed), seen = new Set();
+    for (let i = 0; i < 100 * 60 && !s.over; i++) {
+      const b = botInput(s); steer(s, b.dir); if (b.jump) jump(s); step(s, MS);
+      for (const o of s.objs) if (isHazard(o) && !seen.has(o.row)) { seen.add(o.row); }
+      for (const o of s.objs) if (isHazard(o) && !o._c) {
+        o._c = true;
+        const bucket = o.z + s.dist < SKATE.ROUTE_LEN * 0.35 ? early : late;
+        if (o.all) bucket.gates++; else { bucket.blocks++; if (Math.abs(o.slot) === 1) bucket.walls++; }
+      }
+    }
+  }
+  assert.ok(late.gates / (late.gates + late.blocks) > early.gates / (early.gates + early.blocks), 'gates are more frequent late');
+  assert.ok(late.walls / late.blocks > early.walls / early.blocks, 'wall obstacles are more frequent late');
 });

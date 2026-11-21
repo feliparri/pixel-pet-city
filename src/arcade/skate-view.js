@@ -22,6 +22,8 @@ const RAIL_LANE = -2.55, WATER_EDGE = -2.7;
 const PIPE_FLOOR = 0.55, PIPE_TOP = 1.9, PIPE_H = 3.4, DECK = 0.5;     // the half-pipe: half width of the flat floor, where the coping is, how high it is (height units), the deck beyond it
 const PIPE_R = PIPE_TOP - PIPE_FLOOR, RIDE_T = 0.8, RIDE_A = PIPE_FLOOR + RIDE_T * PIPE_R;   // the wall is a quarter circle; a board on a wall rides at 80 % of the way up it
 const SLOT = RIDE_A;
+const PLAZA_FROM = 90, PLAZA_FLAT = 10;                              // the pipe's walls sink to a flat paved yard over the 80 units before the house (distances before the goal)
+const HOUSE_AHEAD = 18;                                             // the house stands this far past the goal (the board stops at the goal)
 /** Height (height units) of the half-pipe's surface at lateral distance aa from the middle: flat floor, a quarter-circle wall, then the deck at the coping's height. */
 const surfaceH = (aa) => (aa <= PIPE_FLOOR ? 0 : aa >= PIPE_TOP ? PIPE_H : PIPE_H * (1 - Math.sqrt(1 - ((aa - PIPE_FLOOR) / PIPE_R) ** 2)));
 /** The wall's angle (radians) at lateral aa: 0 on the floor, 90 degrees at the coping. */
@@ -103,8 +105,8 @@ export function createSkateView({ w, h }) {
   const latOf = (slot) => slot * SLOT;
   const raiseOf = (slot) => surfaceH(Math.abs(slot) * SLOT) * HU;               // how many px (at the board's depth) the position is above the floor
 
-  function blit(ctx, cv, lane, z, c, { dy = 0, alpha = 1, stretch = 1 } = {}) {
-    const p = proj.project(lane, z, c), sc = p.s * U;
+  function blit(ctx, cv, lane, z, c, { dy = 0, alpha = 1, stretch = 1, mul = 1 } = {}) {
+    const p = proj.project(lane, z, c), sc = p.s * U * mul;
     const dw = Math.round(cv.width * sc * stretch), dh = Math.round(cv.height * sc);
     if (dw < 1 || dh < 1 || p.x + dw / 2 < 0 || p.x - dw / 2 > w) return;
     const a = z > FADE_FROM ? Math.max(0, 1 - (z - FADE_FROM) / (FAR - FADE_FROM)) * alpha : alpha;
@@ -187,12 +189,13 @@ export function createSkateView({ w, h }) {
       const row = Math.floor(wz / PAVER), joint = ((wz % PAVER) + PAVER) % PAVER < dz + 0.4, dash = Math.floor(wz / 14) % 3 === 0;
       const pools = lamps.filter((L) => Math.abs(wz - L.z) < POOL_Z);
       const x0 = Math.max(0, Math.ceil(cx0 - aMax * u)), x1 = Math.min(w - 1, Math.floor(cx0 + aMax * u));
+      const fl = Math.max(0, Math.min(1, (s.goal - PLAZA_FLAT - wz) / (PLAZA_FROM - PLAZA_FLAT)));      // 1 in the pipe, 0 in the yard in front of the house
       for (let x = x0; x <= x1; x++) {
-        const a = (x + 0.5 - cx0) / u, aa = Math.abs(a), hv = surfaceH(aa), yt = y - Math.round(hv * hk);
+        const a = (x + 0.5 - cx0) / u, aa = Math.abs(a), hv = surfaceH(aa) * fl, yt = y - Math.round(hv * hk);
         const lim = ymin[x] - 1;
         if (yt > lim) continue;
         let r, g, b;
-        if (aa <= PIPE_FLOOR) {                                                        // the floor: flat concrete with joints and a painted centre line
+        if (aa <= PIPE_FLOOR || fl < 0.3) {                                            // the floor (and the yard): flat concrete with joints and a painted centre line
           r = 108; g = 114; b = 172;
           if (row & 1) { r += 8; g += 8; b += 8; }
           if (joint) { r -= 42; g -= 42; b -= 38; }
@@ -271,12 +274,23 @@ export function createSkateView({ w, h }) {
         }
       } });
     }
+    const zh = s.goal - s.dist + HOUSE_AHEAD;
+    if (zh < FAR && zh > -20) list.push({ z: zh, draw: (ctx) => house(ctx, zh, c, t) });
     for (const o of s.objs) {
       if (o.z > FAR || o.z < -14) continue;
       if (o.kind === 'coin') list.push({ z: o.z, draw: (ctx) => blit(ctx, art.coin(String(Math.floor(t / 110 + o.id) % 4)), latOf(o.slot), o.z, c, { dy: 7 + o.h * HU + raiseOf(o.slot) }) });
       else list.push({ z: o.z, draw: (ctx) => thing(ctx, o, c) });
     }
     return list.sort((a, b) => b.z - a.z);
+  }
+  /** The house at the end of the route: the lit brick house, a warm pool of light at its door and in its windows. */
+  function house(ctx, z, c, t) {
+    const p = proj.project(0, z, c), sc = p.s * U * 1.7, a = z > FADE_FROM ? Math.max(0, 1 - (z - FADE_FROM) / (FAR - FADE_FROM)) : 1;
+    const flick = 0.85 + 0.15 * Math.sin(t / 380);
+    ctx.globalAlpha = a;
+    for (const [r, al] of [[70, 0.07], [50, 0.1], [32, 0.14]]) { ctx.fillStyle = `rgba(255,200,110,${al * flick * a})`; ctx.beginPath(); ctx.ellipse(p.x, p.y - 8 * sc, r * sc * 1.25, r * sc * 0.55, 0, 0, Math.PI * 2); ctx.fill(); }
+    ctx.globalAlpha = 1;
+    blit(ctx, sa.home(), 0, z, c, { dy: -4, mul: 1.7 });
   }
   const SPRITE = { rock: () => sa.nightify(sa.rock(), 0.3), bench: () => sa.nightify(sa.bench('44'), 0.45), crack: () => sa.crack(), plank: () => sa.nightify(sa.plank(), 0.3), cone: () => sa.nightify(sa.cone(), 0.2), pipe: () => sa.pipe(), ramp: () => sa.nightify(sa.ramp('46'), 0.25), gate: () => sa.nightify(sa.barrier(String(Math.round(2 * (RIDE_A + 0.25) * 50))), 0.35) };
   function thing(ctx, o, c) {

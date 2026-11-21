@@ -7,7 +7,7 @@ import { reduce, initialFlow, GAMES } from './flow.js';
 import { createBestStore, createDailyStars, starsFor } from './scores.js';
 import { createTrainGame, step as stepTrain, setIntent, scoreOf, botIntent, upcomingFork, progressAt, TRAIN } from './train.js';
 import { createTrainView } from './train-view.js';
-import { createSkateGame, step as stepSkate, steer, jump, scoreOf as skateScore, botInput, isHazard } from './skate.js';
+import { createSkateGame, step as stepSkate, steer, jump, scoreOf as skateScore, botInput, isHazard, progressAt as skateProgress } from './skate.js';
 import { createSkateView } from './skate-view.js';
 import { drawHud, drawRouteBar, faceIcon, scoreText } from './hud.js';
 import { drawPet, petLayout } from '../sprites.js';
@@ -28,7 +28,7 @@ const ADAPTERS = {
     hold() {}, bot(g) { botIntent(g); },
   },
   skate: {
-    create: createSkateGame, step: stepSkate, score: skateScore, view: createSkateView, progress: () => 0,
+    create: createSkateGame, step: stepSkate, score: skateScore, view: createSkateView, progress: (g) => skateProgress(g.dist),
     act(g, a) { if (a === 'jump') jump(g); return false; },
     hold(g, d) { steer(g, d); }, bot(g) { const b = botInput(g); steer(g, b.dir); if (b.jump) jump(g); },
   },
@@ -40,6 +40,7 @@ const SHOTS = {
   'train:fork4': (g) => { const f = upcomingFork(g); return !!f && f.branches.length === 4 && f.z - g.dist > 42 && f.z - g.dist < 62 && g.trains.filter((t) => t.z > f.z && t.z - g.dist < 190).length >= 2; },
   'train:station': (g) => g.goal - g.dist < 60,
   'train:fork': (g) => { const f = upcomingFork(g); return !!f && f.z - g.dist > 70 && f.z - g.dist < 120 && g.trains.some((t) => t.z > f.z && t.z - g.dist < 175); },
+  'skate:home': (g) => g.goal - g.dist < 45,
   'skate:pipe': (g) => g.grounded && Math.abs(g.p) < 0.15 && !g.objs.some((o) => o.all && o.z < 110) && g.objs.some((o) => isHazard(o) && !o.all && o.slot === 0 && o.z > 40 && o.z < 75),
   'skate:wall': (g) => Math.abs(g.p) > 0.9 && g.objs.some((o) => isHazard(o) && !o.all && o.slot === 0 && o.z > 12 && o.z < 45),
   'skate:jump': (g) => g.h > 1.6 && g.objs.some((o) => isHazard(o) && o.h < 2 && o.z > -12 && o.z < 3 && (o.all || Math.abs(o.slot - g.p) < 0.6)),

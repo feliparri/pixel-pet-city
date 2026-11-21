@@ -2,6 +2,7 @@
 // `night` darkens a daytime sprite (trees, bushes) with a cool tint so it sits in the scene.
 import { P } from '../art/palette.js';
 import * as art from './art.js';
+import { drawHouse, windowsOf, litWindow } from '../art/buildings.js';
 
 const INK = art.INK;
 const mk = (w, h, fn) => { const c = document.createElement('canvas'); c.width = w; c.height = h; fn(c.getContext('2d'), w, h); return c; };
@@ -112,4 +113,13 @@ export const pipe = memo(() => mk(28, 30, (g) => {
   art.blob(g, [[14, 15, 13]], { o: INK, d: '#3a3f66', m: '#6a70a0', l: '#9aa0cf', h: '#d6dcf6' }, 9);
   for (let y = -8; y <= 8; y++) for (let x = -8; x <= 8; x++) if (x * x + y * y <= 64) R(g, x * x + y * y > 40 ? '#2c2f5c' : '#10122e', 14 + x, 15 + y, 1, 1);
   R(g, '#4a7bd0', 11, 20, 6, 1); R(g, '#6bb0f0', 12, 21, 3, 1);
+}));
+
+/** The pet's house at night, 112 x 84, anchored by its base (the foundation sits 4 px above the bottom): the town's brick house with its windows and door lit. */
+export const home = memo(() => mk(112, 84, (g, w, h) => {
+  const spec = { x: 0.5, y: 1, w: 6, door: 3, roof: 'red', wall: 'brick', windows: [1, 4], enter: true };
+  const day = mk(w, h, (d) => drawHouse(d, spec));
+  g.drawImage(nightify(day, 0.38), 0, 0);
+  for (const win of windowsOf(spec)) g.drawImage(litWindow(win.w, win.h, win.shop), win.x, win.y);
+  R(g, '#ffd36a', 56, 36, 1, 1);
 }));
