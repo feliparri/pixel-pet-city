@@ -8,6 +8,7 @@
 //   &snow=1                December snow over the town (src/snow.js; &now=<ms> moves the flakes)
 //   &gifts=1               the seasonal gifts of the seasons that are on, as they lie at server time &gnow=<ms> (default 1.8e12) in room FOCA-LUNA-42 (town only)
 //   &villagers=1           the villagers of room FOCA-LUNA-42 at server time &npct=<ms> (default 1.8e12), dressed for the seasons that are on (town only)
+//   ?shot=paddock          the farm's paddock with its cows and sheep (&now=<ms> moves them)
 // The page sets document.title to "ready" when it has painted, so a headless browser knows when to take the screenshot.
 import { getArea, tileAt, TILES, TILE } from './map.js';
 import { seekerSees } from './games/hide.js';
@@ -16,14 +17,14 @@ import { loadSprites } from './sprites.js';
 import { loadFont } from './font.js';
 import { ambientAt } from './daynight.js';
 import { Walker } from './walker.js';
-import { createLife, stepLife, lifeFrame } from './life.js';
+import { createLife, createFarmLife, stepLife, lifeFrame, farmLifeFrame } from './life.js';
 import { ghostsAt } from './ghosts.js';
 import { SEASON_KEYS } from './seasons.js';
 import { SHOPKEEPER, shopGreeting, createNpcs } from './npcs.js';
 import { createGiftWorld } from './gift-world.js';
 
 const q = new URLSearchParams(location.search);
-const kind = ['town', 'shop', 'view', 'park', 'seek', 'coop', 'sprint', 'life', 'pitch', 'race'].includes(q.get('shot')) ? q.get('shot') : 'town';
+const kind = ['town', 'shop', 'view', 'park', 'seek', 'coop', 'sprint', 'life', 'pitch', 'race', 'paddock'].includes(q.get('shot')) ? q.get('shot') : 'town';
 const seasons = new Set(SEASON_KEYS.filter((k) => q.get(k) === '1'));              // &halloween=1, &christmas=1
 const hour = q.has('hour') && Number.isFinite(Number(q.get('hour'))) ? Number(q.get('hour')) : 13;
 const scale = Math.max(1, Math.min(6, Number(q.get('scale')) | 0 || (kind === 'shop' ? 4 : kind === 'view' || kind === 'life' || kind === 'pitch' || kind === 'race' || kind === 'seek' || kind === 'coop' || kind === 'sprint' ? 3 : 2)));
@@ -42,7 +43,7 @@ const CAST = {
 
 async function main() {
   const [sprites, font] = await Promise.all([loadSprites(), loadFont()]);
-  const area = getArea(kind === 'shop' ? 'shop' : kind === 'town' && q.get('area') === 'farm' ? 'farm' : 'town');
+  const area = getArea(kind === 'shop' ? 'shop' : kind === 'paddock' || (kind === 'town' && q.get('area') === 'farm') ? 'farm' : 'town');
   const entities = (kind === 'shop' ? CAST.shop : CAST[kind] || CAST.town).filter((e) => e.look.items.every((i) => !i || sprites.catalogue[i]));
   const me = entities[0], others = entities.slice(1);
   let vw = area.w * TILE, vh = area.h * TILE, cam = { x: 0, y: 0 };
@@ -65,9 +66,10 @@ async function main() {
   const life = createLife('FOCA-LUNA-42');                                       // the same scene as the room FOCA-LUNA-42; a pet walking up scares a bird
   stepLife(life, [], 0);
   stepLife(life, entities.filter((e) => e.walker.tileY > 28).map((e) => ({ x: e.walker.tileX, y: e.walker.tileY })), lifeNow - 500);
-  const lifeScene = kind === 'shop' ? null : lifeFrame(life, lifeNow, amb);
+  const lifeScene = kind === 'shop' ? null : area.name === 'farm' ? farmLifeFrame(createFarmLife('FOCA-LUNA-42'), q.has('now') ? Number(q.get('now')) : lifeNow, amb) : lifeFrame(life, lifeNow, amb);
   if (kind === 'race') { vw = 12 * TILE; vh = 28 * TILE; cam = { x: 34 * TILE, y: 46 * TILE }; }
   if (kind === 'pitch') { vw = 24 * TILE; vh = 32 * TILE; cam = { x: 12 * TILE, y: 44 * TILE }; }
+  if (kind === 'paddock') { vw = 12 * TILE; vh = 10 * TILE; cam = { x: 32 * TILE, y: 2 * TILE }; }       // the farm's paddock with its cows and sheep (&now=<ms> moves them)
   if (kind === 'life') { vw = 20 * TILE; vh = 14 * TILE; cam = { x: 2 * TILE, y: 30 * TILE }; }
   const scene = document.createElement('canvas');
   scene.width = vw; scene.height = vh;

@@ -17,7 +17,7 @@ import { badge, bobY, BADGE } from './art/icons.js';
 import { drawChicken, CHICKEN_SIZE } from './art/chicken.js';
 import { ball as drawBall } from './art/places.js';
 import { drawBird, drawButterfly, drawFirefly, drawDuck, drawRing, drawSpray } from './art/life.js';
-import { drawAnimal, plotTile } from './art/farm.js';
+import { drawAnimal, plotTile, COW_SIZE, SHEEP_SIZE } from './art/farm.js';
 import { ghostFrames } from './art/halloween.js';
 import { seasonDecor } from './art/decor.js';
 import { GHOST_SCALE } from './ghosts.js';
@@ -165,7 +165,7 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
   if (life) {                                                                  // birds, the duck and the farm animals stand in the scene, sorted with the pets
     for (const b of life.birds) items.push({ sortY: b.y, order: 0, draw: () => drawBird(sctx, Math.round(b.x - cam.x), Math.round(b.y - cam.y), b.kind, b.frame, b.flip, b.air) });
     if (life.duck) items.push({ sortY: life.duck.y, order: 0, draw: () => drawDuck(sctx, Math.round(life.duck.x - cam.x), Math.round(life.duck.y - cam.y), life.duck.frame, life.duck.flip) });
-    for (const a of life.animals || []) items.push({ sortY: a.y, order: 0, draw: () => { const x = Math.round(a.x - cam.x), y = Math.round(a.y - cam.y); sctx.fillStyle = 'rgba(24,28,44,0.3)'; sctx.fillRect(x - 7, y - 2, 14, 2); drawAnimal(sctx, a, x, y); } });
+    for (const a of life.animals || []) items.push({ sortY: a.y, order: 0, draw: () => { const x = Math.round(a.x - cam.x), y = Math.round(a.y - cam.y); sctx.fillStyle = 'rgba(24,28,44,0.3)'; const sw = ((a.kind === 'cow' ? COW_SIZE : SHEEP_SIZE).w >> 1) - 3; sctx.fillRect(x - sw, y - 2, sw * 2, 2); drawAnimal(sctx, a, x, y); } });
   }
   items.sort((a, b) => a.sortY - b.sortY || a.order - b.order);
   for (const it of items) it.draw();

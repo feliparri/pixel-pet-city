@@ -228,9 +228,9 @@ export function fruitTree(kind = 0) {
   return c;
 }
 
-/** The animals' sizes in px (the sprites' top left is the corner, the feet on the bottom row). */
-export const COW_SIZE = { w: 20, h: 14 };
-export const SHEEP_SIZE = { w: 16, h: 12 };
+/** The animals' sizes in px (the sprites' top left is the corner, the feet on the bottom row); drawn at the pets' scale (a pet is 32 x 32). */
+export const COW_SIZE = { w: 36, h: 26 };
+export const SHEEP_SIZE = { w: 28, h: 20 };
 export const ANIMAL_FRAMES = 4;                // 0 stands, 1 grazes (head down), 2 and 3 are the two steps of a walk
 
 /** Paints with a mirror: `put(i, j, w, h, colour)` takes the picture's own x for a sprite facing right. */
@@ -238,34 +238,44 @@ const mirrored = (ctx, x, y, w, flip) => (i, j, iw, ih, col) => rect(ctx, col, x
 
 /** A cow: white with dark patches, a pink muzzle and little horns. `frame` 0-3 (see ANIMAL_FRAMES). */
 export function drawCow(ctx, x, y, frame = 0, flip = false) {
-  const put = mirrored(ctx, x, y, COW_SIZE.w, flip), PATCH = '#3b3550', down = frame === 1, hy = down ? 5 : 0;
+  const put = mirrored(ctx, x, y, COW_SIZE.w, flip), PATCH = '#3b3550', down = frame === 1, hy = down ? 10 : 0;
   const lift = (leg) => (frame === 2 && (leg === 0 || leg === 3)) || (frame === 3 && (leg === 1 || leg === 2));
-  [3, 5, 11, 13].forEach((lx, leg) => { const h = lift(leg) ? 2 : 3; put(lx, 10, 2, h, P.ink); put(lx, 10, 1, h - 1, P.cream3); });       // legs
-  put(1, 3, 1, 5, P.ink); put(0, 7, 2, 3, P.cream4);                                                                                        // tail
-  put(2, 2, 13, 9, P.ink); put(3, 3, 11, 7, P.cream); put(3, 8, 11, 2, P.cream3);                                                           // body
-  put(4, 3, 4, 3, PATCH); put(5, 6, 2, 1, PATCH); put(10, 5, 3, 3, PATCH); put(9, 3, 2, 1, PATCH);
-  put(7, 10, 3, 1, P.pink);                                                                                                                 // udder
-  put(13, 2 + hy, 7, 7, P.ink); put(14, 3 + hy, 5, 5, P.cream);                                                                             // head
-  if (down) { put(13, 3, 3, 5, P.ink); put(14, 3, 1, 4, P.cream); }
-  put(17, 6 + hy, 3, 3, P.pink); put(19, 7 + hy, 1, 1, P.ink); put(16, 4 + hy, 1, 1, P.ink);                                                // muzzle, nostril, eye
-  put(13, 1 + hy, 2, 2, P.cream3); put(17, 0 + hy, 1, 2, P.cream); put(18, 1 + hy, 1, 1, P.cream3);                                         // ear and horns
-  if (hy === 0) put(15, 3, 2, 2, PATCH);
+  [6, 11, 21, 26].forEach((lx, leg) => {                                                                                                    // legs and hooves
+    const h = lift(leg) ? 6 : 8, far = leg === 1 || leg === 2, top = 17;
+    put(lx, top, 4, h + 1, P.ink); put(lx + 1, top, 2, h - 1, far ? P.cream4 : P.cream3); put(lx + 1, top + h - 1, 2, 1, PATCH);
+  });
+  put(1, 8, 3, 2, P.ink); put(0, 10, 3, 9, P.ink); put(1, 10, 1, 7, P.cream4); put(0, 16, 3, 5, P.ink); put(1, 17, 1, 3, PATCH);            // tail and its tuft
+  put(4, 6, 24, 14, P.ink); put(3, 7, 26, 12, P.ink);                                                                                       // body: outline,
+  put(5, 7, 22, 12, P.cream); put(4, 8, 24, 10, P.cream); put(4, 16, 24, 3, P.cream3); put(8, 18, 6, 1, P.cream4); put(22, 18, 5, 1, P.cream4);   // coat and belly shade
+  put(7, 8, 7, 4, PATCH); put(6, 9, 1, 3, PATCH); put(9, 12, 4, 2, PATCH); put(8, 14, 1, 1, PATCH);                                          // patches
+  put(18, 7, 6, 5, PATCH); put(17, 9, 1, 2, PATCH); put(24, 10, 3, 4, PATCH); put(19, 12, 3, 1, PATCH);
+  put(15, 19, 7, 3, P.ink); put(16, 19, 5, 2, P.pink); put(16, 21, 1, 1, P.ink); put(20, 21, 1, 1, P.ink);                                    // udder
+  put(26, 5 + (down ? 2 : 0), 5, down ? 9 : 12, P.ink); put(27, 6 + (down ? 2 : 0), 3, down ? 8 : 10, P.cream);                              // neck
+  put(27, 4 + hy, 9, 11, P.ink); put(28, 5 + hy, 7, 9, P.cream); put(28, 5 + hy, 3, 3, PATCH);                                                // head and eye patch
+  put(31, 10 + hy, 5, 5, P.ink); put(32, 11 + hy, 3, 3, P.pink); put(34, 12 + hy, 1, 1, P.ink); put(32, 11 + hy, 1, 1, P.cream);            // muzzle and nostril
+  put(31, 7 + hy, 2, 2, P.ink); put(31, 7 + hy, 1, 1, P.cream);                                                                             // eye
+  put(24, 5 + hy, 5, 4, P.ink); put(25, 6 + hy, 3, 2, P.cream3); put(25, 7 + hy, 1, 1, P.pink);                                              // ear
+  put(30, 1 + hy, 3, 4, P.ink); put(31, 1 + hy, 1, 3, P.cream2); put(28, 2 + hy, 2, 3, P.ink); put(28, 3 + hy, 1, 2, P.cream);               // horns
 }
 
 /** A sheep: a cloud of wool, a dark face, thin legs. `frame` 0-3 (see ANIMAL_FRAMES). */
 export function drawSheep(ctx, x, y, frame = 0, flip = false) {
-  const put = mirrored(ctx, x, y, SHEEP_SIZE.w, flip), down = frame === 1, hy = down ? 3 : 0, FACE = '#3b3550';
+  const put = mirrored(ctx, x, y, SHEEP_SIZE.w, flip), down = frame === 1, hy = down ? 5 : 0, FACE = '#3b3550';
   const lift = (leg) => (frame === 2 && (leg === 0 || leg === 3)) || (frame === 3 && (leg === 1 || leg === 2));
-  [3, 5, 9, 11].forEach((lx, leg) => { const h = lift(leg) ? 2 : 3; put(lx, 9, 1, h, P.ink); put(lx, 9 + h - 1, 1, 1, P.ink2); });
-  const lobes = [[7, 5, 6, 4], [3.5, 6, 4, 3], [10, 5.5, 4, 3.5], [6, 3, 4, 3]];
-  const inside = (px, py) => lobes.some(([cx, cy, rx, ry]) => ((px - cx) / rx) ** 2 + ((py - cy) / ry) ** 2 <= 1) && py < 9;
-  for (let j = -1; j <= 9; j++) for (let i = -1; i <= 14; i++) {
-    const hit = (a, b) => a >= 0 && b >= 0 && a < 14 && b < 9 && inside(a, b);
-    if (hit(i, j)) put(i, j, 1, 1, j < 3 ? P.cream : j > 6 ? P.cream4 : (i + j) % 3 === 0 ? P.cream : P.cream3);
-    else if (hit(i - 1, j) || hit(i + 1, j) || hit(i, j - 1) || hit(i, j + 1)) put(i, j, 1, 1, P.ink);
+  [5, 9, 15, 19].forEach((lx, leg) => { const h = lift(leg) ? 3 : 5; put(lx, 14, 3, h, P.ink); put(lx + 1, 14, 1, h - 1, FACE); });         // thin legs
+  const lobes = [[11, 9, 10, 4.8], [5, 9, 4.5, 4], [18, 9, 4.8, 4.5], [8, 5, 4.2, 3.6], [13.5, 4.6, 4.6, 3.8], [18.5, 5.8, 3.6, 3.4], [3.8, 6, 3, 3]];
+  const inside = (px, py) => lobes.some(([cx, cy, rx, ry]) => ((px - cx) / rx) ** 2 + ((py - cy) / ry) ** 2 <= 1) && py < 14;
+  const hit = (a, b) => a >= 0 && b >= 0 && a < 24 && b < 14 && inside(a, b);
+  for (let j = -1; j <= 14; j++) for (let i = -1; i <= 24; i++) {
+    if (hit(i, j)) {
+      const curl = (i * 5 + j * 3) % 7 === 0 || (i * 3 + j * 7) % 11 === 0;                                                                // little curls of wool
+      put(i, j, 1, 1, j > 11 ? P.cream4 : curl ? P.cream3 : j < 6 || (i + j) % 3 === 0 ? P.cream : j > 9 ? P.cream4 : P.cream3);
+    } else if (hit(i - 1, j) || hit(i + 1, j) || hit(i, j - 1) || hit(i, j + 1)) put(i, j, 1, 1, P.ink);
   }
-  put(11, 3 + hy, 5, 5, P.ink); put(12, 4 + hy, 3, 3, FACE); put(14, 5 + hy, 1, 1, P.cream); put(11, 3 + hy, 1, 2, P.ink); put(10, 5 + hy, 2, 1, FACE);       // face and ear
-  if (down) put(10, 3, 3, 4, P.ink);
+  if (down) { put(19, 7, 5, 10, P.ink); put(20, 8, 3, 8, FACE); }                                                                           // neck
+  put(21, 6 + hy, 7, 8, P.ink); put(22, 7 + hy, 5, 6, FACE); put(25, 8 + hy, 1, 2, P.cream); put(26, 11 + hy, 1, 1, P.pink);                  // face, eye and nose
+  put(20, 8 + hy, 3, 3, P.ink); put(20, 9 + hy, 2, 1, FACE);                                                                                // ear
+  put(21, 4 + hy, 6, 3, P.ink); put(22, 5 + hy, 4, 2, P.cream); put(23, 4 + hy, 2, 1, P.cream);                                             // forelock
 }
 
 /** An animal of life.js's `animals` ({ kind, frame, flip }) with its feet at (x, y). */
