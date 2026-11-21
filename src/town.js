@@ -32,6 +32,7 @@ import { createHold, villagerAtTap, talkSpot, faceToward } from './npc-hold.js';
 import { hearer, reactionTo, REPLY_WINDOW_MS, REPLY_DELAY_MS, REPLY_EMOTE_MS, REPLY_SAY_MS } from './npc-react.js';
 import { createGiftWorld } from './gift-world.js';
 import { HINT_NO_TRIP, giftOutcome } from './gifts.js';
+import { sound } from './sound.js';
 import { missionFor, missionText, missionRows, statusOf, thanksFor, doneLine, CAPPED_LINE, NOT_READY, GOLD_POP, claimErrorText } from './missions.js';
 
 const FADE_MS = 240;                                  // the fade-in after a door
@@ -324,6 +325,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     const t2 = performance.now(), out = giftOutcome(r);
     if (out.kind === 'paid') {
       giftWorld.open(g.id, t2);
+      sound.play(out.item ? 'win' : 'coin');                          // Santa left an item: the fanfare; gold: the coin
       selfSay = { text: out.text, until: t2 + 1800 };
       self.jumpAt = t2; net.sendJump();
       onFarmDone({ ok: true, icon: 'coin', text: out.text });

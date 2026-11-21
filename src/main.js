@@ -23,6 +23,7 @@ import { createStars, createStarSaver, starsFromState, stateWithStars } from './
 import { createCanasta, canastaFrom, stateWithCanasta } from './canasta.js';
 import { createFarmMemory } from './farm-world.js';
 import { produceCanvas } from './art/produce.js';
+import { sound } from './sound.js';
 
 const $ = (id) => document.getElementById(id);
 const touch = isTouchDevice(window);                          // a phone or tablet: the town shows its on-screen controls
@@ -170,7 +171,7 @@ async function enter(code, { transport = mode, arrival = null, solo = false } = 
   canasta = visit ? visit.canasta : (canasta || createCanasta());       // dev only: a basket that lives for this page
   if (!visit && !devFarm) devFarm = farmMemoryFor('dev');
   window.cityDebug = () => ({ town, net, canasta });                    // handy in the console when testing with two tabs
-  town = startTown({ canvas: $('view'), stage: $('stage'), pad: touch ? { stick: $('stick'), a: $('pad-a'), b: $('pad-b') } : null, sprites, font, net, me, entrance: arrival, stars: counter, canasta, farmMemory: visit ? visit.farm : devFarm, tools: () => (shopSource && shopSource.shop ? shopSource.shop.tools : []), onStore: () => shopUi && shopUi.openStore(), missions: missionsApi, onFarm: paintFarmPrompt, onFarmDone: farmPop, onHud: (info) => hud && hud.update(info), onHdMode: () => paintFx(), onShow: (on, running) => { const b = $('show-back'); b.hidden = !running; b.textContent = on ? 'Volver al pueblo' : 'Ver show'; b.setAttribute('aria-pressed', String(on)); }, onShop: () => shopUi && shopUi.openShop(), insets: stageInsets });
+  town = startTown({ canvas: $('view'), stage: $('stage'), pad: touch ? { stick: $('stick'), a: $('pad-a'), b: $('pad-b') } : null, sprites, font, net, me, entrance: arrival, stars: counter, canasta, farmMemory: visit ? visit.farm : devFarm, tools: () => (shopSource && shopSource.shop ? shopSource.shop.tools : []), onStore: () => shopUi && shopUi.openStore(), missions: missionsApi, onFarm: paintFarmPrompt, onFarmDone: farmPop, onHud: (info) => { hud && hud.update(info); cueResults(info); }, onHdMode: () => paintFx(), onShow: (on, running) => { const b = $('show-back'); b.hidden = !running; b.textContent = on ? 'Volver al pueblo' : 'Ver show'; b.setAttribute('aria-pressed', String(on)); }, onShop: () => shopUi && shopUi.openShop(), insets: stageInsets });
   if (!town.hd.locked) town.hd.set(hdPref);
   paintFx();
   setStatus('connected');
@@ -193,6 +194,31 @@ const missionsApi = {
   giftOwner: () => (shopSource ? (shopSource.session ? shopSource.session.trip : 'dev') : null),      // the pet whose opened gifts the town remembers: this trip (the dev mock: 'dev')
   gift: (id) => shopSource.claimGift(id),
 };
+
+// ---- sound (src/sound.js): starts on the first tap (browsers need a gesture), one switch in the bar, a quiet tick on every button ----------------------------
+function paintSound() {
+  const btn = $('sound-toggle'), muted = sound.isMuted();
+  btn.setAttribute('aria-pressed', String(muted));
+  btn.setAttribute('aria-label', muted ? 'Activar sonido' : 'Silenciar');
+  btn.title = muted ? 'Activar sonido' : 'Silenciar';
+  btn.firstElementChild.textContent = muted ? '🔇' : '🔊';
+}
+let resultSeen = null;
+/** A game ended for this pet (the results panel appears once per game): the win jingle when it earned stars, else the gentle lose one. */
+function cueResults(info) {
+  const r = info && info.results;
+  if (!r) { resultSeen = null; return; }
+  if (resultSeen === r) return;
+  resultSeen = r;
+  if (r.play && r.mine >= 0) sound.play(r.stars > 0 ? 'win' : 'lose');
+}
+function setupSound() {
+  const first = () => sound.unlock();
+  for (const type of ['pointerdown', 'keydown', 'touchend']) window.addEventListener(type, first, { capture: true, once: true });
+  document.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('button'); if (b && b.id !== 'sound-toggle') sound.play('tap'); }, true);
+  $('sound-toggle').addEventListener('click', () => { sound.unlock(); sound.setMuted(!sound.isMuted()); paintSound(); sound.play('tap'); });
+  paintSound();
+}
 
 /** The "Efectos" switch (the HD-2D view): the choice is remembered in this browser; ?flat=1 locks it off. */
 let hdPref = store.get('city.hd2d') !== '0';
@@ -407,6 +433,7 @@ async function boot() {
   fillItemSelects();
   buildEmotes();
   setupPops();
+  setupSound();
   $('show-back').addEventListener('click', () => { if (town) town.events.toggle(); });
   $('fx-toggle').addEventListener('click', () => { if (!town || town.hd.locked) return; hdPref = !town.hd.on; store.set('city.hd2d', hdPref ? '1' : '0'); town.hd.set(hdPref, true); paintFx(); });
   shopUi = createShopUi($, {
@@ -414,8 +441,8 @@ async function boot() {
     onOpenChange: (open) => { $('play').classList.toggle('modal', open); if (town) town.setModal(open); },
     canasta: () => canasta,
     missionList: () => (town ? town.missions.list() : null),
-    onBought: (key, line) => { if (town) { town.wear(key); town.thank(line); } },
-    onToolBought: (key, line) => { if (town) town.thank(line); },
+    onBought: (key, line) => { sound.play('buy'); if (town) { town.wear(key); town.thank(line); } },
+    onToolBought: (key, line) => { sound.play('buy'); if (town) town.thank(line); },
   });
   $('bag-open').addEventListener('click', () => shopUi.openBag());
   $('missions-open').addEventListener('click', () => shopUi.openMissions());
