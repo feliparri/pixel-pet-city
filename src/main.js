@@ -24,6 +24,8 @@ import { createCanasta, canastaFrom, stateWithCanasta } from './canasta.js';
 import { createFarmMemory } from './farm-world.js';
 import { produceCanvas } from './art/produce.js';
 import { sound } from './sound.js';
+import { startArcade } from './arcade/arcade.js';
+import { botDir } from './arcade/train.js';
 
 const $ = (id) => document.getElementById(id);
 const touch = isTouchDevice(window);                          // a phone or tablet: the town shows its on-screen controls
@@ -174,6 +176,8 @@ async function enter(code, { transport = mode, arrival = null, solo = false } = 
   town = startTown({ canvas: $('view'), stage: $('stage'), pad: touch ? { stick: $('stick'), a: $('pad-a'), b: $('pad-b') } : null, sprites, font, net, me, entrance: arrival, stars: counter, canasta, farmMemory: visit ? visit.farm : devFarm, tools: () => (shopSource && shopSource.shop ? shopSource.shop.tools : []), onStore: () => shopUi && shopUi.openStore(), missions: missionsApi, onFarm: paintFarmPrompt, onFarmDone: farmPop, onHud: (info) => { hud && hud.update(info); cueResults(info); }, onHdMode: () => paintFx(), onShow: (on, running) => { const b = $('show-back'); b.hidden = !running; b.textContent = on ? 'Volver al pueblo' : 'Ver show'; b.setAttribute('aria-pressed', String(on)); }, onShop: () => shopUi && shopUi.openShop(), insets: stageInsets });
   if (!town.hd.locked) town.hd.set(hdPref);
   paintFx();
+  paintArcade();
+  devArcade();
   setStatus('connected');
   if (visit) visit.radar.now();                                 // the room changed: tell the phone's radar now
   return true;
@@ -220,6 +224,36 @@ function setupSound() {
   paintSound();
 }
 
+// ---- the arcade (src/arcade/): a pet wearing the VR goggles gets "Jugar", which opens a full-screen game layer over the town (the town stops meanwhile) ----------
+let arcade = null;
+const wearsGoggles = () => !!town && town.look().items.includes('vr_goggles');
+function paintArcade() { $('arcade-open').hidden = !wearsGoggles() || !!arcade; }
+function openArcade() {
+  if (!town || arcade || !wearsGoggles()) return null;
+  town.suspend(true);
+  $('arcade-open').hidden = true;
+  arcade = startArcade({
+    root: $('arcade'), sprites, font, look: town.look(), sound,
+    storage: { getItem: (k) => store.get(k), setItem: (k, v) => store.set(k, v) },
+    awardStars: (n) => { if (stars) { stars.add(n); $('stars-n').textContent = String(stars.get()); } },
+    onExit: closeArcade,
+  });
+  return arcade;
+}
+function closeArcade() {
+  if (!arcade) return;
+  arcade.destroy(); arcade = null;
+  if (town) town.suspend(false);
+  paintSound(); paintArcade();
+}
+/** Development only (?local=1&dev=1&wear=vr_goggles&arcade=menu|select|play|pause|over&at=<seconds>): the goggles on, the arcade open on a screen (previews). */
+function devArcade() {
+  const q = new URLSearchParams(location.search);
+  if (q.get('dev') !== '1' || !town) return;
+  if (q.has('wear') && sprites.catalogue[q.get('wear')]) { town.wear(q.get('wear')); paintArcade(); }
+  if (q.has('arcade')) { const a = openArcade(); if (a) a.dev.go(q.get('arcade'), Number(q.get('at')) || 0, q.get('bot') === '0' ? null : botDir); }
+}
+
 /** The "Efectos" switch (the HD-2D view): the choice is remembered in this browser; ?flat=1 locks it off. */
 let hdPref = store.get('city.hd2d') !== '0';
 function paintFx() {                                            // shows the real state (the town may have fallen back to flat by itself)
@@ -260,7 +294,9 @@ function setStatus(status) {
 }
 
 function closeRoom() {
+  closeArcade();
   $('show-back').hidden = true;
+  $('arcade-open').hidden = true;
   if (shopUi) shopUi.close();
   if (hud) hud.update({ lobby: null, game: null, results: null, notices: [], spot: null });
   if (town) { town.destroy(); town = null; }
@@ -435,13 +471,14 @@ async function boot() {
   setupPops();
   setupSound();
   $('show-back').addEventListener('click', () => { if (town) town.events.toggle(); });
+  $('arcade-open').addEventListener('click', () => { sound.unlock(); openArcade(); });
   $('fx-toggle').addEventListener('click', () => { if (!town || town.hd.locked) return; hdPref = !town.hd.on; store.set('city.hd2d', hdPref ? '1' : '0'); town.hd.set(hdPref, true); paintFx(); });
   shopUi = createShopUi($, {
     sprites, source: () => shopSource,
     onOpenChange: (open) => { $('play').classList.toggle('modal', open); if (town) town.setModal(open); },
     canasta: () => canasta,
     missionList: () => (town ? town.missions.list() : null),
-    onBought: (key, line) => { sound.play('buy'); if (town) { town.wear(key); town.thank(line); } },
+    onBought: (key, line) => { sound.play('buy'); if (town) { town.wear(key); town.thank(line); paintArcade(); } },
     onToolBought: (key, line) => { sound.play('buy'); if (town) town.thank(line); },
   });
   $('bag-open').addEventListener('click', () => shopUi.openBag());

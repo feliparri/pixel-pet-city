@@ -80,7 +80,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   const held = [];                                   // direction keys held, the latest last
   let shift = false, padRun = false, stickRun = false;               // Shift (or B, or the stick pushed far) is down: a held direction runs (outside the games)
   let stickDirs = [], flip = 0;                                       // the stick's held directions: a diagonal alternates its two axes step by step
-  let raf = 0, last = performance.now(), alive = true;
+  let raf = 0, last = performance.now(), alive = true, suspended = false;      // suspended: the arcade is open over the town: nothing is drawn or read until it closes
 
   const names = (pid) => (pid === self.id ? self.name : (others.get(pid) || {}).name || 'Mascota');
   const games = createGames({
@@ -145,6 +145,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
 
   function frame(t) {
     if (!alive) return;
+    if (suspended) { last = t; raf = requestAnimationFrame(frame); return; }
     const dt = Math.min(100, t - last);
     last = t;
     const w = self.walker;
@@ -441,7 +442,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     return true;
   }
   function onPointer(ev) {
-    if (ev.button > 0 || self.fx || self.gone || modal) return;
+    if (suspended || ev.button > 0 || self.fx || self.gone || modal) return;
     const tile = renderer.pointToTile(ev.clientX, ev.clientY);
     if (!tile) return;
     talkGo = null;
@@ -459,7 +460,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     }
   }
   function onKeyDown(ev) {
-    if (isTyping(ev) || modal) return;
+    if (suspended || isTyping(ev) || modal) return;
     shift = ev.shiftKey;
     if (self.area === 'shop' && shopNear && (ev.key === 'Enter' || ev.key === 'e' || ev.key === 'E')) { ev.preventDefault(); if (!ev.repeat) onShop(); return; }      // Enter or E at the counter opens the shop
     if ((ev.key === 'Enter' || ev.key === 'e' || ev.key === 'E') && farmAction && farmAction.id !== 'hint') { ev.preventDefault(); if (!ev.repeat) farmDo(); return; }      // Enter or E next to a farm object does its action
@@ -552,6 +553,10 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       },
     },
     /** A panel opened or closed over the town: the pet stops while it is open. */
+    /** The pet's look now (what it wears, a bought item included): the page shows "Jugar" when it wears the VR goggles. */
+    look: () => self.look,
+    /** The arcade opens over the town (true) or closes (false): the town stops drawing and listening, and the pet stands still. */
+    suspend(on) { suspended = on; if (on) { held.length = 0; shift = false; padRun = false; stickRun = false; stickDirs = []; self.walker.queue = []; if (touchpad) touchpad.reset(); } },
     setModal(on) { modal = on; if (on) { held.length = 0; self.walker.queue = []; if (touchpad) touchpad.reset(); } },
     /** The pet shows an item it just bought (this screen only: the look the others see does not change), and the shopkeeper says thanks. */
     wear(key) {

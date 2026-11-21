@@ -168,3 +168,38 @@ a.btn { display: inline-block; text-decoration: none; }
 .confirm p { margin: 0; font-size: 1.1rem; font-weight: 700; }
 .confirm-actions { display: flex; gap: .6rem; }
 .play.modal .pad, .play.modal .stick-zone { display: none !important; }
+
+/* the arcade: a full-screen layer over the town (src/arcade/arcade.js); portrait first, a centred column on a desktop */
+.arcade { position: fixed; inset: 0; z-index: 60; display: flex; justify-content: center; background: #0b0d16; touch-action: none; }
+.arcade[hidden] { display: none; }
+.arc-frame { position: relative; width: 100%; max-width: 30rem; height: 100%; overflow: hidden; background: #0e101a; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+.arc-canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; display: block; touch-action: none; }
+.arc-ui { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: .8rem; padding: max(1rem, env(safe-area-inset-top)) 16px max(1.2rem, env(safe-area-inset-bottom)); pointer-events: none; }
+.arc-ui[data-screen="play"] { display: none; }
+.arc-ui[data-screen="menu"] { justify-content: space-between; }
+.arc-ui .btn, .arc-ui .arc-card { pointer-events: auto; }
+.arc-probe { position: absolute; visibility: hidden; padding-top: env(safe-area-inset-top); }
+.arc-title { margin: 1.2rem 0 0; font-size: 3.4rem; letter-spacing: .12em; text-transform: uppercase; color: var(--gold); text-shadow: 0 4px 0 #8a4426, 3px 0 0 #312439, -3px 0 0 #312439, 0 -3px 0 #312439, 3px 7px 0 #312439, -3px 7px 0 #312439, 0 8px 0 #312439; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-weight: 900; }
+.arc-head { margin: 0; color: var(--gold); font-size: 1.6rem; text-shadow: 2px 2px 0 #181c2c; text-align: center; }
+.arc-panel { width: 100%; max-width: 22rem; display: grid; gap: .6rem; justify-items: stretch; text-align: center; background: rgba(24,28,44,.9); border: 3px solid var(--gold); box-shadow: 0 6px 0 rgba(0,0,0,.35); padding: .9rem; pointer-events: auto; }
+.arc-panel .btn.big { font-size: 1.3rem; }
+.arc-sub { margin: 0; color: var(--muted); }
+.arc-pet { image-rendering: pixelated; width: 144px; height: auto; justify-self: center; margin-bottom: -.2rem; }
+.arc-cards { width: 100%; max-width: 22rem; display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; }
+.arc-card { display: grid; gap: .25rem; justify-items: center; font: inherit; color: var(--text); background: rgba(38,44,68,.94); border: 3px solid var(--edge); border-bottom-width: 6px; padding: .6rem .4rem; min-height: 11rem; cursor: pointer; touch-action: manipulation; }
+.arc-card:not(:disabled):hover, .arc-card:not(:disabled):focus-visible { border-color: var(--gold); outline: none; }
+.arc-card:active:not(:disabled) { border-bottom-width: 3px; }
+.arc-card.soon { opacity: .7; cursor: default; }
+.arc-card-icon { width: 92px; height: 100px; image-rendering: pixelated; }
+.arc-card-name { font-weight: 800; font-size: 1.1rem; color: var(--gold); }
+.arc-card-sub { font-size: .8rem; color: var(--muted); }
+.arc-card-best { font-size: .8rem; }
+.arc-score { margin: 0; font: 900 2.6rem ui-monospace, "SF Mono", Menlo, Consolas, monospace; letter-spacing: .08em; color: #fff7de; text-shadow: 3px 3px 0 #312439; }
+.arc-best { margin: 0; color: var(--muted); font-weight: 700; }
+.arc-stars { margin: 0; color: var(--gold); font-weight: 800; font-size: 1.2rem; }
+.arc-tools { position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-between; padding: 0 max(.6rem, env(safe-area-inset-right)) max(.6rem, env(safe-area-inset-bottom)) max(.6rem, env(safe-area-inset-left)); pointer-events: none; }
+.arc-tools .btn { pointer-events: auto; min-width: 2.75rem; min-height: 2.75rem; font-size: 1.2rem; line-height: 1; padding: .2rem .5rem; background: rgba(38,44,68,.82); }
+.arc-tools .btn:only-child { margin-left: auto; }
+.arc-ui[data-screen="menu"] ~ .arc-tools, .arc-ui[data-screen="select"] ~ .arc-tools { justify-content: flex-end; bottom: auto; top: 0; padding-top: max(.6rem, env(safe-area-inset-top)); }
+.arcade-open { position: absolute; top: 3.5rem; left: max(.6rem, env(safe-area-inset-left)); background: var(--gold); color: var(--bg); border-color: #b89420; z-index: 2; }
+.touch .arcade-open { top: 2.7rem; }
