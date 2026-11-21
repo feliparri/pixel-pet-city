@@ -19,6 +19,9 @@ export const SHOP = {
   cape:         { price: 120, slot: 3, name: 'Capa' },
   horns:        { price: 350, slot: 0, name: 'Gorro con cuernos', needs: 15 },
   furhat:       { price: 280, slot: 0, name: 'Sombrero de piel', needs: 16 },
+  elf_hat:      { price: 400, slot: 0, name: 'Gorro de duende', needs: 18 },
+  headphones:   { price: 600, slot: 0, name: 'Audífonos', needs: 19 },
+  vr_goggles:   { price: 1500, slot: 1, name: 'Lentes VR', needs: 20 },
 };
 
 export const LEGACY_ITEMS = 14;                  // the catalogue every board knew before those hats: a trip that did not advertise one

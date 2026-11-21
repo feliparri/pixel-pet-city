@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { SHOP, GIFT_MAX, parseBag, shopFrom, shopAfterBuy, shopRows, bagList, confirmText, buyErrorText, CLOSED_TEXT } from '../src/shop.js';
+import { SHOP, LEGACY_ITEMS, GIFT_MAX, parseBag, shopFrom, shopAfterBuy, shopRows, bagList, confirmText, buyErrorText, CLOSED_TEXT } from '../src/shop.js';
 import { SHOP as SERVER_SHOP } from '../supabase/functions/trip/shop.js';
 import { createMockShop } from '../src/shop-mock.js';
 import { createTripClient, petFromClaim } from '../src/trip.js';
@@ -14,7 +14,7 @@ const rowOf = (shop, key) => shopRows(shop).find((r) => r.key === key);
 
 test('the price list mirrors the server one (names, prices, slots)', () => {
   assert.deepEqual(Object.keys(SHOP), Object.keys(SERVER_SHOP));
-  for (const [k, it] of Object.entries(SERVER_SHOP)) assert.deepEqual(SHOP[k], { price: it.price, slot: it.slot, name: it.name, ...(it.town ? { needs: it.id + 1 } : {}) }, k);   // a town hat needs a board that knows its id
+  for (const [k, it] of Object.entries(SERVER_SHOP)) assert.deepEqual(SHOP[k], { price: it.price, slot: it.slot, name: it.name, ...(it.town || it.id >= LEGACY_ITEMS ? { needs: it.id + 1 } : {}) }, k);   // an item newer than the legacy catalogue needs a board that knows its id
   for (const k of Object.keys(SHOP)) assert.ok(catalogue[k], `${k} has art`);
 });
 
@@ -209,7 +209,7 @@ test('the town hats: shown with their price, buyable only when the board knows t
   assert.equal(shopFrom(view({ items: 'x' }), pet).items, 14);
   assert.equal(shopFrom(view(), null, { items: 15 }).items, 15);                           // a status poll keeps what the claim said
   const old = shopFrom(view({ gold_left: 1000 }), pet);
-  for (const key of ['horns', 'furhat']) {
+  for (const key of ['horns', 'furhat', 'elf_hat', 'headphones', 'vr_goggles']) {
     assert.deepEqual([rowOf(old, key).state, rowOf(old, key).label, rowOf(old, key).enabled], ['update', 'Necesitas actualizar tu placa', false]);
     assert.equal(rowOf(old, key).price, SHOP[key].price);                                  // the price is there to see
   }
@@ -224,5 +224,5 @@ test('the town hats: shown with their price, buyable only when the board knows t
   assert.equal(rowOf(shopFrom(view({ gold_left: 1000, items: 14 }), { owned: ['horns'], bag: [] }), 'horns').state, 'owned');   // owned wins
   assert.equal(buyErrorText({ error: 'update_board' }), 'Tu placa necesita una actualización para recibir ese artículo.');
   assert.equal(confirmText('horns'), '¿Comprar Gorro con cuernos por 350 de oro? Tu mascota lo recibe al volver a casa.');
-  assert.deepEqual(Object.keys(SHOP).slice(-2), ['horns', 'furhat']);                      // after the rest, in the order of their ids
+  assert.deepEqual(Object.keys(SHOP).slice(-5), ['horns', 'furhat', 'elf_hat', 'headphones', 'vr_goggles']);                      // after the rest, in the order of their ids
 });

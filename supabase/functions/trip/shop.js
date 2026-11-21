@@ -18,6 +18,9 @@ export const SHOP = {
   cape:         { id: 12, price: 120, slot: 3, name: 'Capa' },
   horns:        { id: 14, price: 350, slot: 0, name: 'Gorro con cuernos', town: true },
   furhat:       { id: 15, price: 280, slot: 0, name: 'Sombrero de piel', town: true },
+  elf_hat:      { id: 17, price: 400, slot: 0, name: 'Gorro de duende' },
+  headphones:   { id: 18, price: 600, slot: 0, name: 'Audífonos' },
+  vr_goggles:   { id: 19, price: 1500, slot: 1, name: 'Lentes VR' },
 };
 
 export const isForSale = (key) => typeof key === 'string' && Object.hasOwn(SHOP, key);
