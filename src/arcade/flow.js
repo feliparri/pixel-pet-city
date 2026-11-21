@@ -4,7 +4,7 @@
 export const SCREENS = ['menu', 'select', 'play', 'pause', 'over'];
 export const GAMES = [
   { id: 'train', name: 'Tren', blurb: 'Esquiva los trenes', available: true, starScore: 250 },
-  { id: 'skate', name: 'Patineta', blurb: 'Salta los obstáculos', available: false, starScore: 250 },
+  { id: 'skate', name: 'Patineta', blurb: 'Salta los obstáculos', available: true, starScore: 250 },
 ];
 export const initialFlow = () => ({ screen: 'menu', game: null, score: 0, best: 0, isNew: false, exit: false });
 

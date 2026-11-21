@@ -222,11 +222,15 @@ export const cloud = memo((v) => mk(46, 18, (g) => {
   blob(g, big ? [[10, 11, 7], [20, 8, 8], [31, 10, 7], [38, 12, 5], [22, 12, 7]] : [[9, 11, 6], [18, 9, 7], [28, 11, 6]], { o: '#9ac0e6', d: '#bcd8f2', m: '#e0efff', l: '#f4faff', h: '#ffffff' }, 6);
 }));
 
-/** A skateboard for the game menu's second card (the skate game itself comes later), 46 x 50. */
+/** A skateboard for the game menu's second card, 46 x 50: side view, a kicked deck, bright wheels, a moon and a star behind. */
 export const skateIcon = memo(() => mk(46, 50, (g) => {
-  R(g, 'rgba(0,0,0,0.25)', 6, 40, 34, 5);
-  for (const [x, y] of [[8, 33], [32, 33]]) { R(g, INK, x, y, 8, 8); R(g, '#e0485a', x + 1, y + 1, 6, 6); R(g, '#ff9eb5', x + 1, y + 1, 6, 2); R(g, INK, x + 3, y + 3, 2, 2); }
-  R(g, INK, 2, 22, 42, 12); R(g, '#394963', 3, 23, 40, 10); R(g, '#52597b', 3, 23, 40, 2); R(g, '#212839', 3, 31, 40, 2);
-  R(g, INK, 0, 17, 6, 8); R(g, '#394963', 1, 18, 4, 6); R(g, INK, 40, 17, 6, 8); R(g, '#394963', 41, 18, 4, 6);
-  for (let x = 8; x < 38; x += 8) R(g, '#ffcb6b', x, 27, 4, 2);
+  R(g, '#2c3282', 0, 0, 46, 36);
+  for (let y = -6; y <= 6; y++) for (let x = -6; x <= 6; x++) if (x * x + y * y <= 36) R(g, x + y > 2 ? '#d8d6f0' : '#f6f4ff', 33 + x, 11 + y, 1, 1);
+  R(g, '#fff7de', 6, 6, 1, 1); R(g, '#fff7de', 12, 14, 1, 1); R(g, '#b8bcf0', 20, 4, 1, 1);
+  R(g, '#383d6a', 0, 36, 46, 14); R(g, '#6f74aa', 0, 36, 46, 2);
+  R(g, 'rgba(0,0,0,0.3)', 6, 46, 34, 3);
+  for (const x of [9, 31]) { R(g, INK, x, 36, 9, 9); R(g, '#e0485a', x + 1, 37, 7, 7); R(g, '#ff9eb5', x + 1, 37, 7, 2); R(g, INK, x + 3, 39, 3, 3); R(g, '#ffd0c0', x + 4, 40, 1, 1); }
+  R(g, INK, 14, 33, 18, 4); R(g, '#7b7d8c', 15, 33, 16, 2);
+  for (let x = 0; x < 42; x++) { const kick = x < 6 ? 6 - x : x > 35 ? x - 35 : 0, y = 28 - Math.round(kick * 0.9); R(g, INK, 2 + x, y, 1, 7); R(g, '#1f6f78', 2 + x, y + 1, 1, 4); R(g, '#4ec9c0', 2 + x, y + 1, 1, 1); R(g, '#154a58', 2 + x, y + 4, 1, 1); }
+  for (const x of [14, 22, 30]) R(g, '#ffcb6b', x, 31, 3, 1);
 }));

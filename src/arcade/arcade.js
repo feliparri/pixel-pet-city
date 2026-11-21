@@ -5,8 +5,10 @@ import { attachInput } from './input.js';
 import { logicalSize } from './lanes.js';
 import { reduce, initialFlow, GAMES } from './flow.js';
 import { createBestStore, createDailyStars, starsFor } from './scores.js';
-import { createTrainGame, step as stepTrain, moveLane, scoreOf, TRAIN } from './train.js';
+import { createTrainGame, step as stepTrain, moveLane, scoreOf, botDir, TRAIN } from './train.js';
 import { createTrainView } from './train-view.js';
+import { createSkateGame, step as stepSkate, steer, jump, scoreOf as skateScore, botInput } from './skate.js';
+import { createSkateView } from './skate-view.js';
 import { drawHud, faceIcon, scoreText } from './hud.js';
 import { drawPet, petLayout } from '../sprites.js';
 import { note, W, N } from '../sound.js';
@@ -15,6 +17,21 @@ import * as art from './art.js';
 const OVER_DELAY_MS = 1100;                           // the crash plays out before the game over panel appears
 const MENU_SPEED = 24;                                // the scenery drifts under the menus (units per second)
 const JINGLE = [note(W.SQ25, N.E5, N.E5, 80, 140), note(W.SQ25, N.G5, N.G5, 80, 140), note(W.SQ25, N.C6, N.C6, 80, 140), note(W.SQ25, N.E6, N.E6, 130, 140), note(W.REST, 0, 0, 40, 0), note(W.SQ25, N.G5, N.G5, 60, 140), note(W.SQ25, N.C6, N.C6, 240, 140)];
+
+/** What each game plugs in: how a run is made and stepped, what an action does, how the picture is made, and a demo bot (previews). */
+const WHOOSH = [note(W.TRI, 260, 980, 110, 120)];
+const ADAPTERS = {
+  train: {
+    create: createTrainGame, step: stepTrain, score: scoreOf, view: createTrainView,
+    act(g, a) { if (a === 'left' || a === 'right') return moveLane(g, a === 'left' ? -1 : 1); return false; },
+    hold() {}, bot(g) { const d = botDir(g); if (d) moveLane(g, d); },
+  },
+  skate: {
+    create: createSkateGame, step: stepSkate, score: skateScore, view: createSkateView,
+    act(g, a) { if (a === 'jump') jump(g); return false; },
+    hold(g, d) { steer(g, d); }, bot(g) { const b = botInput(g); steer(g, b.dir); if (b.jump) jump(g); },
+  },
+};
 
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const button = (text, cls, onClick) => { const b = el('button', `btn ${cls || ''}`.trim(), text); b.type = 'button'; b.addEventListener('click', () => { onClick(); b.blur(); }); return b; };
@@ -39,8 +56,8 @@ export function startArcade({ root, sprites, font, look, sound, awardStars = () 
 
   const best = createBestStore(storage), daily = createDailyStars(storage, dayString);
   const face = faceIcon(sprites, look);
-  let flow = initialFlow(), game = null, view = null, size = null, topPad = 0;
-  let clock = 0, idleDist = 0, overAt = 0, runStars = 0, destroyed = false, hintsT = 0;
+  let flow = initialFlow(), game = null, views = {}, size = null, topPad = 0;
+  let frozen = false, clock = 0, idleDist = 0, overAt = 0, runStars = 0, destroyed = false, hintsT = 0;
   const idle = { dist: 0, x: 0, lane: 0, slide: null, objs: [], invuln: 0, flash: 0, lives: TRAIN.LIVES, over: false, t: 0 };
 
   // ---- sizing ------------------------------------------------------------------------------------------------------------------------------------
@@ -50,8 +67,9 @@ export function startArcade({ root, sprites, font, look, sound, awardStars = () 
     if (size && size.w === s.w && size.h === s.h) return;
     size = s; canvas.width = s.w; canvas.height = s.h;
     topPad = Math.round(safeTopPx(root) / s.px);
-    view = createTrainView(s);
+    views = {};
   }
+  const viewFor = (id) => { if (!size) return null; return views[id] || (views[id] = ADAPTERS[id].view(size)); };
   const ro = new ResizeObserver(resize);
   ro.observe(frame);
   resize();
@@ -62,6 +80,7 @@ export function startArcade({ root, sprites, font, look, sound, awardStars = () 
     const next = reduce(flow, a);
     if (next === flow) return false;
     flow = next;
+    if (next.screen === 'pause' && game) ADAPTERS[next.game].hold(game, 0);       // a paused board stops steering
     paint();
     return true;
   }
@@ -119,12 +138,12 @@ export function startArcade({ root, sprites, font, look, sound, awardStars = () 
   // ---- a run -----------------------------------------------------------------------------------------------------------------------------------------
   function startRun(id) {
     if (flow.screen === 'select') { if (!dispatch({ type: 'pick', game: id })) return; } else if (!dispatch({ type: 'again' })) return;
-    game = createTrainGame(seed ?? (Math.random() * 4294967296) >>> 0);
+    game = ADAPTERS[flow.game].create(seed ?? (Math.random() * 4294967296) >>> 0);
     overAt = 0; runStars = 0; hintsT = clock;
   }
   function finishRun() {
-    const score = scoreOf(game), r = best.submit('train', score);
-    const g = GAMES.find((x) => x.id === 'train');
+    const id = flow.game, score = ADAPTERS[id].score(game), r = best.submit(id, score);
+    const g = GAMES.find((x) => x.id === id);
     const n = starsFor(score, g.starScore, daily.earned());
     runStars = 0;
     if (n > 0) { daily.award(n); try { awardStars(n); } catch { /* the town is gone */ } runStars = n; }
@@ -135,37 +154,39 @@ export function startArcade({ root, sprites, font, look, sound, awardStars = () 
   // ---- input -----------------------------------------------------------------------------------------------------------------------------------------
   const detach = attachInput(canvas, (a) => {
     if (flow.screen === 'play' && game && !game.over) {
-      if (a === 'left' || a === 'right') { if (moveLane(game, a === 'left' ? -1 : 1)) hintsT = -1e9; }
-      else if (a === 'pause') dispatch({ type: 'pause' });
+      if (a === 'pause') dispatch({ type: 'pause' });
+      else if (ADAPTERS[flow.game].act(game, a)) hintsT = -1e9;
     } else if (a === 'pause') {
       if (flow.screen === 'pause') dispatch({ type: 'resume' });
       else if (flow.screen === 'menu') leave();
       else if (flow.screen === 'select') dispatch({ type: 'title' });
       else if (flow.screen === 'over') dispatch({ type: 'menu' });
     }
-  });
+  }, { hold: (d) => { if (flow.screen === 'play' && game && !game.over) { ADAPTERS[flow.game].hold(game, d); if (d) hintsT = Math.min(hintsT, clock - 1500); } } });
   const onHidden = () => { if (document.hidden && flow.screen === 'play') dispatch({ type: 'pause' }); };
   document.addEventListener('visibilitychange', onHidden);
 
   // ---- the loop ----------------------------------------------------------------------------------------------------------------------------------------
   function onStep(ms) {
-    if (flow.screen === 'pause') return;
+    if (flow.screen === 'pause' || frozen) return;
     clock += ms;
     if (flow.screen === 'play' && game) {
-      const events = stepTrain(game, ms);
+      const events = ADAPTERS[flow.game].step(game, ms);
       for (const e of events) {
         if (e === 'coin') tap('coin'); else if (e === 'hit') tap('lose'); else if (e === 'move') tap('bounce3');
+        else if (e === 'jump') { try { sound.playNotes(WHOOSH); } catch { /* optional */ } } else if (e === 'ramp') tap('bounce'); else if (e === 'land') tap('bounce3');
       }
       if (game.over && !overAt) overAt = clock + OVER_DELAY_MS;
       if (overAt && clock >= overAt) { overAt = 0; finishRun(); }
     } else if (flow.screen !== 'over') idleDist += (MENU_SPEED * ms) / 1000;
   }
   function onRender() {
-    if (!view) return;
     const playing = (flow.screen === 'play' || flow.screen === 'pause' || flow.screen === 'over') && game;
+    const view = viewFor(playing ? flow.game : 'train');
+    if (!view) return;
     const s = playing ? game : { ...idle, dist: idleDist };
     view.draw(ctx, s, clock, look, { hints: playing ? Math.max(0, Math.min(1, 1.6 - (clock - hintsT) / 3500)) : 0 });
-    if (playing) drawHud(ctx, { w: size.w, lives: game.lives, score: scoreOf(game), face, font, top: topPad });
+    if (playing) drawHud(ctx, { w: size.w, lives: game.lives, score: ADAPTERS[flow.game].score(game), face, font, top: topPad });
     if (flow.screen === 'pause' || flow.screen === 'over' || flow.screen === 'menu' || flow.screen === 'select') { ctx.fillStyle = flow.screen === 'menu' || flow.screen === 'select' ? 'rgba(18,22,40,0.28)' : 'rgba(18,22,40,0.55)'; ctx.fillRect(0, 0, size.w, size.h); }
   }
   const loop = createLoop({ step: onStep, render: onRender });
@@ -185,11 +206,14 @@ export function startArcade({ root, sprites, font, look, sound, awardStars = () 
     dev: {
       get flow() { return flow; },
       get game() { return game; },
-      go(name, seconds = 0, bot) {
+      go(name, seconds = 0, bot = true, gameId = 'train', jumpShot = false) {
         if (name === 'select') dispatch({ type: 'start' });
         if (name === 'play' || name === 'pause' || name === 'over') {
-          dispatch({ type: 'start' }); startRun('train');
-          for (let i = 0; i < seconds * 60; i++) { if (bot) { const d = bot(game); if (d) moveLane(game, d); } stepTrain(game, 1000 / 60); clock += 1000 / 60; }
+          dispatch({ type: 'start' }); startRun(gameId);
+          const A = ADAPTERS[gameId];
+          for (let i = 0; i < seconds * 60; i++) { if (bot) A.bot(game); A.step(game, 1000 / 60); clock += 1000 / 60; }
+          if (jumpShot && gameId === 'skate') for (let i = 0; i < 6000 && !(game.h > 1.6 && game.objs.some((o) => o.kind === 'cone' && o.z > -14 && o.z < 3 && Math.abs(o.x - game.x) < 0.6)); i++) { A.bot(game); A.step(game, 1000 / 60); clock += 1000 / 60; }
+          if (seconds > 0) frozen = true;                          // a preview keeps the frame it was made for
           if (name === 'pause') dispatch({ type: 'pause' });
           if (name === 'over') { game.lives = 0; game.over = true; finishRun(); }
         }

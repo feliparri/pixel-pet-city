@@ -25,7 +25,6 @@ import { createFarmMemory } from './farm-world.js';
 import { produceCanvas } from './art/produce.js';
 import { sound } from './sound.js';
 import { startArcade } from './arcade/arcade.js';
-import { botDir } from './arcade/train.js';
 
 const $ = (id) => document.getElementById(id);
 const touch = isTouchDevice(window);                          // a phone or tablet: the town shows its on-screen controls
@@ -228,7 +227,7 @@ function setupSound() {
 let arcade = null;
 const wearsGoggles = () => !!town && town.look().items.includes('vr_goggles');
 function paintArcade() { $('arcade-open').hidden = !wearsGoggles() || !!arcade; }
-function openArcade() {
+function openArcade(opts = {}) {
   if (!town || arcade || !wearsGoggles()) return null;
   town.suspend(true);
   $('arcade-open').hidden = true;
@@ -236,7 +235,7 @@ function openArcade() {
     root: $('arcade'), sprites, font, look: town.look(), sound,
     storage: { getItem: (k) => store.get(k), setItem: (k, v) => store.set(k, v) },
     awardStars: (n) => { if (stars) { stars.add(n); $('stars-n').textContent = String(stars.get()); } },
-    onExit: closeArcade,
+    onExit: closeArcade, ...opts,
   });
   return arcade;
 }
@@ -251,7 +250,7 @@ function devArcade() {
   const q = new URLSearchParams(location.search);
   if (q.get('dev') !== '1' || !town) return;
   if (q.has('wear') && sprites.catalogue[q.get('wear')]) { town.wear(q.get('wear')); paintArcade(); }
-  if (q.has('arcade')) { const a = openArcade(); if (a) a.dev.go(q.get('arcade'), Number(q.get('at')) || 0, q.get('bot') === '0' ? null : botDir); }
+  if (q.has('arcade')) { const a = openArcade(q.has('seed') ? { seed: Number(q.get('seed')) } : {}); if (a) a.dev.go(q.get('arcade'), Number(q.get('at')) || 0, q.get('bot') !== '0', q.get('game') === 'skate' ? 'skate' : 'train', q.get('jump') === '1'); }
 }
 
 /** The "Efectos" switch (the HD-2D view): the choice is remembered in this browser; ?flat=1 locks it off. */

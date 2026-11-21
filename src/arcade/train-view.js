@@ -22,7 +22,7 @@ const scaledCache = new Map();
 let artIds = 0;
 const ids = new WeakMap();
 const idOf = (cv) => { if (!ids.has(cv)) ids.set(cv, ++artIds); return ids.get(cv); };
-function scaled(cv, dw, dh) {
+export function scaled(cv, dw, dh) {
   const key = `${idOf(cv)}|${dw}|${dh}`;
   let c = scaledCache.get(key);
   if (c) return c;

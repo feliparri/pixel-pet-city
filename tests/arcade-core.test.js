@@ -77,7 +77,8 @@ test('flow: menu -> select -> play -> pause -> play -> over -> again / menu', ()
   let s = initialFlow();
   assert.equal(reduce(s, { type: 'pick', game: 'train' }), s, 'cannot pick from the title');
   s = reduce(s, { type: 'start' }); assert.equal(s.screen, 'select');
-  assert.equal(reduce(s, { type: 'pick', game: 'skate' }), s, 'a game that is not ready cannot be picked');
+  assert.equal(reduce(s, { type: 'pick', game: 'skate' }).screen, 'play');
+  assert.equal(reduce(s, { type: 'pick', game: 'skate' }, [{ id: 'skate', available: false }]), s, 'a game that is not ready cannot be picked');
   assert.equal(reduce(s, { type: 'pick', game: 'nope' }), s);
   s = reduce(s, { type: 'pick', game: 'train' }); assert.equal(s.screen, 'play'); assert.equal(s.game, 'train');
   s = reduce(s, { type: 'pause' }); assert.equal(s.screen, 'pause');
@@ -89,8 +90,8 @@ test('flow: menu -> select -> play -> pause -> play -> over -> again / menu', ()
   assert.equal(reduce(s, { type: 'exit' }).exit, true);
   assert.equal(reduce(initialFlow(), { type: 'pause' }).screen, 'menu');
 });
-test('flow: the two cards exist, skate says soon', () => {
-  assert.deepEqual(GAMES.map((g) => [g.id, g.available]), [['train', true], ['skate', false]]);
+test('flow: the two cards exist and both can be played', () => {
+  assert.deepEqual(GAMES.map((g) => [g.id, g.available]), [['train', true], ['skate', true]]);
 });
 
 test('back art: every pet and stage is a clean 32 x 32 paletted drawing', () => {
