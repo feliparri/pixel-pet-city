@@ -7,6 +7,7 @@ import { createTouchpad } from './touchpad.js';
 import { JUMP_MS } from './jump.js';
 import { EMOTE_MS, MIN_VIEW_H, MIN_VIEW_W, VIEW_H, VIEW_W } from './render.js';
 import { createTownRenderer } from './hd2d/renderer.js';
+import { guardFrame } from './frame-guard.js';
 import { ambientAt, hourNow } from './daynight.js';
 import { entranceState } from './entrance.js';
 import { createGames } from './games/manager.js';
@@ -143,9 +144,9 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   }
   const walkableFor = (mv) => (x, y) => isWalkable(x, y, self.area) && (!mv.zone || mv.zone.has(x, y)) && !(mv.closed && doorAt(x, y, self.area));
 
-  function frame(t) {
-    if (!alive) return;
-    if (suspended) { last = t; raf = requestAnimationFrame(frame); return; }
+  function step(t) {
+    if (!alive) return false;
+    if (suspended) { last = t; return true; }
     const dt = Math.min(100, t - last);
     last = t;
     const w = self.walker;
@@ -296,8 +297,9 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     state.ghosts = seasonSet.has('halloween') ? ghostsAt(self.area, events.serverNow(), state.amb.night) : null;      // the wandering ghosts: the same place for everyone
     state.show = events.tick(!getArea(self.area).outdoor ? 'inside' : renderer.hd ? 'hd' : 'flat');      // the sky is seen from the town and from the farm      // the show that runs now, the same moment on every screen
     renderer.draw(state, t);
-    raf = requestAnimationFrame(frame);
+    return true;
   }
+  const frame = guardFrame(step, (f) => { raf = requestAnimationFrame(f); });      // a frame that throws is reported and skipped: the loop never ends on an error
   raf = requestAnimationFrame(frame);
 
   /** The pet stepped onto (or next to) a seasonal gift: open it. */

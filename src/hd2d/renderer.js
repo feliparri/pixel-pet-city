@@ -282,7 +282,7 @@ export function createTownRenderer({ canvas, sprites, font, minH = MIN_VIEW_H, m
       if (k === 'hd') {
         try { hdR.draw(state, now); return; } catch (e) { console.error('HD-2D failed, using the flat view', e); failed = true; switchTo('flat'); }
       }
-      flatR.draw(state, now);
+      try { flatR.draw(state, now); } catch (e) { flatR.invalidate(); throw e; }      // a half-drawn frame leaves the canvas state (transform, clip, saves) unbalanced: lay it out afresh next frame
     },
     /** css px of the view the bar (top) and the emotes row (bottom) float over: both renderers keep the pet clear of them at the map's edges. */
     setInset(i) { hdR.setInset(i); flatR.setInset(i); },
