@@ -44,7 +44,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
   let inset = { top: 0, bottom: 0 };                                                // css px the bar (top) and the emotes row (bottom) cover: the pet is kept clear of them
   let showFx = null, kShow = 0, stars = null, starsSeed = null;
   const gov = createGovernor({ start: savedLevel() });
-  const stat = { ms: 0, dt: 33, build: 0 };                                         // moving averages: the cost of drawing a frame, and the time between frames
+  const stat = { ms: 0, dt: 33, build: 0, parts: { ground: 0, items: 0, fx: 0, overlay: 0 } };                                         // moving averages: the cost of drawing a frame, and the time between frames
 
   function resize(b) {
     box = b;
@@ -122,6 +122,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
       g.addColorStop(0, `rgba(${LAND},1)`); g.addColorStop(1, `rgba(${LAND},0)`);
       ctx.fillStyle = g; ctx.fillRect(0, edge.y - 2, view.w, 44 * u * 0.5 + 2);
     }
+    const tGround = performance.now();
     things.rings(ctx, state, cam);
     if (state.marker && now < state.marker.until) drawMarker(state.marker);
 
@@ -158,15 +159,20 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
       }
       ctx.restore();
     }
+    const tItems = performance.now();
     if (k > 0.02) {                                                       // the show's own effects: a sharper sky, the bloom pushed up while a burst is on screen
       showFx = showFx || createShowFx(view.w, view.h);
       showFx.apply(ctx, 1, n, Math.min(1, flashes.reduce((a, f) => a + f.k, 0) * 0.3) * alpha, gov.settings);
     } else fx.apply(ctx, 1, n, gov.settings);
+    const tFx = performance.now();
     drawOverlay(ov, now);
     hits = ov.hits;
     if (state.dark) drawDark(state.dark, mp);
     if (state.fade > 0) { ctx.fillStyle = `rgba(14,16,26,${Math.min(1, state.fade)})`; ctx.fillRect(0, 0, view.w, view.h); }
-    stat.ms += (performance.now() - t0 - stat.ms) * 0.05;
+    const tEnd = performance.now(), pt = stat.parts;
+    stat.ms += (tEnd - t0 - stat.ms) * 0.05;
+    pt.ground += (tGround - t0 - pt.ground) * 0.05; pt.items += (tItems - tGround - pt.items) * 0.05;      // ?perf=1 shows where a frame goes
+    pt.fx += (tFx - tItems - pt.fx) * 0.05; pt.overlay += (tEnd - tFx - pt.overlay) * 0.05;
   }
 
   /** The seeker's darkness: the whole view nearly black but a soft circle of light on the ground around the seeker (an ellipse once tilted). r = 0 or full: all dark. */
@@ -247,7 +253,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
     /** The player turned it back on after the automatic fallback: keep the cheapest level and do not fall back again. */
     pin() { gov.allowFlat = false; },
     /** For the console: { level, res, ms (drawing a frame), fps (frames per second as the screen got them), w, h }. */
-    stats: () => ({ level: gov.level, res: gov.settings.res, ms: +stat.ms.toFixed(1), fps: +(1000 / stat.dt).toFixed(1), w: view.w, h: view.h, build: stat.build }),
+    stats: () => ({ level: gov.level, res: gov.settings.res, ms: +stat.ms.toFixed(1), fps: +(1000 / stat.dt).toFixed(1), w: view.w, h: view.h, build: stat.build, parts: { ...stat.parts } }),
     get view() { return view; }, get cam() { return cam; },
   };
 }
@@ -258,10 +264,10 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
  */
 export function createTownRenderer({ canvas, sprites, font, minH = MIN_VIEW_H, minW, flat = false, onNotice = () => {}, onMode = () => {} }) {
   const flatR = createRenderer({ canvas, sprites, font, minH, minW });
-  let hdOn = !flat, kind = null, box = null, failed = false, autoFlat = false, told = false;
+  let hdOn = !flat, kind = null, box = null, failed = false, autoFlat = false, told = false, atFall = null;      // atFall: the HD-2D numbers when it fell back (for ?perf=1)
   const hdR = createHdRenderer({ canvas, sprites, font, compact: minH < VIEW_H, onQuality(ev) {
     if (ev.kind === 'down' && !told) { told = true; onNotice('Bajamos un poco los efectos para que vaya fluido'); }
-    else if (ev.kind === 'flat') { failed = true; autoFlat = true; onNotice('Pasamos a la vista plana para que vaya fluido. Puedes volver a probar con «Efectos»'); onMode(); }
+    else if (ev.kind === 'flat') { atFall = hdR.stats(); failed = true; autoFlat = true; onNotice('Pasamos a la vista plana para que vaya fluido. Puedes volver a probar con «Efectos»'); onMode(); }
   } });
 
   const use = (state) => (hdOn && !failed && getArea(state.area || 'town').outdoor ? 'hd' : 'flat');
@@ -288,7 +294,7 @@ export function createTownRenderer({ canvas, sprites, font, minH = MIN_VIEW_H, m
     setInset(i) { hdR.setInset(i); flatR.setInset(i); },
     pointToTile: (x, y) => (kind === 'hd' ? hdR.pointToTile(x, y) : flatR.pointToTile(x, y)),
     get hd() { return hdOn && !failed; },
-    stats: () => ({ mode: kind, ...hdR.stats() }),
+    stats: () => ({ mode: kind, ...hdR.stats(), autoFlat, atFall }),
     get flat() { return flat; },
     /** `manual`: the player pressed the switch. After an automatic fallback, turning it on again is respected: the cheapest level, no second fallback. */
     setHd(on, manual = false) {

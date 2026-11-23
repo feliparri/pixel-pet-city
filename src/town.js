@@ -8,6 +8,7 @@ import { JUMP_MS } from './jump.js';
 import { EMOTE_MS, MIN_VIEW_H, MIN_VIEW_W, VIEW_H, VIEW_W } from './render.js';
 import { createTownRenderer } from './hd2d/renderer.js';
 import { guardFrame } from './frame-guard.js';
+import { createMeter, attachPerfBox } from './perf.js';
 import { ambientAt, hourNow } from './daynight.js';
 import { entranceState } from './entrance.js';
 import { createGames } from './games/manager.js';
@@ -66,6 +67,8 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   const renderer = createTownRenderer({ canvas, sprites, font, minH: pad ? MIN_VIEW_H : VIEW_H, minW: pad ? MIN_VIEW_W : VIEW_W, flat: new URLSearchParams(location.search).get('flat') === '1', onNotice: (text) => games.notify(text), onMode: onHdMode });   // a phone: 1.25 times the tiles it showed (and a whole-number pixel size); a desktop: as many tiles as before
   const npcs = createNpcs({ seed: net.code || net.id, sprites });           // the villagers: their place and lines come from (room, server time) alone, nothing of them goes over the net
   const search = new URLSearchParams(location.search);
+  const meter = search.get('perf') === '1' ? createMeter() : null;      // ?perf=1: a box with what each frame costs on this device (src/perf.js)
+  const stopPerf = meter ? attachPerfBox(() => ({ town: meter.read(), hd: renderer.stats(), view: { w: canvas.width, h: canvas.height, dpr: +(window.devicePixelRatio || 1).toFixed(2) } })) : () => {};
   const devSeasons = parseDevSeasons(location.search);      // development only: ?dev=1&season=halloween|christmas|none (or &halloween=1|0, &christmas=1|0) forces seasons on or off
   let seasonSet = new Set(), seasonAt = -1e9, snowOn = false, snowAt = -1e9;
   const devSnow = new URLSearchParams(location.search).get('dev') === '1' && new URLSearchParams(location.search).get('snow') === '1';      // development only: ?dev=1&snow=1 snows whatever the date
@@ -147,6 +150,8 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   function step(t) {
     if (!alive) return false;
     if (suspended) { last = t; return true; }
+    const tStep = meter ? performance.now() : 0;
+    if (meter) meter.tick(t);
     const dt = Math.min(100, t - last);
     last = t;
     const w = self.walker;
@@ -296,7 +301,10 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     if (t - hudAt > 120) { hudAt = t; onHud({ ...gv, shopNear: self.area === 'shop' && shopNear && !modal, spot: here, wall: mv.zone && gv.game ? gv.game.name : null, frozen: mv.frozen }); }
     state.ghosts = seasonSet.has('halloween') ? ghostsAt(self.area, events.serverNow(), state.amb.night) : null;      // the wandering ghosts: the same place for everyone
     state.show = events.tick(!getArea(self.area).outdoor ? 'inside' : renderer.hd ? 'hd' : 'flat');      // the sky is seen from the town and from the farm      // the show that runs now, the same moment on every screen
+    if (!meter) { renderer.draw(state, t); return true; }
+    const tDraw = performance.now();
     renderer.draw(state, t);
+    meter.mark('logic', tDraw - tStep); meter.mark('draw', performance.now() - tDraw);
     return true;
   }
   const frame = guardFrame(step, (f) => { raf = requestAnimationFrame(f); });      // a frame that throws is reported and skipped: the loop never ends on an error
@@ -572,6 +580,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     },
     destroy() {
       alive = false;
+      stopPerf();
       events.stop(); onShow(false);
       if (self.fx && self.fx.resolve) self.fx.resolve();
       cancelAnimationFrame(raf);
