@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { followMargin, makeCamera, cameraFor, MAX_REACH, PHONE_OUT, petScale, petScaleOf, focusBounds, followFocus, snapScale, snapFocus, visibleTiles, project, unproject, groundRow, depthOf, billboardScale, standAt, tileToScreen, screenToTile, sortBackToFront, TILE } from '../src/hd2d/camera.js';
 import { groundMult, NIGHT_TINT, falloff, lightAt, nightMultiply, spriteGrade, approach, LAMP_RADIUS } from '../src/hd2d/light.js';
-import { createGovernor, LEVELS, SLOW_MS } from '../src/hd2d/quality.js';
+import { createGovernor, LEVELS, SLOW_MS, LEVEL_TTL_MS, encodeLevel, decodeLevel } from '../src/hd2d/quality.js';
 import { Wanderer, rng } from '../src/hd2d/wander.js';
 import { isWalkable, getArea } from '../src/map.js';
 
@@ -226,11 +226,30 @@ test('at the cheapest level a slow device gets the flat verdict once, unless fla
   const g = createGovernor({ window: 5, warm: 1 });
   const seen = [];
   for (let i = 0; i < 500 && seen[seen.length - 1] !== 'flat'; i++) { const v = g.push(60); if (v) seen.push(v); }
-  assert.deepEqual(seen, ['down', 'down', 'down', 'down', 'flat']);
+  assert.deepEqual(seen, ['down', 'down', 'down', 'down', 'flat']);              // flat took two slow windows at the last level
   assert.ok(g.last);
   const pinned = createGovernor({ window: 5, warm: 1, start: LEVELS.length - 1, allowFlat: false });
   assert.equal(feed(pinned, 60, 100), null);
   assert.equal(createGovernor({ start: 99 }).level, LEVELS.length - 1);
+});
+
+test('flat needs two slow windows in a row at the last level: a fair one in between disarms it, and so does a reset', () => {
+  const g = createGovernor({ window: 5, warm: 1, start: LEVELS.length - 1 });
+  assert.equal(feed(g, 60, 6), null);                                           // one slow window arms it, no verdict yet
+  assert.equal(feed(g, 16, 12), null);                                          // a fair window disarms
+  assert.equal(feed(g, 60, 6), null);
+  g.reset();                                                                    // an area change disarms too
+  assert.equal(feed(g, 60, 6), null);
+  assert.equal(feed(g, 60, 12), 'flat');                                        // two slow windows in a row
+});
+
+test('a saved level expires after three days and the old plain-number format counts as expired', () => {
+  const now = 1e12;
+  assert.equal(decodeLevel(encodeLevel(3, now), now + 1000), 3);
+  assert.equal(decodeLevel(encodeLevel(3, now), now + LEVEL_TTL_MS + 1), 0);
+  assert.equal(decodeLevel('4', now), 0);
+  for (const bad of [null, '', 'x', '{}', '{"l":2}', '{"l":2,"t":"a"}']) assert.equal(decodeLevel(bad, now), 0);
+  assert.equal(decodeLevel(encodeLevel(2, now + 9e6), now), 0);                 // a time in the future is not trusted
 });
 
 test('the levels only get cheaper: resolution never rises and effects are only ever dropped', () => {

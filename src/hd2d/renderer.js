@@ -9,7 +9,7 @@ import { cameraFor, PHONE_OUT, followFocus, followMargin, snapFocus, sortBackToF
 import { groundMult, approach } from './light.js';
 import { buildWorld, bakeGround, drawGround, standingItems, drawGlows, fountainItem, paintFarm, decorItems, drawDecorGlows, drawGhosts } from './scene.js';
 import { createFx } from './fx.js';
-import { createGovernor } from './quality.js';
+import { createGovernor, encodeLevel, decodeLevel } from './quality.js';
 import { createPetPainter } from './pets.js';
 import { createThings } from './things.js';
 import { SHOWS, RISE, FALL, tiltAt, showCamera, horizonY } from '../show/timeline.js';
@@ -28,8 +28,8 @@ const BADGE_LIFT = 60;                                                  // a pla
 
 /** The HD-2D renderer of the outdoor town. `compact` (a phone) frames the view tighter, but shows 1.25 times more of the world than it used to (PHONE_OUT). */
 const LEVEL_KEY = 'city.hd2d.level';
-const savedLevel = () => { try { return Math.max(0, Number(localStorage.getItem(LEVEL_KEY)) | 0); } catch { return 0; } };
-const saveLevel = (v) => { try { localStorage.setItem(LEVEL_KEY, String(v)); } catch { /* private mode */ } };
+const savedLevel = () => { try { return decodeLevel(localStorage.getItem(LEVEL_KEY)); } catch { return 0; } };
+const saveLevel = (v) => { try { localStorage.setItem(LEVEL_KEY, encodeLevel(v)); } catch { /* private mode */ } };
 
 export function createHdRenderer({ canvas, sprites, font, compact = false, onQuality = () => {}, skip = new Set() }) {      // skip: parts left out to measure their cost (?perf=1&skip=suelo,cosas,efectos,textos)
   const ctx = canvas.getContext('2d');
@@ -60,13 +60,26 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
 
   /** The world and the ground canvas of the area on screen (the town or the farm); another area starts with a fresh camera and ground. */
   function ensureWorld(name) {
-    if (!worlds.has(name)) {
-      const t0 = performance.now(), w = buildWorld(name);
-      worlds.set(name, { world: w, ground: Object.assign(document.createElement('canvas'), { width: w.tex.width, height: w.tex.height }) });
-      stat.build = Math.max(stat.build, Math.round(performance.now() - t0));
-    }
-    if (name !== areaName || !world) { areaName = name; focus = null; groundKey = ''; }
+    prepare(name);
+    if (name !== areaName || !world) { const changed = !!world; areaName = name; focus = null; groundKey = ''; if (changed) gov.reset(); }      // the build and the first bake of a new area are not the view's fault
     ({ world, ground } = worlds.get(name));
+  }
+
+  /** Builds the world and ground canvas of an area if it is not built yet. */
+  function prepare(name) {
+    if (worlds.has(name)) return;
+    const t0 = performance.now(), w = buildWorld(name);
+    worlds.set(name, { world: w, ground: Object.assign(document.createElement('canvas'), { width: w.tex.width, height: w.tex.height }) });
+    stat.build = Math.max(stat.build, Math.round(performance.now() - t0));
+  }
+
+  /** Once the town has run a while, builds the farm in idle time so the pet does not wait for it at the gate. Never throws into the frame loop. */
+  let frames = 0, warming = false;
+  function warmFarm() {
+    if (warming || ++frames < 90 || worlds.has('farm') || typeof document === 'undefined') return;
+    warming = true;
+    const job = () => { try { prepare('farm'); } catch { /* it is built on demand later */ } };
+    try { if (typeof requestIdleCallback === 'function') requestIdleCallback(job, { timeout: 4000 }); else setTimeout(job, 1500); } catch { /* no timers: on demand */ }
   }
 
   /** The canvas takes this renderer's layout again (the town after an interior, or the switch turned on). */
@@ -74,6 +87,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
 
   function draw(state, now) {
     ensureWorld(state.area || 'town');
+    if (areaName === 'town') warmFarm();
     const MAP_W = world.tex.width, MAP_H = world.tex.height;
     const raw = last == null ? 0 : now - last, dt = last == null ? 16 : Math.min(100, Math.max(0, raw));
     last = now;
