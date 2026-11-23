@@ -47,3 +47,17 @@ test('skip only takes known parts, and only together with perf=1', async () => {
   assert.equal(perfSkip('?skip=suelo').size, 0);
   assert.ok(perfLines({ town, view, hd: { mode: 'hd', level: 4, res: 0.5, parts: {}, skip: ['suelo'] } }).includes('sin: suelo'));
 });
+
+test('the log posts the box lines and never throws into the town', async () => {
+  const { startPerfLog } = await import('../src/perf.js');
+  globalThis.navigator ??= { userAgent: 'test' };
+  const sent = [];
+  const stop = startPerfLog(() => ({ town, view, hd: { mode: 'hd', level: 1, res: 0.8, parts: {} } }), { every: 5, post: (b) => { sent.push(JSON.parse(b)); return Promise.reject(new Error('offline')); } });
+  await new Promise((r) => setTimeout(r, 30));
+  stop();
+  assert.ok(sent.length >= 2);
+  assert.equal(sent[0].lines[0], 'HD-2D nivel 1 (res 0.8)');
+  const stop2 = startPerfLog(() => { throw new Error('boom'); }, { every: 5, post: () => {} });
+  await new Promise((r) => setTimeout(r, 20));
+  stop2();
+});

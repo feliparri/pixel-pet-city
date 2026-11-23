@@ -8,7 +8,7 @@ import { JUMP_MS } from './jump.js';
 import { EMOTE_MS, MIN_VIEW_H, MIN_VIEW_W, VIEW_H, VIEW_W } from './render.js';
 import { createTownRenderer } from './hd2d/renderer.js';
 import { guardFrame } from './frame-guard.js';
-import { createMeter, attachPerfBox, perfSkip } from './perf.js';
+import { createMeter, attachPerfBox, startPerfLog, perfSkip } from './perf.js';
 import { ambientAt, hourNow } from './daynight.js';
 import { entranceState } from './entrance.js';
 import { createGames } from './games/manager.js';
@@ -68,7 +68,9 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   const npcs = createNpcs({ seed: net.code || net.id, sprites });           // the villagers: their place and lines come from (room, server time) alone, nothing of them goes over the net
   const search = new URLSearchParams(location.search);
   const meter = search.get('perf') === '1' ? createMeter() : null;      // ?perf=1: a box with what each frame costs on this device (src/perf.js)
-  const stopPerf = meter ? attachPerfBox(() => ({ town: meter.read(), hd: renderer.stats(), view: { w: canvas.width, h: canvas.height, dpr: +(window.devicePixelRatio || 1).toFixed(2) } })) : () => {};
+  const perfRead = () => ({ town: meter.read(), hd: renderer.stats(), view: { w: canvas.width, h: canvas.height, dpr: +(window.devicePixelRatio || 1).toFixed(2) } });
+  const stopBox = meter ? attachPerfBox(perfRead) : () => {}, stopLog = meter && search.get('log') === '1' ? startPerfLog(perfRead) : () => {};
+  const stopPerf = () => { stopBox(); stopLog(); };
   const devSeasons = parseDevSeasons(location.search);      // development only: ?dev=1&season=halloween|christmas|none (or &halloween=1|0, &christmas=1|0) forces seasons on or off
   let seasonSet = new Set(), seasonAt = -1e9, snowOn = false, snowAt = -1e9;
   const devSnow = new URLSearchParams(location.search).get('dev') === '1' && new URLSearchParams(location.search).get('snow') === '1';      // development only: ?dev=1&snow=1 snows whatever the date

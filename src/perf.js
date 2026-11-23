@@ -56,3 +56,15 @@ export function attachPerfBox(read, { doc = document, every = 500 } = {}) {
   const id = setInterval(() => { try { box.textContent = perfLines(read()).join('\n'); } catch (e) { box.textContent = String(e && e.message || e); } }, every);
   return () => { clearInterval(id); box.remove(); };
 }
+
+/**
+ * ?perf=1&log=1 with tools/perf-serve.mjs: posts the numbers to /perf-log every `every` ms, so a phone can be measured without reading the box.
+ * Fire and forget: a failed post is ignored. Returns a function that stops it.
+ */
+export function startPerfLog(read, { every = 2000, post = (body) => fetch('/perf-log', { method: 'POST', headers: { 'content-type': 'application/json' }, body, keepalive: true }) } = {}) {
+  const t0 = Date.now();
+  const id = setInterval(() => {
+    try { const r = read(); Promise.resolve(post(JSON.stringify({ s: Math.round((Date.now() - t0) / 1000), lines: perfLines(r), hd: r.hd, ua: navigator.userAgent }))).catch(() => {}); } catch { /* never breaks the town */ }
+  }, every);
+  return () => clearInterval(id);
+}
