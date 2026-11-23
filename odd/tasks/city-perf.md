@@ -23,10 +23,11 @@ Owner 2026-11-23: the town is heavy on the phone and falls back to the flat view
 ## Tasks
 - [x] CP.1 Measuring: ?perf=1 box and ?perf=1&skip= switches. Route: inline. Commits e50d91d, 3720816.
 - [x] CP.2 Governor: reset on area change, farm prebuilt when idle, saved level expires, flat needs two slow windows in a row at the last level. Route: delegated (quality.js, renderer.js, town.js, tests).
-- [ ] CP.3 Cheaper effects: haze and vignette in one cached overlay, bloom only at night and during shows, lighter tilt-shift. Route: delegated with CP.2 (fx.js, tests, before/after shots).
+- [x] CP.3 Cheaper effects: haze and vignette in one cached overlay, bloom only at night and during shows, lighter tilt-shift. Route: delegated with CP.2 (fx.js, tests, before/after shots).
 - [ ] CP.4 Tilt: owner asked for it "un poco más arriba"; waiting on whether it means the camera angle or the tilt-shift band.
 - [ ] CP.5 Ground in fewer draws and a sprite atlas, if the phone still falls after CP.2 and CP.3.
 
 ## Progress
 - 2026-11-23 CP.1 done (see Evidence).
 - 2026-11-23 CP.2 done (commit: 'fix(hd2d): do not count area changes ...', hash not recorded in-file, see git log): governor reset on area change, farm built in idle time after 90 town frames, saved level stored as {l,t} and ignored after 3 days (old plain number = expired), flat needs two slow windows at the last level. Checks: stamp, node --test 642 pass 0 fail.
+- 2026-11-23 CP.3 done (commit 'perf(hd2d): cheaper effects ...', see git log): haze+vignette in one cached overlay (16 night steps), bloom only above night 0.3 (fades in to 0.45, formula unchanged above), tilt-shift blurred and masked at half size with only the top and bottom bands drawn. Chrome no GPU, CPU 4x, level 0: day 43 -> 60 fps (effects 17.1 -> 8.7 ms), night 30 -> 36 fps. Checks: stamp, node --test pass.
