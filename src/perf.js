@@ -20,6 +20,14 @@ export function createMeter() {
   };
 }
 
+const PARTS = ['suelo', 'cosas', 'efectos', 'textos'];
+/** ?perf=1&skip=suelo,efectos: the HD-2D parts to leave out (only with perf=1, so a stray skip never strips the town). */
+export function perfSkip(search) {
+  const q = new URLSearchParams(search);
+  if (q.get('perf') !== '1') return new Set();
+  return new Set((q.get('skip') || '').split(',').map((x) => x.trim()).filter((x) => PARTS.includes(x)));
+}
+
 const f1 = (n) => (Number.isFinite(n) ? n.toFixed(1) : '-');
 
 /** The lines of the box: the mode, the frame rate, the cost of the town's logic and of each part of the drawing. */
@@ -34,6 +42,7 @@ export function perfLines({ town, hd, view }) {
     lines.push(`suelo ${f1(p.ground)}  cosas ${f1(p.items)}`);
     lines.push(`efectos ${f1(p.fx)}  textos ${f1(p.overlay)}`);
   }
+  if (hd.skip && hd.skip.length) lines.push(`sin: ${hd.skip.join(', ')}`);
   if (hd.autoFlat && hd.atFall) lines.push(`al caer: nivel ${hd.atFall.level}, ${f1(hd.atFall.fps)} fps`);
   lines.push(`lienzo ${view.w}x${view.h}  dpr ${view.dpr}`);
   return lines;

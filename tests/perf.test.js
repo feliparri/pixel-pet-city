@@ -40,3 +40,10 @@ test('after the automatic fallback the box says so and keeps the numbers from th
   assert.ok(lines.includes('al caer: nivel 4, 21.3 fps'));
   assert.ok(!lines.some((l) => l.startsWith('suelo')));
 });
+
+test('skip only takes known parts, and only together with perf=1', async () => {
+  const { perfSkip } = await import('../src/perf.js');
+  assert.deepEqual([...perfSkip('?perf=1&skip=suelo,efectos,nada')], ['suelo', 'efectos']);
+  assert.equal(perfSkip('?skip=suelo').size, 0);
+  assert.ok(perfLines({ town, view, hd: { mode: 'hd', level: 4, res: 0.5, parts: {}, skip: ['suelo'] } }).includes('sin: suelo'));
+});
