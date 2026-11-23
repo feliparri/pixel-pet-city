@@ -29,5 +29,6 @@ Owner 2026-11-23: the town is heavy on the phone and falls back to the flat view
 
 ## Progress
 - 2026-11-23 CP.1 done (see Evidence).
-- 2026-11-23 CP.2 done (commit: 'fix(hd2d): do not count area changes ...', hash not recorded in-file, see git log): governor reset on area change, farm built in idle time after 90 town frames, saved level stored as {l,t} and ignored after 3 days (old plain number = expired), flat needs two slow windows at the last level. Checks: stamp, node --test 642 pass 0 fail.
-- 2026-11-23 CP.3 done (commit 'perf(hd2d): cheaper effects ...', see git log): haze+vignette in one cached overlay (16 night steps), bloom only above night 0.3 (fades in to 0.45, formula unchanged above), tilt-shift blurred and masked at half size with only the top and bottom bands drawn. Chrome no GPU, CPU 4x, level 0: day 43 -> 60 fps (effects 17.1 -> 8.7 ms), night 30 -> 36 fps. Checks: stamp, node --test pass.
+- 2026-11-23 CP.2 done (commit 05dab0f): governor reset on area change, farm built in idle time after 90 town frames, saved level stored as {l,t} and ignored after 3 days (old plain number = expired), flat needs two slow windows at the last level. Checks: stamp, node --test 642 pass 0 fail.
+- 2026-11-23 CP.3 done (commit effe3d5): haze+vignette in one cached overlay (16 night steps), bloom only above night 0.3 (fades in to 0.45, formula unchanged above), tilt-shift blurred and masked at half size with only the top and bottom bands drawn. Chrome no GPU, CPU 4x, level 0: day 43 -> 60 fps (effects 17.1 -> 8.7 ms), night 30 -> 36 fps. Checks: stamp, node --test pass.
+- 2026-11-23 Parent check: tests 642/642; night before/after shots match; town -> farm -> town in the browser stays at level 0, 60 fps, no errors.
