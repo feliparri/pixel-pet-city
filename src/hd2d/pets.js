@@ -12,7 +12,7 @@ import { lightAt } from './light.js';
 import { grade } from './scene.js';
 import { createFrameCache, createShadows, drawShadow } from './framecache.js';
 import { waterOf, SUBMERGE } from '../sea.js';
-import { drawWake } from '../sea-draw.js';
+import { drawWake, drawBoard } from '../sea-draw.js';
 
 const PET_RINGS = [[1, 0.16], [8.5 / 11, 0.2], [6 / 11, 0.24]];            // the soft ground shadow: three discs of 11, 8.5 and 6 px
 
@@ -64,9 +64,11 @@ export function createPetPainter(sprites) {
     const { w: SIZE, feetY: FEET_Y } = layoutFor(e.sprites || sprites, e.look);
     if (cx < -SIZE * s || cx > view.w + SIZE * s || cy < 0 || cy > view.h + FEET_Y * s) return null;
     const k = e.walker.moving ? Math.min(1, e.walker.t / e.walker.stepMs()) : 0;
-    const water = e.npc ? null : waterOf(area, e.walker), swim = water === 'deep';        // in deep water the pet swims: its lower part is under the surface and it bobs instead of hopping
-    const hop = e.walker.moving && !swim ? Math.round(Math.abs(Math.sin(k * Math.PI)) * 3) : 0;
-    const bob = swim ? Math.round(Math.sin(now / 320 + e.id.charCodeAt(0))) : 0;
+    const ride = e.surf === 1, wiped = e.surf === 2, water = e.npc ? null : waterOf(area, e.walker) || (ride || wiped ? 'deep' : null);
+    const swim = water === 'deep' && !ride;                                                       // in deep water the pet swims: its lower part is under the surface and it bobs instead of hopping; a surfer stands on its board
+    const hop = e.walker.moving && !swim && !ride ? Math.round(Math.abs(Math.sin(k * Math.PI)) * 3) : 0;
+    const bob = wiped ? Math.round(Math.sin(now / 110 + e.id.charCodeAt(0)) * 2) : swim ? Math.round(Math.sin(now / 320 + e.id.charCodeAt(0))) : 0;
+    const dip = wiped ? { sink: 9, cut: 12 } : SUBMERGE, stand = ride ? 2 : 0;
     const air = jumpLift(now, e.jumpAt);
     const fx = e.fx ? entranceState(e.fx.id, e.fx.phase, now - e.fx.t0) : null;                // an arrival or an exit in progress
     const lift = fx ? Math.round(fx.lift * (cy / s + CELL + 24)) : 0;                            // game px above the spot; 1 = just above the top edge
@@ -90,10 +92,12 @@ export function createPetPainter(sprites) {
             tctx.globalCompositeOperation = 'source-atop'; tctx.fillStyle = `rgba(${tint.r | 0},${tint.g | 0},${tint.b | 0},${tint.a})`; tctx.fillRect(0, 0, L.w, L.h);
             src = t;
           }
-          if (swim) { const sh = L.feetY - SUBMERGE.cut; c.drawImage(src, 0, 0, L.w, sh, cx - L.feetX * s + sway * s, cy - (L.feetY + air + lift - SUBMERGE.sink - bob) * s, L.w * s, sh * s); }      // only what is above the water
-          else c.drawImage(src, 0, 0, L.w, L.h, cx - L.feetX * s + sway * s, cy - (L.feetY + air + lift) * s, L.w * s, L.h * s);
+          if (ride) drawBoard(c, cx, cy - s, s, { squash: Math.max(0.3, cam.sin) * 0.6, night: n });                                   // the board under the surfer
+          if (swim) { const sh = L.feetY - dip.cut; c.drawImage(src, 0, 0, L.w, sh, cx - L.feetX * s + sway * s, cy - (L.feetY + air + lift - dip.sink - bob) * s, L.w * s, sh * s); }      // only what is above the water
+          else c.drawImage(src, 0, 0, L.w, L.h, cx - L.feetX * s + sway * s, cy - (L.feetY + air + lift + stand) * s, L.w * s, L.h * s);
         }
-        if (water) drawWake(c, cx, cy - (swim ? 1 : 0) * s, s, { depth: water, moving: e.walker.moving, d: e.walker.d, squash: Math.max(0.3, cam.sin) * 0.6, now, night: n, seed: e.id.charCodeAt(0) });      // rings and foam on the water instead of the ground shadow
+        if (wiped) { drawBoard(c, cx + 15 * s, cy + s, s, { squash: Math.max(0.3, cam.sin) * 0.6, night: n, tilt: Math.sin(now / 200) }); drawWake(c, cx, cy - s, s * 1.3, { depth: 'deep', moving: false, d: 'down', squash: Math.max(0.3, cam.sin) * 0.6, now: now * 2, night: n, seed: 3 }); }
+        if (water) drawWake(c, cx, cy - (swim ? 1 : 0) * s, s, { depth: water, moving: ride || e.walker.moving, d: ride ? 'right' : e.walker.d, squash: Math.max(0.3, cam.sin) * 0.6, now, night: n, seed: e.id.charCodeAt(0) });      // rings and foam on the water instead of the ground shadow
         ov.labels.push({ text: e.name, x: cx + sway * s, y: cy + (2 - lift) * s, colour: e === me ? '#f8d040' : e.npc ? '#a8e6cf' : '#f4f6fa' });
       }
       if (fx) effects(true, sway, -lift);

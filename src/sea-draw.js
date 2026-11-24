@@ -35,3 +35,22 @@ export function drawWake(c, cx, cy, u, { depth, moving, d, squash = 0.5, now, ni
     }
   }
 }
+
+const dim = (hex, night) => {
+  const k = 1 - 0.45 * night, n = [1, 3, 5].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * k));
+  return `rgb(${n[0]},${n[1]},${n[2]})`;
+};
+
+/**
+ * A surfboard lying on the water, seen from above and a little from the side: pointed at both ends, a stripe down the middle. (cx, cy) is its middle on the surface, `u` the size
+ * of an art pixel, `squash` the tilt of the ground (the board gets thinner the lower the camera), `tilt` -1..1 turns one end up for a board that tumbles after a wipeout.
+ */
+export function drawBoard(c, cx, cy, u, { squash = 0.6, night = 0, tilt = 0 } = {}) {
+  const rows = Math.max(4, Math.round(9 * Math.min(1, squash * 1.3))), L = 13;
+  for (let j = 0; j < rows; j++) {
+    const t = ((j + 0.5) / rows) * 2 - 1, hw = Math.max(2, Math.round(L * Math.sqrt(1 - t * t * 0.85))), y = Math.round(cy + (j - rows / 2) * u + tilt * (j - rows / 2) * u * 0.5);
+    c.fillStyle = dim('#312439', night); c.fillRect(Math.round(cx - (hw + 1) * u), y, Math.round((hw * 2 + 2) * u), Math.max(1, Math.round(u)));
+    c.fillStyle = dim(j === (rows >> 1) ? '#e0485a' : j === 0 || j === rows - 1 ? '#c9b8a0' : '#fff0c8', night);
+    c.fillRect(Math.round(cx - hw * u), y, Math.round(hw * 2 * u), Math.max(1, Math.round(u)));
+  }
+}

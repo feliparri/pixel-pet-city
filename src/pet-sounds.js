@@ -6,7 +6,7 @@
 import { tileAt, TILES, getArea } from './map.js';
 import { mulberry32 } from './life.js';
 import { renderNotes, note, W, SFX_RATE } from './sound.js';
-import { toPcm, tone, lowpass } from './ambience.js';
+import { toPcm, tone, lowpass, rideBed } from './ambience.js';
 
 export const GROUNDS = ['grass', 'path', 'stone', 'wood', 'sand', 'snow', 'wet', 'splash', 'swim'];
 const BY_NAME = {
@@ -73,15 +73,18 @@ export const CUES = {
   confirm: [note(W.SQ50, 880, 880, 30, 110), note(W.SQ50, 1175, 1175, 50, 110)],
   pick: [note(W.SQ25, 1047, 1047, 40, 120), note(W.SQ25, 1319, 1319, 70, 120)],
   reward: [note(W.SQ25, 988, 988, 50, 130), note(W.SQ25, 1319, 1319, 150, 130)],
+  whoosh: [note(W.NOISE, 700, 3800, 170, 80), note(W.TRI, 262, 523, 120, 70)],                         // catching a wave: the board takes off
+  wipe: [note(W.NOISE, 2600, 300, 140, 110), note(W.TRI, 247, 80, 240, 120), note(W.NOISE, 1500, 200, 160, 60)],   // a wipeout: a big splash and the drop
+  splash: [note(W.NOISE, 3000, 600, 70, 80), note(W.TRI, 520, 300, 60, 70)],                          // the board lands in the shallows at the end of a ride
 };
-const GAIN = { step: 0.08, jump: 0.5, land: 0.55, talk: 0.5, door: 0.6, confirm: 0.5, pick: 0.55, reward: 0.6 };
+const GAIN = { step: 0.08, jump: 0.5, land: 0.55, talk: 0.5, door: 0.6, confirm: 0.5, pick: 0.55, reward: 0.6, whoosh: 0.45, wipe: 0.5, splash: 0.4, ride: 0.18 };
 export const HEAR_TILES = 9;                                     // another pet's steps are heard from this many tiles, fading to nothing
 export const peerGain = (dist) => (dist >= HEAR_TILES ? 0 : 0.05 * (1 - dist / HEAR_TILES) ** 2);
 
 /** `sound`: the player (ambient). step(area, x, y, run, wx) is the own pet's step; peerStep / peerJump(dist, area, x, y, wx) another's (only when near); cue(name) a soft interaction cue. */
 export function createPetSounds({ sound, rand = Math.random }) {
   const rendered = new Map(), lastPeer = new Map();
-  let ownN = 0;                                                   // every other step of the own pet sounds: a lighter rhythm
+  let ownN = 0, riding = false;                                                   // every other step of the own pet sounds: a lighter rhythm
   const play = (samples, gain) => { try { return !!sound.ambient(samples, gain); } catch { return false; } };
   const cueSamples = (name) => { let s = rendered.get(name); if (!s) rendered.set(name, s = renderNotes(CUES[name], 2)); return s; };
   const variant = () => Math.floor(rand() * STEP_VARIANTS);
@@ -96,6 +99,12 @@ export function createPetSounds({ sound, rand = Math.random }) {
     },
     peerJump(dist) { const g = peerGain(dist); return g > 0 && play(cueSamples('jump'), g); },
     cue(name) { return !!CUES[name] && play(cueSamples(name), GAIN[name] ?? 0.5); },
+    /** The ride's hiss (a looping bed that fades in and out with `on`); called every frame of a ride, with false when it is over. */
+    ride(on) {
+      if (!on && !riding) return;
+      riding = on;
+      try { sound.bed('ride', rideBed, on ? GAIN.ride : 0); } catch { /* optional */ }
+    },
     forget(who) { lastPeer.delete(who); },
   };
 }

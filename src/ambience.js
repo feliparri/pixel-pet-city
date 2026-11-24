@@ -112,6 +112,8 @@ function hiss(seed, secs, dullAlpha, mul) {
   for (let i = 0; i < n; i++) a[i] = a[i] * 0.55 - dull[i] * mul;
   return toPcm(loopable(a.subarray(500), fade), 0.8);                 // the first 500 samples (the filter warming up) are left out
 }
+/** The hiss of a surfer riding a wave: a bright, steady rush of water under the board (one layer, looped), played softly while the ride lasts. */
+export function rideBed() { return [hiss(0x4b1d, 2.3, 0.3, 0.8)]; }
 /** The rain's bed: two layers of hiss of different lengths (7.3 s and 9.1 s, so the sum repeats only every ~66 s) that the player loops on separate sources and drifts in volume. */
 export function rainBed() { return [hiss(0x7a1b, 7.3, 0.12, 1.3), hiss(0x52c9, 9.1, 0.2, 1.1)]; }
 /** The water's bed: a dull layer that swells and ebbs (5.3 s) and a second one (4.1 s) with a few small bubbles. */

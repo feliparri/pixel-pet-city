@@ -1,8 +1,9 @@
 // The running town: the local pet, the other pets, input (taps, arrows/WASD), the net session and the draw loop.
 import { findPath, dirVector } from './path.js';
-import { isWalkable, doorAt, spotAt, tileAt, getArea, TILES, GAME_PLACES, SPAWNS } from './map.js';
+import { isWalkable, doorAt, spotAt, tileAt, getArea, waterAt, isBreak, TILES, GAME_PLACES, SPAWNS } from './map.js';
 import { Walker, REMOTE_SNAP } from './walker.js';
 import { paceFactor, waterOf, zoomTarget } from './sea.js';
+import { createSurf, surfFlag, surfAction, press as surfPress, wipeout, wipeOver, finishRide, rideDecide, waveAt, RIDE_MS, SAY } from './surf.js';
 import { isTyping, isJumpKey, runs, tapWalks } from './keys.js';
 import { createTouchpad } from './touchpad.js';
 import { JUMP_MS } from './jump.js';
@@ -65,6 +66,7 @@ function spawnFor(id) {
 export function startTown({ canvas, stage, pad = null, sprites, font, net, me, entrance = null, stars = { add() {} }, canasta = createCanasta(), farmMemory = createFarmMemory(), tools = () => [], onStore = () => {}, missions = null, onHud = () => {}, onShow = () => {}, onShop = () => {}, insets = () => ({ top: 0, bottom: 0 }), onFarm = () => {}, onFarmDone = () => {}, onFarmAction = () => {}, onFish = () => {} }) {
   const [sx, sy] = spawnFor(net.id);
   const self = { id: net.id, name: me.name, look: me.look, stats: me.stats || null, act: 'idle', walker: new Walker(sx, sy), emote: null, jumpAt: null, area: 'town' };
+  const surf = createSurf();                                       // surfing at the beach's break (src/surf.js): idle, riding a wave, or wiped out
   self.walker.tileMult = (x, y) => paceFactor(self.area, x, y, self.look.species);      // the sea slows the pet (the seal swims faster than it walks), src/sea.js
   if (entrance) self.fx = { id: entrance, phase: 'arrive', t0: performance.now(), resolve: null };
   const others = new Map();
@@ -117,7 +119,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   const giftWorld = createGiftWorld({ room: net.code || net.id, storage: (() => { try { return localStorage; } catch { return null; } })() });      // the seasonal gifts of the room (src/gift-world.js)
   let giftBusy = new Set(), giftHinted = false, giftCapDay = null, giftRetry = new Map(), giftScanAt = -Infinity, selfSay = null;      // giftBusy: ids being opened; giftHinted: the "travel with your pet" hint was shown; giftCapDay: the town day the server said the cap was reached; giftRetry: id -> when to try again
   let racing = false, slowUntil = 0, lastTile = null;          // the obstacle race: a pet that steps onto an obstacle walks slower for RACE.slowMs
-  self.walker.onStep = (x, y, d) => { net.sendPos(x, y, d, self.area); if (!self.fx && !suspended) pets.step(self.area, x, y, self.walker.run, wxLv); stepGift(x, y); };      // a step onto or next to a seasonal gift opens it
+  self.walker.onStep = (x, y, d) => { net.sendPos(x, y, d, self.area, surfFlag(surf)); if (!self.fx && !suspended && surf.mode !== 'ride') pets.step(self.area, x, y, self.walker.run, wxLv); stepGift(x, y); };      // a step onto or next to a seasonal gift opens it
   net.sendPos(sx, sy, 'down', 'town');
 
   const addPeer = (p) => {
@@ -137,6 +139,8 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     else if (ev.type === 'pos') {
       const o = others.get(ev.id);
       if (!o) return;
+      o.surf = ev.surf || 0;                                                                  // riding (1) or wiped out (2): drawn with a board; a ride is walked at the wave's own pace
+      o.walker.stepOverride = o.surf === 1 ? RIDE_MS : null;
       if (!o.placed || o.area !== ev.area || Math.abs(o.walker.tileX - ev.x) + Math.abs(o.walker.tileY - ev.y) > REMOTE_SNAP) { o.walker.snap(ev.x, ev.y, ev.d); o.placed = true; o.area = ev.area; } else o.walker.goTo(ev.x, ev.y, ev.d, o.area);
     } else if (ev.type === 'game') {
       games.onMessage(ev.m);
@@ -195,7 +199,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       w.snap(sx, sy, 'down'); net.sendPos(sx, sy, 'down', 'town'); fadeT0 = t;
     }
     if (!w.busy) w.run = false;
-    if (!w.busy && held.length && !self.fx) {                    // a held arrow key keeps walking
+    if (!w.busy && held.length && !self.fx && surf.mode === 'idle') {                    // a held arrow key keeps walking (not while surfing: the wave carries the pet)
       w.run = runs(shift || padRun || stickRun, mv);
       const d = held[held.length - 1];
       const diag = stickDirs.length === 2 && stickDirs.includes(d);
@@ -209,7 +213,20 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       if (stumbled(lastTile, cur)) { slowUntil = t + RACE.slowMs; games.notify('¡Tropezaste!', 'wall'); }
       lastTile = cur;
       w.stepOverride = paceAt(t, slowUntil);
-    } else if (w.stepOverride) { w.stepOverride = null; lastTile = null; }
+    } else if (w.stepOverride && surf.mode !== 'ride') { w.stepOverride = null; lastTile = null; }
+    const utc = devNpcT === null ? events.serverNow() : devNpcT;                      // the clock the waves run on, the weather's: every player sees the same wave
+    if (self.area !== 'beach' && surf.mode !== 'idle') { finishRide(surf); w.stepOverride = null; }      // taken away (a debug warp): no surfing anywhere else
+    if (surf.mode === 'ride') {                                                          // riding: the wave sets the pace; the pet follows the crest, steering across it with up and down
+      w.stepOverride = RIDE_MS;
+      if (!w.busy) {
+        const wave = waveAt(utc), steer = held.findLast((d) => d === 'up' || d === 'down');
+        const dec = rideDecide({ crestX: wave ? wave.crestX : Infinity, x: w.tileX, y: w.tileY, steer: steer === 'up' ? -1 : steer === 'down' ? 1 : 0, walkable: (x, y) => isWalkable(x, y, 'beach'), water: (x, y) => waterAt(x, y, 'beach') });
+        if (dec.type === 'move') w.stepToward(w.tileX + dec.dx, w.tileY + dec.dy);
+        else if (dec.type === 'end') endRide(dec.why, t);
+      }
+    } else if (surf.mode === 'wipe' && wipeOver(surf, t)) net.sendPos(w.tileX, w.tileY, w.d, self.area, 0);      // free again
+    pets.ride(surf.mode === 'ride' && !suspended);
+    self.surf = surfFlag(surf);
     w.update(dt);
     if (!w.busy && !self.fx) {                                    // arrived on a door: go through it
       const door = doorAt(w.tileX, w.tileY, self.area);
@@ -218,7 +235,8 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     if (landAt && t >= landAt) { landAt = 0; pets.cue('land'); }                    // the hop is over: the landing
     if (t - ambAt > 2000) { ambAt = t; state.amb = ambientAt(hourNow(location.search)); }
     state.area = self.area;
-    state.swim = zoomTarget(waterOf(self.area, w));                 // the camera eases out while the pet is in the sea (src/sea.js)
+    state.swim = zoomTarget(waterOf(self.area, w));
+    state.wave = self.area === 'beach' ? waveAt(devNpcT === null ? events.serverNow() : devNpcT) : null;      // the wave of the clock, for the foam                 // the camera eases out while the pet is in the sea (src/sea.js)
     state.fade = 1 - (t - fadeT0) / FADE_MS;
     for (const o of others.values()) o.walker.update(dt);
     state.others = inArea(others.values(), self.area).filter((o) => games.canSee(o.id));      // in a game: only the players, and their names, are drawn
@@ -276,6 +294,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       farmAction = !w.busy && !self.fx && !modal && !mv.closed ? actionAt('farm', w.tileX, w.tileY, w.d, { basket: canasta, mem: farmMemory, room: net.code || net.id, nowMs: devNpcT === null ? events.serverNow() : devNpcT, tools: tools() }) : null;
     } else { state.farm = null; farmAction = null; }
     if (self.area === 'town' && !farmAction && !w.busy && !self.fx && !modal && !mv.closed) farmAction = pondAction(self.area, w.tileX, w.tileY, tools());      // beside the park's pond: A fishes (with the rod)
+    if (self.area === 'beach' && !farmAction && !w.busy && !self.fx && !modal && !mv.closed && surf.mode === 'idle') farmAction = surfAction(utc, w.tileX, w.tileY, tools());      // at the break: A catches the wave (with the board), or what is missing
     const talkTo = !w.busy && !self.fx && !modal && !mv.closed && !claiming && missions && missions.enabled() ? talkTarget() : null;
     nearTalkId = talkTo ? talkTo.id : null;
     const atStore = self.area === 'farm' && !w.busy && !self.fx && !modal && !mv.closed && nearStore(w.tileX, w.tileY);
@@ -430,10 +449,35 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     else if (r.error === 'cap_reached') settle(CAPPED_LINE);
     else { talkLine = null; onFarmDone({ ok: false, text: claimErrorText(r) }); }
   }
+  /** A on the break: catch the wave when it is passing (it starts the ride), or fall (too early, too late). Sounds, a line over the pet, and the position the others see. */
+  function catchWave() {
+    const w = self.walker, t = performance.now(), r = surfPress(surf, { utcMs: devNpcT === null ? events.serverNow() : devNpcT, x: w.tileX, y: w.tileY, tools: tools(), t });
+    if (r === 'catch') { pets.cue('whoosh'); w.queue = []; w.face('right'); net.sendPos(w.tileX, w.tileY, 'right', self.area, surfFlag(surf)); }
+    else if (r === 'early' || r === 'late') fall(r, t);
+  }
+  function fall(why, t) {
+    const w = self.walker;
+    if (surf.mode !== 'wipe') wipeout(surf, t, why);
+    w.queue = []; w.stepOverride = null; held.length = 0;
+    pets.cue('wipe');
+    selfSay = { text: SAY[why], until: t + 1500 };
+    net.sendPos(w.tileX, w.tileY, w.d, self.area, surfFlag(surf));
+  }
+  function endRide(why, t) {
+    const w = self.walker;
+    w.stepOverride = null;
+    if (why === 'lag') { fall('lag', t); return; }
+    finishRide(surf);
+    pets.cue('splash'); pets.cue('reward');
+    selfSay = { text: SAY.done, until: t + 1800 };
+    self.jumpAt = t; net.sendJump();
+    net.sendPos(w.tileX, w.tileY, w.d, self.area, 0);
+  }
   /** Does the farm action of this pet's reach (the object that was tapped, or the pet's own tile)? Does it and returns true. */
   function farmDo() {
     if (!farmAction || farmAction.id === 'hint') return false;
     if (farmAction.id === 'store') { pets.cue('door'); onStore(); return true; }
+    if (farmAction.id === 'surf') { catchWave(); return true; }
     if (farmAction.id === 'fish') { pets.cue('confirm'); onFish(); return true; }
     if (farmAction.id === 'talk') { talk(farmAction.target); return true; }
     const res = perform(farmAction, { basket: canasta, mem: farmMemory, tools: tools() });
@@ -481,7 +525,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     return true;
   }
   function onPointer(ev) {
-    if (suspended || ev.button > 0 || self.fx || self.gone || modal) return;
+    if (suspended || ev.button > 0 || self.fx || self.gone || modal || surf.mode !== 'idle') return;      // surfing: the wave decides where the pet goes
     const tile = renderer.pointToTile(ev.clientX, ev.clientY);
     if (!tile) return;
     talkGo = null;
@@ -564,6 +608,9 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       setClock(ms) { if (devNpcT !== null && Number.isFinite(ms)) devNpcT = ms; },
       npcs: () => npcsHere.map((n) => { const p = n.walker.pos(); return { id: n.id, name: n.name, x: p.x, y: p.y, asleep: n.asleep, say: n.say }; }),
       warp(area, x, y) { self.area = area; self.walker.snap(x, y, 'down'); net.sendPos(x, y, 'down', area); fadeT0 = performance.now(); },
+      /** For testing the surf: what the surf state is, and A at the break. */
+      surf: () => ({ mode: surf.mode, why: surf.why }),
+      catchWave: () => { catchWave(); return surf.mode; },
       goTo(x, y) { const mv = games.movement(); const path = findPath(self.walker.tileX, self.walker.tileY, x, y, mv.zone || mv.closed ? walkableFor(mv) : self.area); if (path.length) self.walker.setPath(path); return path.length; },
     },
     games: {

@@ -1,7 +1,8 @@
 // The town's HD-2D renderer: the outdoor town seen through the tilted camera (see camera.js), with the same interface as the flat
 // renderer in render.js ({ resize, draw, pointToTile }). createTownRenderer wraps both: the outdoors (town, farm) is HD-2D, interiors (and
 // ?flat=1, and the player's "Efectos" switch) use the flat one.
-import { TILE, SIGNS, PLACES, getArea } from '../map.js';
+import { TILE, SIGNS, PLACES, getArea, shallowFrom } from '../map.js';
+import { waveStrokes } from '../surf.js';
 import { createRenderer, drawBubble, MIN_VIEW_H, VIEW_H } from '../render.js';
 import { drawText, textWidth, textCanvas } from '../font.js';
 import { badge, bobY, BADGE } from '../art/icons.js';
@@ -157,6 +158,18 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
       ctx.fillStyle = g; ctx.fillRect(0, edge.y - 2, view.w, 44 * u * 0.5 + 2);
     }
     const tGround = performance.now();
+    if (state.wave && world.waterRows.size) {                              // the surf's foam, over the sea and under everything that stands on it
+      ctx.fillStyle = '#eaf7ff';
+      for (const q of waveStrokes(state.wave, 1, getArea(areaName).h - 2, TILE, shallowFrom)) {
+        const p = project(cam, q.x, q.y);
+        if (!p) continue;
+        const w = q.w * p.scale, h = Math.max(1, q.h * p.scale * cam.sin);
+        if (p.x + w < 0 || p.x - w > view.w || p.y + h < 0 || p.y - h > view.h) continue;
+        ctx.globalAlpha = q.a * (1 - 0.5 * n);
+        ctx.fillRect(Math.round(p.x - w / 2), Math.round(p.y - h / 2), Math.max(1, Math.round(w)), Math.max(1, Math.round(h)));
+      }
+      ctx.globalAlpha = 1;
+    }
     things.rings(ctx, state, cam);
     if (state.marker && now < state.marker.until) drawMarker(state.marker);
 

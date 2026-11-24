@@ -104,14 +104,16 @@ export function validateMessage(raw, catalogue) {
       if (!look) return null;
       const out = { t: 'hello', id: m.id, name: sanitizeName(m.name), look, stats: validateStats(m.s), act: ACTIVITIES.includes(m.a) ? m.a : 'idle' };
       const area = m.area === undefined ? DEFAULT_AREA : m.area;                  // a heartbeat may carry the position: kept only when it is a real tile
-      if (m.x !== undefined && isArea(area) && Number.isInteger(m.x) && Number.isInteger(m.y) && isWalkable(m.x, m.y, area) && DIRS.includes(m.d)) out.pos = { x: m.x, y: m.y, d: m.d, area };
+      if (m.x !== undefined && isArea(area) && Number.isInteger(m.x) && Number.isInteger(m.y) && isWalkable(m.x, m.y, area) && DIRS.includes(m.d)) out.pos = { x: m.x, y: m.y, d: m.d, area, ...(m.surf === 1 || m.surf === 2 ? { surf: m.surf } : {}) };
       return out;
     }
     case 'pos':
     {
       const area = m.area === undefined ? DEFAULT_AREA : m.area;           // older clients never send it
       if (!isArea(area) || !Number.isInteger(m.x) || !Number.isInteger(m.y) || !isWalkable(m.x, m.y, area) || !DIRS.includes(m.d)) return null;
-      return { t: 'pos', id: m.id, x: m.x, y: m.y, d: m.d, area };
+      const pos = { t: 'pos', id: m.id, x: m.x, y: m.y, d: m.d, area };
+      if (m.surf === 1 || m.surf === 2) pos.surf = m.surf;                  // optional: 1 riding a wave, 2 wiped out; an older client never sends it and ignores it (unknown fields are stripped)
+      return pos;
     }
     case 'jump':
       return { t: 'jump', id: m.id };
