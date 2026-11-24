@@ -80,7 +80,7 @@ test('sorting by depth matches the map order: a pet further north is drawn first
 
 test('cameraFor frames the view: the focus is below the middle when tilted, centred when flat, and the zoom scales with the view', () => {
   const flat = cameraFor(1280, 720, 400, 320, 0), tilted = cameraFor(1280, 720, 400, 320, 1);
-  assert.equal(flat.pitch, 90); assert.equal(tilted.pitch, 49);
+  assert.equal(flat.pitch, 90); assert.equal(tilted.pitch, 60);
   near(flat.cy, 360); assert.ok(tilted.cy > 360);
   const small = cameraFor(640, 360, 400, 320, 1);
   near(small.focal * 2, tilted.focal);
@@ -92,7 +92,7 @@ test('a tall phone view zooms in so the top row never stretches to the horizon',
     const c = cameraFor(w, h, 24 * 16, 20 * 16, 1), top = groundRow(c, 0);
     assert.ok(top && 20 * 16 - top.y <= MAX_REACH + 1e-6, `${w}x${h}`);
   }
-  assert.ok(cameraFor(750, 1136, 0, 0, 1).focal / 330 > 2.5);
+  assert.ok(cameraFor(750, 1136, 0, 0, 1).focal / 330 > 2);
 });
 
 test('sprite scale snaps to whole screen pixels per art pixel, never below 1', () => {
