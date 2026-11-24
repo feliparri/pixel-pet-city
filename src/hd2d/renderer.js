@@ -9,6 +9,7 @@ import { cameraFor, PHONE_OUT, followFocus, followMargin, snapFocus, sortBackToF
 import { groundMult, approach } from './light.js';
 import { buildWorld, bakeGround, visibleWater, drawGround, standingItems, drawGlows, fountainItem, paintFarm, decorItems, drawDecorGlows, drawGhosts } from './scene.js';
 import { createFx } from './fx.js';
+import { zoomFactor, ZOOM_SECS } from '../sea.js';
 import { createGlLayer } from './gl.js';
 import { createGovernor, encodeLevel, decodeLevel } from './quality.js';
 import { createPetPainter } from './pets.js';
@@ -47,7 +48,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
   let groundKey = '', waterFrame = -1;
   let inset = { top: 0, bottom: 0 };                                                // css px the bar (top) and the emotes row (bottom) cover: the pet is kept clear of them
   const fxOpts = { bloom: true, tiltshift: true, cloud: 0, fog: 0 };                // what fx.apply reads each frame (reused: no allocation)
-  let showFx = null, kShow = 0, stars = null, starsSeed = null;
+  let showFx = null, kShow = 0, kSwim = 0, stars = null, starsSeed = null;                // kSwim: the camera's zoom-out for the water, eased
   const gov = createGovernor({ start: savedLevel(), allowFlat: false });            // slow frames only lower the quality: the view never falls back to flat by itself (owner 2026-11-24); a crash still does
   const stat = { ms: 0, dt: 33, build: 0, parts: { ground: 0, items: 0, fx: 0, overlay: 0 } };                                         // moving averages: the cost of drawing a frame, and the time between frames
 
@@ -112,13 +113,15 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
     const n = Math.max(amb.night, k), mult = groundMult({ tint: amb.tint, night: n });
 
     const mp = state.me.walker.pos();                                   // the camera follows the player (see followFocus for the edges of the map)
-    const probe = cameraFor(view.w, view.h, MAP_W / 2, MAP_H / 2, 1, { ref, out });
-    const t = followFocus(view.w, view.h, mp.x * TILE + TILE / 2, mp.y * TILE + TILE, MAP_W, MAP_H, { ref, out }, followMargin(box ? box.h : 0, inset.top, inset.bottom));
+    kSwim = approach(kSwim, state.swim || 0, dt, 1 / ZOOM_SECS);                            // in the water the camera eases out, and back in on land: one factor for every camera below so the follow bounds match
+    const copt = { ref, out: out * zoomFactor(kSwim) };
+    const probe = cameraFor(view.w, view.h, MAP_W / 2, MAP_H / 2, 1, copt);
+    const t = followFocus(view.w, view.h, mp.x * TILE + TILE / 2, mp.y * TILE + TILE, MAP_W, MAP_H, copt, followMargin(box ? box.h : 0, inset.top, inset.bottom));
     const tx = t.x, ty = t.y;
     if (!focus) focus = { x: tx, y: ty };
     else { const kf = 1 - Math.exp(-dt / 140); focus.x += (tx - focus.x) * kf; focus.y += (ty - focus.y) * kf; }
     const [fxp, fyp] = snapFocus(probe, focus.x, focus.y);
-    cam = k > 0.001 ? showCamera(view.w, view.h, fxp, fyp, k, { ref, out }) : cameraFor(view.w, view.h, fxp, fyp, 1, { ref, out });
+    cam = k > 0.001 ? showCamera(view.w, view.h, fxp, fyp, k, copt) : cameraFor(view.w, view.h, fxp, fyp, 1, copt);
     ui = Math.max(1, Math.round((cam.focal / cam.dist) * 0.6));
     const scam = { ...cam, focusX: SHOW_FOCUS.x, focusY: SHOW_FOCUS.y };    // the show's bursts and drones are placed in the show's own frame
     const u = pixelUnit(view.h), hy = horizonY(cam);

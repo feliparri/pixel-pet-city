@@ -2,7 +2,7 @@
 import { findPath, dirVector } from './path.js';
 import { isWalkable, doorAt, spotAt, tileAt, getArea, TILES, GAME_PLACES, SPAWNS } from './map.js';
 import { Walker, REMOTE_SNAP } from './walker.js';
-import { paceFactor } from './sea.js';
+import { paceFactor, waterOf, zoomTarget } from './sea.js';
 import { isTyping, isJumpKey, runs, tapWalks } from './keys.js';
 import { createTouchpad } from './touchpad.js';
 import { JUMP_MS } from './jump.js';
@@ -218,6 +218,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     if (landAt && t >= landAt) { landAt = 0; pets.cue('land'); }                    // the hop is over: the landing
     if (t - ambAt > 2000) { ambAt = t; state.amb = ambientAt(hourNow(location.search)); }
     state.area = self.area;
+    state.swim = zoomTarget(waterOf(self.area, w));                 // the camera eases out while the pet is in the sea (src/sea.js)
     state.fade = 1 - (t - fadeT0) / FADE_MS;
     for (const o of others.values()) o.walker.update(dt);
     state.others = inArea(others.values(), self.area).filter((o) => games.canSee(o.id));      // in a game: only the players, and their names, are drawn

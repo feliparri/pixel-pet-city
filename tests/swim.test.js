@@ -80,3 +80,37 @@ test('steps in the water splash instead of stepping: shallows and deep water hav
   assert.ok(GROUNDS.includes('splash') && GROUNDS.includes('swim'));
   assert.notDeepEqual(Array.from(stepSamples('swim', 0)), Array.from(stepSamples('sand', 0)));
 });
+
+// ---- the camera in the water -------------------------------------------------------------------------------------------------------------------
+import { zoomTarget, zoomFactor, SWIM_OUT } from '../src/sea.js';
+import { cameraFor, followFocus, unproject, PHONE_OUT } from '../src/hd2d/camera.js';
+import { approach } from '../src/hd2d/light.js';
+
+test('zoom target: out in deep water, a little in the shallows, none on land; the factor is smooth and bounded', () => {
+  assert.equal(zoomTarget('deep'), 1);
+  assert.ok(zoomTarget('shallow') > 0 && zoomTarget('shallow') < 1);
+  assert.equal(zoomTarget(null), 0);
+  assert.equal(zoomFactor(0), 1);
+  assert.equal(zoomFactor(1), 1 + SWIM_OUT);
+  assert.equal(zoomFactor(-3), 1); assert.equal(zoomFactor(9), 1 + SWIM_OUT);
+  let prev = 1;
+  for (let k = 0; k <= 1.0001; k += 0.05) { const f = zoomFactor(k); assert.ok(f >= prev - 1e-12); prev = f; }
+});
+
+test('the zoom eases: it never jumps between two frames, and arrives', () => {
+  let k = 0;
+  const steps = [];
+  for (let t = 0; t < 2000; t += 16) { const n = approach(k, 1, 16, 1 / 1.2); steps.push(zoomFactor(n) - zoomFactor(k)); k = n; }
+  assert.equal(k, 1);
+  assert.ok(Math.max(...steps) < 0.02, `biggest step ${Math.max(...steps)}`);
+});
+
+test('one zoomed-out option feeds the camera and the follow: the view shows more world and the focus bounds still keep the pet in view', () => {
+  const opts = { ref: 148, out: PHONE_OUT }, far = { ...opts, out: PHONE_OUT * zoomFactor(1) };
+  const width = (cam) => unproject(cam, 844, 300).x - unproject(cam, 0, 300).x;
+  const a = cameraFor(844, 390, 384, 288, 1, opts), b = cameraFor(844, 390, 384, 288, 1, far);
+  assert.ok(width(b) > width(a) * 1.15, `${width(a)} -> ${width(b)}`);
+  const f = followFocus(844, 390, 12 * 16 + 8, 17 * 16 + 16, 768, 576, far);
+  assert.ok(Number.isFinite(f.x) && Number.isFinite(f.y));
+  assert.ok(f.x >= 0 && f.x <= 768 && f.y >= 0 && f.y <= 576);
+});

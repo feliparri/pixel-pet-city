@@ -26,3 +26,12 @@ export function waterOf(area, w) {
 
 /** How a pet is drawn in the water: art px the sprite sinks, and art px cut off its lower end (the part under the surface). */
 export const SUBMERGE = { sink: 5, cut: 6 };
+
+// ---- the camera in the water -------------------------------------------------------------------------------------------------------------------
+/** In the water the camera eases out to show this much more of the world each way (1 + SWIM_OUT times as much at full zoom), over about ZOOM_SECS. */
+export const SWIM_OUT = 0.25;
+export const ZOOM_SECS = 1.2;
+/** How far out the camera wants to be for the water under the pet: 1 in deep water, a little in the shallows (the way in), 0 on land. */
+export const zoomTarget = (water) => (water === 'deep' ? 1 : water === 'shallow' ? 0.35 : 0);
+/** The factor the camera's `out` is multiplied by for an eased zoom amount `k` (0..1): smooth at both ends. */
+export const zoomFactor = (k) => { const c = Math.min(1, Math.max(0, k)); return 1 + SWIM_OUT * c * c * (3 - 2 * c); };
