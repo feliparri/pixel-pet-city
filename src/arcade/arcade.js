@@ -47,11 +47,11 @@ const SHOTS = {
   'train:escape': (g) => { const f = upcomingFork(g); return !!f && f.sec.esc && f.z - g.dist > 34 && f.z - g.dist < 48 && g.trains.some((t) => t.z > f.z); },
 };
 
-const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
-const button = (text, cls, onClick) => { const b = el('button', `btn ${cls || ''}`.trim(), text); b.type = 'button'; b.addEventListener('click', () => { onClick(); b.blur(); }); return b; };
+export const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+export const button = (text, cls, onClick) => { const b = el('button', `btn ${cls || ''}`.trim(), text); b.type = 'button'; b.addEventListener('click', () => { onClick(); b.blur(); }); return b; };
 
-const dayString = () => { const d = new Date(); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
-const safeInsets = (root) => {                       // the notch: env(safe-area-inset-*) resolved by the browser through a probe element (css px)
+export const dayString = () => { const d = new Date(); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
+export const safeInsets = (root) => {                       // the notch: env(safe-area-inset-*) resolved by the browser through a probe element (css px)
   try {
     const p = el('div', 'arc-probe'); root.append(p); const c = getComputedStyle(p);
     const v = { top: parseFloat(c.paddingTop) || 0, left: parseFloat(c.paddingLeft) || 0, right: parseFloat(c.paddingRight) || 0 };

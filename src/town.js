@@ -29,6 +29,7 @@ import { createFarmMemory, farmView, clockOf } from './farm-world.js';
 import { actionAt, perform, objectAt } from './farm-actions.js';
 import { dayOf } from './npc-world.js';
 import { activeSeasons, parseDevSeasons } from './seasons.js';
+import { pondAction } from './fishing/pond.js';
 import { snowing } from './snow.js';
 import { ghostsAt } from './ghosts.js';
 import { createHold, villagerAtTap, talkSpot, faceToward } from './npc-hold.js';
@@ -55,9 +56,9 @@ function spawnFor(id) {
  * canasta / farmMemory: the pet's basket (src/canasta.js) and what it did on the farm today (src/farm-world.js); tools(): the keys of the farm tools the pet owns
  * (src/tools.js); onStore(): the pet asked for the Almacén (the farm store); missions: null (villagers just chat) or { enabled(), ledger() ({ day, cap, earned,
  * done }, what the server paid today), claim(m) (hands a mission in: the server pays real gold, src/trip.js claimMission), giftOwner() (who opens the seasonal gifts: the trip's ref),
- * gift(id) (opens a gift: the server pays 10 to 30 gold (20 to 30 for one of Santa's), src/trip.js claimGift) }; onFarm({ action, prompt }) says which action is available (or null) when it changes, onFarmDone(result) reports an action's outcome (the pop) and onFarmAction(event) every action done (missions).
+ * gift(id) (opens a gift: the server pays 10 to 30 gold (20 to 30 for one of Santa's), src/trip.js claimGift) }; onFarm({ action, prompt }) says which action is available (or null) when it changes, onFarmDone(result) reports an action's outcome (the pop) and onFarmAction(event) every action done (missions), onFish() the pet fished at the park's pond (the page opens the fishing layer).
  * Returns { onNetEvent, emote, playExit, games: { play, join, seek, leave, dismiss }, farm: { act }, destroy }. */
-export function startTown({ canvas, stage, pad = null, sprites, font, net, me, entrance = null, stars = { add() {} }, canasta = createCanasta(), farmMemory = createFarmMemory(), tools = () => [], onStore = () => {}, missions = null, onHud = () => {}, onShow = () => {}, onShop = () => {}, insets = () => ({ top: 0, bottom: 0 }), onFarm = () => {}, onFarmDone = () => {}, onFarmAction = () => {} }) {
+export function startTown({ canvas, stage, pad = null, sprites, font, net, me, entrance = null, stars = { add() {} }, canasta = createCanasta(), farmMemory = createFarmMemory(), tools = () => [], onStore = () => {}, missions = null, onHud = () => {}, onShow = () => {}, onShop = () => {}, insets = () => ({ top: 0, bottom: 0 }), onFarm = () => {}, onFarmDone = () => {}, onFarmAction = () => {}, onFish = () => {} }) {
   const [sx, sy] = spawnFor(net.id);
   const self = { id: net.id, name: me.name, look: me.look, stats: me.stats || null, act: 'idle', walker: new Walker(sx, sy), emote: null, jumpAt: null, area: 'town' };
   if (entrance) self.fx = { id: entrance, phase: 'arrive', t0: performance.now(), resolve: null };
@@ -251,6 +252,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       state.farm = farmState;
       farmAction = !w.busy && !self.fx && !modal && !mv.closed ? actionAt('farm', w.tileX, w.tileY, w.d, { basket: canasta, mem: farmMemory, room: net.code || net.id, nowMs: devNpcT === null ? events.serverNow() : devNpcT, tools: tools() }) : null;
     } else { state.farm = null; farmAction = null; }
+    if (self.area === 'town' && !farmAction && !w.busy && !self.fx && !modal && !mv.closed) farmAction = pondAction(self.area, w.tileX, w.tileY, tools());      // beside the park's pond: A fishes (with the rod)
     const talkTo = !w.busy && !self.fx && !modal && !mv.closed && !claiming && missions && missions.enabled() ? talkTarget() : null;
     nearTalkId = talkTo ? talkTo.id : null;
     const atStore = self.area === 'farm' && !w.busy && !self.fx && !modal && !mv.closed && nearStore(w.tileX, w.tileY);
@@ -409,6 +411,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   function farmDo() {
     if (!farmAction || farmAction.id === 'hint') return false;
     if (farmAction.id === 'store') { onStore(); return true; }
+    if (farmAction.id === 'fish') { onFish(); return true; }
     if (farmAction.id === 'talk') { talk(farmAction.target); return true; }
     const res = perform(farmAction, { basket: canasta, mem: farmMemory, tools: tools() });
     farmAt = -Infinity;                                            // the plots and the prompt are looked at again at once
@@ -555,6 +558,8 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       dismiss: () => games.dismiss(),
     },
     /** The farm's action available now (for the prompt's own button: a tap on it does it). */
+    /** What the water is like now, for the fishing layer (the town is suspended while it is open): { night, christmas }. */
+    fishCtx: () => ({ night: ambientAt(hourNow(location.search)).night >= 0.5, christmas: (devSeasons || activeSeasons(devNpcT === null ? events.serverNow() : devNpcT, events.seasons)).has('christmas') }),
     farm: { act: () => farmDo(), get action() { return farmAction; }, memory: farmMemory, basket: canasta },
     /** The rows of the "Misiones" panel for today ({ rows, earned, cap }), or null when the missions are off (no pet's trip, an old board). */
     missions: {

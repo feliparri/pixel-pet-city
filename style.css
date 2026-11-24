@@ -242,3 +242,21 @@ a.btn { display: inline-block; text-decoration: none; }
 .arcade[data-wide="1"] .arc-tools { padding-top: 0; }
 .arcade-open { position: absolute; top: 3.5rem; left: max(.6rem, env(safe-area-inset-left)); background: var(--gold); color: var(--bg); border-color: #b89420; z-index: 2; }
 .touch .arcade-open { top: 2.6rem; }
+
+/* fishing (src/fishing/): the arcade's layer with its own big button, the tools along the top and a card for the fish */
+.arcade.fishing .arc-frame { max-width: none; }
+.arcade.fishing .arc-tools { bottom: auto; top: 0; padding-top: max(.6rem, env(safe-area-inset-top)); justify-content: flex-start; gap: .4rem; }
+.arcade.fishing .arc-tools .fish-gap { flex: 1; }
+.arcade.fishing .arc-tools .btn:only-child { margin-left: auto; }
+.fish-btn { position: absolute; right: max(.9rem, env(safe-area-inset-right)); bottom: max(.9rem, env(safe-area-inset-bottom)); width: 5.4rem; height: 5.4rem; border-radius: 50%; font: 900 1.05rem ui-monospace, "SF Mono", Menlo, Consolas, monospace; color: #fff7de; background: radial-gradient(circle at 35% 30%, #ff8a5c, #d9482f 70%); border: 4px solid #312439; box-shadow: 0 6px 0 rgba(0,0,0,.4); touch-action: none; -webkit-user-select: none; user-select: none; cursor: pointer; z-index: 2; }
+.fish-btn[hidden] { display: none; }
+.fish-btn:active, .fish-btn[data-phase="charging"], .fish-btn[data-phase="reeling"] { transform: translateY(4px); box-shadow: 0 2px 0 rgba(0,0,0,.4); }
+.fish-btn[data-phase="bite"] { background: radial-gradient(circle at 35% 30%, #ffe066, #e8a21a 70%); color: #312439; animation: fish-pulse .35s steps(2) infinite; }
+@keyframes fish-pulse { 50% { transform: scale(1.08); } }
+.fish-pic { image-rendering: pixelated; justify-self: center; max-width: 100%; height: auto; }
+.fish-rarity { margin: 0; color: var(--muted); font-weight: 700; }
+.fish-rarity.rare { color: #7fc8ff; }
+.fish-rarity.epic { color: #ffd84a; }
+.fish-new { margin: 0; color: #8bd97f; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+.arcade.fishing[data-wide="1"] .fish-pic { width: 96px; }
+.arcade.fishing[data-wide="1"] .fish-btn { width: 4.6rem; height: 4.6rem; font-size: .9rem; }

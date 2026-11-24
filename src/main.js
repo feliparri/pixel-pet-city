@@ -25,6 +25,7 @@ import { createFarmMemory } from './farm-world.js';
 import { produceCanvas } from './art/produce.js';
 import { sound } from './sound.js';
 import { startArcade } from './arcade/arcade.js';
+import { startFishing } from './fishing/fishing.js';
 import { SHOWS } from './show/timeline.js';
 
 const $ = (id) => document.getElementById(id);
@@ -173,12 +174,20 @@ async function enter(code, { transport = mode, arrival = null, solo = false } = 
   canasta = visit ? visit.canasta : (canasta || createCanasta());       // dev only: a basket that lives for this page
   if (!visit && !devFarm) devFarm = farmMemoryFor('dev');
   window.cityDebug = () => ({ town, net, canasta });                    // handy in the console when testing with two tabs
-  town = startTown({ canvas: $('view'), stage: $('stage'), pad: touch ? { stick: $('stick'), a: $('pad-a'), b: $('pad-b') } : null, sprites, font, net, me, entrance: arrival, stars: counter, canasta, farmMemory: visit ? visit.farm : devFarm, tools: () => (shopSource && shopSource.shop ? shopSource.shop.tools : []), onStore: () => shopUi && shopUi.openStore(), missions: missionsApi, onFarm: paintFarmPrompt, onFarmDone: farmPop, onHud: (info) => { hud && hud.update(info); cueResults(info); }, onShow: (on, running) => { const b = $('show-back'); b.hidden = !running; b.textContent = on ? 'Volver al pueblo' : 'Ver show'; b.setAttribute('aria-pressed', String(on)); }, onShop: () => shopUi && shopUi.openShop(), insets: stageInsets });
+  town = startTown({ canvas: $('view'), stage: $('stage'), pad: touch ? { stick: $('stick'), a: $('pad-a'), b: $('pad-b') } : null, sprites, font, net, me, entrance: arrival, stars: counter, canasta, farmMemory: visit ? visit.farm : devFarm, tools: toolsNow, onFish: () => openFishing(), onStore: () => shopUi && shopUi.openStore(), missions: missionsApi, onFarm: paintFarmPrompt, onFarmDone: farmPop, onHud: (info) => { hud && hud.update(info); cueResults(info); }, onShow: (on, running) => { const b = $('show-back'); b.hidden = !running; b.textContent = on ? 'Volver al pueblo' : 'Ver show'; b.setAttribute('aria-pressed', String(on)); }, onShop: () => shopUi && shopUi.openShop(), insets: stageInsets });
   paintArcade();
   devArcade();
+  devFishing();
   setStatus('connected');
   if (visit) visit.radar.now();                                 // the room changed: tell the phone's radar now
   return true;
+}
+
+/** The farm tools this pet owns (the trip's shop state); development only: ?dev=1&rod=1 adds the fishing rod. */
+function toolsNow() {
+  const own = shopSource && shopSource.shop ? shopSource.shop.tools : [];
+  const q = new URLSearchParams(location.search);
+  return q.get('dev') === '1' && q.get('rod') === '1' && !own.includes('fishing_rod') ? [...own, 'fishing_rod'] : own;
 }
 
 /** How many css px of the stage float UI hides: the corner buttons only cover the corners, so the top reserves nothing; the bottom reserves the emotes row, when it is one (not the 💬 fan on a phone). */
@@ -252,6 +261,32 @@ function devArcade() {
   if (q.has('arcade')) { const a = openArcade(q.has('seed') ? { seed: Number(q.get('seed')) } : {}); if (a) a.dev.go(q.get('arcade'), Number(q.get('at')) || 0, q.get('bot') !== '0', q.get('game') === 'skate' ? 'skate' : 'train', q.get('shot') || (q.get('jump') === '1' ? 'jump' : '')); }
 }
 
+// ---- fishing (src/fishing/): "A: Pescar" beside the park's pond opens a full-screen layer over the town (the town stops meanwhile), like the arcade ----------------------------
+let fishing = null;
+function openFishing(opts = {}) {
+  if (!town || fishing || arcade) return null;
+  town.suspend(true);
+  $('arcade-open').hidden = true;
+  fishing = startFishing({ root: $('fishing'), sprites, font, look: town.look(), sound, getCtx: () => town.fishCtx(), onExit: closeFishing, ...opts });
+  if (new URLSearchParams(location.search).get('dev') === '1') window.fishingDev = fishing.dev;
+  return fishing;
+}
+function closeFishing() {
+  if (!fishing) return;
+  fishing.destroy(); fishing = null;
+  if (town) town.suspend(false);
+  paintSound(); paintArcade();
+}
+/** Development only (?local=1&dev=1&rod=1&fish=menu|play|charging|waiting|bite|reeling|caught|escaped|result): the fishing layer open on a moment (previews). */
+function devFishing() {
+  const q = new URLSearchParams(location.search);
+  if (q.get('dev') !== '1' || !town || !q.has('fish')) return;
+  const f = openFishing(q.has('seed') ? { seed: Number(q.get('seed')) } : {});
+  if (!f) return;
+  const where = q.get('fish');
+  if (where && where !== '1' && where !== 'menu') f.dev.go(where, { fish: q.get('fishid') || undefined, reason: q.get('reason') || undefined, power: q.has('power') ? Number(q.get('power')) : undefined });
+}
+
 // ---- the farm: what this pet did today (kept in this browser, per pet) and the small prompt and pop over the stage ----------------------------
 function farmMemoryFor(who) {
   const key = `city.farm.${who}`;
@@ -284,6 +319,7 @@ function setStatus(status) {
 
 function closeRoom() {
   closeArcade();
+  closeFishing();
   $('show-back').hidden = true;
   $('arcade-open').hidden = true;
   if (shopUi) shopUi.close();
