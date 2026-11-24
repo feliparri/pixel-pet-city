@@ -51,6 +51,10 @@ PICTURES.sack = [
   '....kkkk....', '...kyYYYk...', '..kkWWWWkk..', '.kyyyYYYYYk.', 'kyyyyYYYYYYk', 'kyyyyYYYYYWk',
   'kyyyyYYrYYWk', 'kyyyyYYYYYWk', 'kyyyYYYYYYWk', 'kYYYYYYYYYWk', '.kWWWWWWWWk.', '..kkkkkkkk..',
 ];
+PICTURES.rod = [
+  '.........kk.', '........kwWk', '.......kwWks', '......kwWk.s', '.....kwWk..s', '....kwWk...s',
+  '...kwWk....s', '..kwWk.....s', '.kwWk.....rr', '.kkk......RR', '..........kk', '............',
+];
 PICTURES['bucket-empty'] = bucket(false);
 PICTURES['bucket-full'] = bucket(true);
 

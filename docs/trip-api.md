@@ -134,7 +134,7 @@ being `active` and `spent` unchanged, so two buys cannot overspend. Errors: `401
 `409 conflict` (another buy got in first: read the state and ask again).
 
 ### `trip-buy-tool`
-Request `{ "trip": "<ref>", "tool": "sickle|bucket|feed_sack" }` with the token: the Almacén (the farm store) sells the tools a pet needs to work on the farm (Hoz, Balde,
+Request `{ "trip": "<ref>", "tool": "sickle|bucket|feed_sack|fishing_rod" }` with the token: the Almacén (the farm store) sells the tools a pet needs to work on the farm (Hoz, Balde,
 Saco de alimento; prices in `tools.js`, mirrored by `src/tools.js` under a test). The gold goes through the same ledger as `trip-buy` (`spent`, conditional on `active`
 and `spent` unchanged), so the return's gold is lower by the price. The tool itself is kept per board in table `pet_tools` (only the function writes it), so it stays with
 the pet on later trips; it is **never** part of a return package. `trip-claim` lists the owned tools as `pet.tools`. `200 { "gold_left", "tools": [keys] }`. Errors as

@@ -37,7 +37,7 @@ test('the Almacen price list mirrors the server one, in one place each, at modes
 
 test('every tool icon is 12 x 12', () => {
   const src = readFileSync(new URL('../src/art/produce.js', import.meta.url), 'utf8');
-  for (const name of ['sickle', 'sack']) {
+  for (const name of ['sickle', 'sack', 'rod']) {
     const rows = [...src.match(new RegExp(`PICTURES\\.${name} = \\[([\\s\\S]*?)\\];`))[1].matchAll(/'([^']*)'/g)].map((m) => m[1]);
     assert.equal(rows.length, 12, name);
     assert.ok(rows.every((r) => r.length === 12), name);
