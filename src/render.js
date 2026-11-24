@@ -278,7 +278,7 @@ export function createRenderer({ canvas, sprites, font, minH = MIN_VIEW_H, minW 
   let scale = 1, petScale = 1, viewW = VIEW_W, viewH = VIEW_H;
   let cam = { x: 0, y: 0 };
   let areaName = 'town';
-  let inset = NO_INSET;                              // css px of the view the bar (top) and the emotes row (bottom) cover
+  let inset = NO_INSET;                              // css px of the view float UI covers (top, bottom)
   let box = null, laidOut = null;                   // the last box (css size and pixel ratio) and the area the view was fitted to
 
   function layout() {

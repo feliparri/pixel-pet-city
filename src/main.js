@@ -181,11 +181,11 @@ async function enter(code, { transport = mode, arrival = null, solo = false } = 
   return true;
 }
 
-/** How many css px of the stage the bar (top) and the emotes row (bottom, when it is a row over the stage) cover: the camera keeps the pet clear of them at the map's edges. */
+/** How many css px of the stage float UI hides: the corner buttons only cover the corners, so the top reserves nothing; the bottom reserves the emotes row, when it is one (not the 💬 fan on a phone). */
 function stageInsets() {
-  const s = $('stage').getBoundingClientRect();
-  const over = (el, atTop) => { const r = el.getBoundingClientRect(); if (!r.height || !r.width) return 0; return atTop ? Math.max(0, r.bottom - s.top) : r.top > s.top + s.height / 2 ? Math.max(0, s.bottom - r.top) : 0; };
-  return { top: over($('bar'), true), bottom: over($('emotes'), false) };
+  const s = $('stage').getBoundingClientRect(), el = $('emotes'), r = el.getBoundingClientRect();
+  const row = r.width && r.height && getComputedStyle(el).position === 'absolute' && r.top > s.top + s.height / 2;
+  return { top: 0, bottom: row ? Math.max(0, s.bottom - r.top) : 0 };
 }
 
 /** What the town needs of the missions (src/town.js): on while the pet's board can spend (a real trip, or the dev mock), handed in through the shop source. */
@@ -331,7 +331,7 @@ function setupPops() {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePops(); });
 }
 
-/** On a landscape phone the emotes hide behind the bar's 💬 button and open as a row over the stage (style.css); elsewhere the row is always there. */
+/** On a landscape phone the emotes and phrases hide behind the 💬 button by the A/B pad and open as a small fan (style.css), closed by a choice, a tap outside or Escape; elsewhere the row is always there. */
 function setEmotesOpen(open) {
   $('emotes').classList.toggle('open', open);
   $('emotes-toggle').setAttribute('aria-expanded', String(open));
@@ -339,6 +339,8 @@ function setEmotesOpen(open) {
 
 function buildEmotes() {
   $('emotes-toggle').addEventListener('click', () => setEmotesOpen(!$('emotes').classList.contains('open')));
+  document.addEventListener('pointerdown', (e) => { if (!e.target.closest('#emotes, #emotes-toggle')) setEmotesOpen(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setEmotesOpen(false); });
   const nav = $('emotes');
   for (const [id, label] of Object.entries(EMOTES)) {
     const b = document.createElement('button');
