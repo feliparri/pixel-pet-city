@@ -134,7 +134,7 @@ export const priorityOf = (name) => (ATTENTION.has(name) ? 2 : name === 'tap' ? 
 /**
  * The player. `ctxFactory()` makes an AudioContext (or returns null: no sound, everything below is a no-op); `storage` keeps the mute choice. One voice at a time, as
  * the board's: a new sound replaces the one playing unless that one matters more and is still going (then the new one is dropped).
- * play(name[, level]), playNotes(notes[, level]), setMuted(on), isMuted(), unlock() (call it from a user gesture), toggle().
+ * play(name[, level]), playNotes(notes[, level[, priority]]), stop(), setMuted(on), isMuted(), unlock() (call it from a user gesture), toggle().
  */
 export function createSound({ ctxFactory = () => null, storage = null } = {}) {
   const mute = createMuteStore(storage);
@@ -183,8 +183,10 @@ export function createSound({ ctxFactory = () => null, storage = null } = {}) {
       if (!s) buffers.set(k, s = renderNotes(CUES[name], level));
       return start(s, priorityOf(name));
     },
-    /** Plays a list of notes (a jingle, a tune): same synth, feedback priority. */
-    playNotes(notes, level = DEFAULT_LEVEL) { return start(renderNotes(notes, level), 1); },
+    /** Plays a list of notes (a jingle, a tune): same synth, feedback priority (1) unless `priority` says 0 (background music: it gives way to any effect and never cuts one). */
+    playNotes(notes, level = DEFAULT_LEVEL, priority = 1) { return start(renderNotes(notes, level), priority); },
+    /** Stops whatever is playing now (the music of a screen that closes). */
+    stop() { if (voice) { try { voice.onended = null; voice.stop(); } catch { /* ended */ } voice = null; } },
   };
 }
 

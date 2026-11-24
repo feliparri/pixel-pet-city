@@ -10,6 +10,8 @@ import { createHold, attachFishInput } from './input.js';
 import { drawFishing } from './view.js';
 import { promptFor, ESCAPE_TEXT, RARITY_TEXT, resultDelay } from './layout.js';
 import { fishCanvas } from './fish-art.js';
+import { playEvents, reelClick, REEL_CLICK_S } from './sfx.js';
+import { createMusic, moodFor, MUSIC_LEVEL } from './music.js';
 
 const NO_REWARD = { settle: () => ({}) };
 
@@ -29,6 +31,7 @@ export function startFishing({ root, sprites, font, look, sound, getCtx = () => 
 
   let flow = initialFlow(screen), size = null, pad = { top: 0, left: 0, right: 0 };
   let clock = 0, frozen = false, destroyed = false, endAt = 0, endedAt = 0, outcome = null, casts = 0;
+  let clickT = 0;
   let sim = createFishing(seed ?? (Math.random() * 4294967296) >>> 0, getCtx());
 
   // ---- sizing ------------------------------------------------------------------------------------------------------------------------------------
@@ -50,6 +53,7 @@ export function startFishing({ root, sprites, font, look, sound, getCtx = () => 
     const next = reduce(flow, a);
     if (next === flow) return false;
     if (flow.screen === 'play' && next.screen !== 'play') hold.clear();
+    if (next.screen === 'pause') silence();
     flow = next;
     paint();
     return true;
@@ -127,8 +131,18 @@ export function startFishing({ root, sprites, font, look, sound, getCtx = () => 
     press: () => { if (playing()) { press(sim, Date.now()); fx(sim.events); paintButton(); } },
     release: () => { if (flow.screen === 'play' && sim.phase !== 'caught' && sim.phase !== 'escaped') { release(sim, Date.now()); fx(sim.events); } },
   });
-  /** What the events of a step mean outside the rules (sound comes here). */
-  function fx(events) { void events; }
+  // ---- sound: the effects come from the rules' events, the music from the phase; both through the town's synth, so its mute switch rules them ------------------------------
+  const music = createMusic({ play: (notes) => { try { return !!sound.playNotes(notes, MUSIC_LEVEL, 0); } catch { return false; } } });
+  const silence = () => { music.reset(); try { if (sound.stop) sound.stop(); } catch { /* optional */ } };
+  /** What the events of a step mean outside the rules: the sounds. */
+  function fx(events) { if (events && events.length) { playEvents(sound, events, sim.fish); clickT = 0; } }
+  function sounds(ms) {
+    if (sim.phase === 'reeling' && sim.reel) {
+      clickT += ms / 1000;
+      if (clickT >= REEL_CLICK_S) { clickT = 0; try { sound.playNotes(reelClick(sim.reel.inside)); } catch { /* optional */ } }
+    }
+    music.step(ms, sound.isMuted() ? null : moodFor(sim.phase));
+  }
   const detach = attachFishInput([canvas, big], hold, { onPause: () => { if (flow.screen === 'play') dispatch({ type: 'pause' }); else if (flow.screen === 'pause') dispatch({ type: 'resume' }); else if (flow.screen === 'menu') leave(); }, canHold: () => flow.screen === 'play' });
   const onHidden = () => { if (document.hidden && flow.screen === 'play') dispatch({ type: 'pause' }); };
   document.addEventListener('visibilitychange', onHidden);
@@ -138,7 +152,7 @@ export function startFishing({ root, sprites, font, look, sound, getCtx = () => 
     if (flow.screen === 'pause' || frozen) return;
     clock += ms;
     if (flow.screen !== 'play') return;
-    if (sim.phase !== 'caught' && sim.phase !== 'escaped') { tick(sim, ms / 1000, Date.now()); fx(sim.events); if (sim.phase === 'caught' || sim.phase === 'escaped') endRun(); paintButton(); }
+    if (sim.phase !== 'caught' && sim.phase !== 'escaped') { tick(sim, ms / 1000, Date.now()); fx(sim.events); if (sim.phase === 'caught' || sim.phase === 'escaped') endRun(); else sounds(ms); paintButton(); }
     if (endAt && clock >= endAt) { endAt = 0; dispatch({ type: 'result' }); }
   }
   function onRender() {
@@ -155,7 +169,7 @@ export function startFishing({ root, sprites, font, look, sound, getCtx = () => 
     destroy() {
       if (destroyed) return;
       destroyed = true;
-      loop.stop(); detach(); ro.disconnect();
+      loop.stop(); detach(); ro.disconnect(); silence();
       document.removeEventListener('visibilitychange', onHidden);
       root.replaceChildren(); root.hidden = true;
     },
