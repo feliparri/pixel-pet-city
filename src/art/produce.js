@@ -55,6 +55,10 @@ PICTURES.rod = [
   '.........kk.', '........kwWk', '.......kwWks', '......kwWk.s', '.....kwWk..s', '....kwWk...s',
   '...kwWk....s', '..kwWk.....s', '.kwWk.....rr', '.kkk......RR', '..........kk', '............',
 ];
+PICTURES.board = [                       // a surfboard standing on its tail, with a stripe and a fin
+  '.....kk.....', '....kAAk....', '...kAAaAk...', '...kAAaAk...', '...kAAaAk...', '...krrrrk...',
+  '...krRRrk...', '...kAAaAk...', '...kAAaAk...', '....kAak....', '....kdak....', '.....kk.....',
+];
 PICTURES['bucket-empty'] = bucket(false);
 PICTURES['bucket-full'] = bucket(true);
 

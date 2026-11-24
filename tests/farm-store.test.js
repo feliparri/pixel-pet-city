@@ -27,7 +27,7 @@ test('the Almacen price list mirrors the server one, in one place each, at modes
   assert.deepEqual(Object.keys(TOOLS), Object.keys(SERVER_TOOLS));
   for (const [k, it] of Object.entries(SERVER_TOOLS)) {
     assert.deepEqual([TOOLS[k].price, TOOLS[k].name], [it.price, it.name], k);
-    assert.ok(it.price >= 25 && it.price <= 40, `${k} costs ${it.price}`);
+    assert.ok(it.price >= 25 && it.price <= 60, `${k} costs ${it.price}`);
     assert.ok(PRODUCE.includes(TOOLS[k].icon), `${k} has an icon`);
   }
   assert.deepEqual(NEEDS, { harvest: 'sickle', fill: 'bucket', water: 'bucket', feed: 'feed_sack' });
@@ -37,7 +37,7 @@ test('the Almacen price list mirrors the server one, in one place each, at modes
 
 test('every tool icon is 12 x 12', () => {
   const src = readFileSync(new URL('../src/art/produce.js', import.meta.url), 'utf8');
-  for (const name of ['sickle', 'sack', 'rod']) {
+  for (const name of ['sickle', 'sack', 'rod', 'board']) {
     const rows = [...src.match(new RegExp(`PICTURES\\.${name} = \\[([\\s\\S]*?)\\];`))[1].matchAll(/'([^']*)'/g)].map((m) => m[1]);
     assert.equal(rows.length, 12, name);
     assert.ok(rows.every((r) => r.length === 12), name);
@@ -273,4 +273,15 @@ test('the trip client: claim carries the tools, buyTool updates the state, a sec
   assert.equal(bad.error, 'not_for_sale');
   assert.equal(createTripClient({ base: 'x', fetch: toFetch(w) }).session, null);
   assert.equal((await createTripClient({ base: 'x', fetch: toFetch(w) }).buyTool('bucket')).error, 'bad_session');
+});
+
+test('the surfboard is in both price lists, costs 60, has its icon, and the migration widens the check to every tool', () => {
+  assert.deepEqual([TOOLS.surfboard.price, TOOLS.surfboard.name, TOOLS.surfboard.article], [60, 'Tabla de surf', 'una']);
+  assert.deepEqual([SERVER_TOOLS.surfboard.price, SERVER_TOOLS.surfboard.name], [60, 'Tabla de surf']);
+  assert.ok(PRODUCE.includes('board'));
+  assert.equal(needText('surfboard'), 'Necesitas una Tabla de surf — Almacén');
+  assert.ok(toolRows({ canSpend: true, gold: 100, tools: [] }).some((r) => r.key === 'surfboard' && r.state === 'buy'));
+  assert.equal(toolRows({ canSpend: true, gold: 50, tools: [] }).find((r) => r.key === 'surfboard').missing, 10);
+  const sql = readFileSync(new URL('../supabase/migrations/20261124130000_surfboard_tool.sql', import.meta.url), 'utf8');
+  for (const k of Object.keys(SERVER_TOOLS)) assert.ok(sql.includes(`'${k}'`), `${k} is allowed by the migration`);
 });

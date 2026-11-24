@@ -185,11 +185,12 @@ async function enter(code, { transport = mode, arrival = null, solo = false } = 
   return true;
 }
 
-/** The farm tools this pet owns (the trip's shop state); development only: ?dev=1&rod=1 adds the fishing rod. */
+/** The farm tools this pet owns (the trip's shop state); development only: ?dev=1&rod=1 adds the fishing rod and ?dev=1&board=1 the surfboard. */
 function toolsNow() {
   const own = shopSource && shopSource.shop ? shopSource.shop.tools : [];
   const q = new URLSearchParams(location.search);
-  return q.get('dev') === '1' && q.get('rod') === '1' && !own.includes('fishing_rod') ? [...own, 'fishing_rod'] : own;
+  const dev = q.get('dev') === '1', extra = [dev && q.get('rod') === '1' && 'fishing_rod', dev && q.get('board') === '1' && 'surfboard'].filter((k) => k && !own.includes(k));
+  return extra.length ? [...own, ...extra] : own;
 }
 
 /** How many css px of the stage float UI hides: the corner buttons only cover the corners, so the top reserves nothing; the bottom reserves the emotes row, when it is one (not the 💬 fan on a phone). */

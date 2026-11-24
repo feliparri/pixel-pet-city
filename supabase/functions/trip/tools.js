@@ -7,6 +7,7 @@ export const TOOLS = {
   bucket:    { price: 25, name: 'Balde' },             // draw water at the well and water plots
   feed_sack: { price: 35, name: 'Saco de alimento' },  // feed the cows and the sheep
   fishing_rod: { price: 40, name: 'Caña de pescar' },  // fish at the pond (not a farm action)
+  surfboard: { price: 60, name: 'Tabla de surf' },     // surf the beach's waves (not a farm action)
 };
 
 export const isTool = (key) => typeof key === 'string' && Object.hasOwn(TOOLS, key);

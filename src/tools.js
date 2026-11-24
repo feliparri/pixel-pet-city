@@ -7,9 +7,10 @@ export const TOOLS = {
   bucket:    { price: 25, name: 'Balde', article: 'un', icon: 'bucket-empty' },
   feed_sack: { price: 35, name: 'Saco de alimento', article: 'un', icon: 'sack' },
   fishing_rod: { price: 40, name: 'Caña de pescar', article: 'una', icon: 'rod' },   // for the pond (fishing), not for a farm action
+  surfboard: { price: 60, name: 'Tabla de surf', article: 'una', icon: 'board' },    // for the waves of the beach (surfing), not for a farm action
 };
 
-/** The tool each farm action needs (harvesting, drawing water, watering and feeding); picking fruit by hand needs none. Not every tool is here: the fishing rod is checked by the fishing entry. */
+/** The tool each farm action needs (harvesting, drawing water, watering and feeding); picking fruit by hand needs none. Not every tool is here: the fishing rod is checked by the fishing entry and the surfboard by the break (src/surf.js). */
 export const NEEDS = { harvest: 'sickle', fill: 'bucket', water: 'bucket', feed: 'feed_sack' };
 
 export const isTool = (k) => typeof k === 'string' && Object.hasOwn(TOOLS, k);
@@ -33,7 +34,7 @@ export function toolRows(shop) {
 }
 
 export const STORE_TITLE = 'Almacén';
-export const STORE_HINT = 'Herramientas para la granja y para pescar. Se quedan con tu mascota en el pueblo y no viajan a casa.';
+export const STORE_HINT = 'Herramientas para la granja, para pescar y para surfear. Se quedan con tu mascota en el pueblo y no viajan a casa.';
 export const confirmToolText = (key) => `¿Comprar ${TOOLS[key].article} ${TOOLS[key].name} por ${TOOLS[key].price} de oro? Se queda con tu mascota en el pueblo.`;
 export const CLERK_LINES = ['¡Bienvenido al Almacén!', '¡Aquí hay de todo para la granja y el estanque!', '¿Necesitas una herramienta?'];
 export const CLERK_THANKS = ['¡Buena compra! A trabajar la tierra.', '¡Gracias! Con esto te irá muy bien.'];
