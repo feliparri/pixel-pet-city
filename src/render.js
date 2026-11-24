@@ -28,7 +28,7 @@ export const VIEW_H = 288;
 export const MIN_VIEW_H = 208;          // a wide box (a landscape phone) always shows at least 13 tiles from top to bottom (it was 11, then 16: halfway back)
 export const MIN_VIEW_W = 272;          // a tall phone shows at least 17 tiles across (it was 14, then 21: halfway back)
 export const PET_RATIO = 2 / 3;         // a pet's pixels against the world's: the pets are drawn smaller than the world around them
-const HAPPY_EMOTES = new Set(['heart', 'smile', 'party', 'hola', 'wave']);
+const HAPPY_EMOTES = new Set(['heart', 'smile', 'party', 'hola', 'wave', 'laugh', 'love', 'thumbs', 'clap', 'star', 'gift', 'gracias', 'bienhecho', 'suerte']);
 export const EMOTE_MS = 2600;
 const NO_LIGHT = { tint: [255, 255, 255], night: 0 };
 

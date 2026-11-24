@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sanitizeName, validateLook, validateMessage, createRateLimiter, EMOTES, MAX_NAME, newPeerId, ACTIVITIES } from '../src/protocol.js';
+import { sanitizeName, validateLook, validateMessage, createRateLimiter, EMOTES, EMOTE_TABS, EMOTE_PHRASES, EMOTE_QUICK, MAX_NAME, newPeerId, ACTIVITIES } from '../src/protocol.js';
 
 const CAT = { tophat: { slot: 'head' }, sunglasses: { slot: 'face' }, scarf: { slot: 'neck' }, cape: { slot: 'back' } };
 const look = { species: 'cat', stage: 2, items: ['tophat', '', '', ''] };
@@ -64,6 +64,16 @@ test('validateMessage: pos carries its area, validated against that area\'s own 
 test('validateMessage: emotes are presets only', () => {
   for (const e of Object.keys(EMOTES)) assert.equal(validateMessage({ t: 'emote', id, e }).e, e);
   for (const e of ['hola mundo', '__proto__', 'constructor', '', 5, null, '<script>']) assert.equal(validateMessage({ t: 'emote', id, e }), null);
+});
+
+test('emotes: the original ids stay, the new ones travel, and the picker lists every id exactly once', () => {
+  for (const e of ['wave', 'heart', 'smile', 'party', 'hola', 'juguemos', 'chau']) assert.ok(Object.hasOwn(EMOTES, e), e);
+  for (const e of ['laugh', 'thumbs', 'fish', 'gift', 'gracias', 'bienhecho']) assert.equal(validateMessage({ t: 'emote', id, e }).e, e);
+  assert.equal(Object.values(EMOTES).filter((l) => /\p{Extended_Pictographic}/u.test(l)).length, 24);
+  const listed = [...EMOTE_TABS.flatMap((t) => t.ids), ...EMOTE_PHRASES];
+  assert.deepEqual([...listed].sort(), Object.keys(EMOTES).sort());
+  assert.ok(EMOTE_QUICK.every((e) => Object.hasOwn(EMOTES, e)));
+  for (const e of ['jugando', 'fishing', 'LAUGH', 'laugh ', '😂', 'toString']) assert.equal(validateMessage({ t: 'emote', id, e }), null, e);   // an id from a newer client is dropped
 });
 
 test('validateMessage: a jump carries nothing but who jumped', () => {

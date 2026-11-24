@@ -3,7 +3,7 @@
 import config from '../config.js';
 import { isConfigured } from './config-check.js';
 import { generateCode, normalizeCode } from './code.js';
-import { EMOTES, SLOTS, SPECIES, STAGES, sanitizeName, validateLook } from './protocol.js';
+import { EMOTES, EMOTE_TABS, EMOTE_PHRASES, EMOTE_QUICK, SLOTS, SPECIES, STAGES, sanitizeName, validateLook } from './protocol.js';
 import { createTownNet } from './net.js';
 import { loadSprites, drawPet } from './sprites.js';
 import { loadFont } from './font.js';
@@ -331,26 +331,57 @@ function setupPops() {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePops(); });
 }
 
-/** On a landscape phone the emotes and phrases hide behind the 💬 button by the A/B pad and open as a small fan (style.css), closed by a choice, a tap outside or Escape; elsewhere the row is always there. */
+/** The emotes picker. A desktop has a compact row of the most used ones plus "Más"; a landscape phone hides the row and the 💬 button by the A/B pad opens
+ * the panel (style.css). The panel is the same on both: three tabs of emoji (EMOTE_TABS) and the phrases; a choice, a tap outside or Escape closes it. */
 function setEmotesOpen(open) {
-  $('emotes').classList.toggle('open', open);
+  $('emote-panel').hidden = !open;
   $('emotes-toggle').setAttribute('aria-expanded', String(open));
+  const more = $('emotes').querySelector('.more');
+  if (more) more.setAttribute('aria-expanded', String(open));
+}
+
+function emoteButton(id) {
+  const label = EMOTES[id];
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = label.length > 2 && !/\p{Extended_Pictographic}/u.test(label) ? 'btn text' : 'btn';
+  b.textContent = label;
+  b.setAttribute('aria-label', label);
+  b.addEventListener('click', () => { if (town) town.emote(id); setEmotesOpen(false); });
+  return b;
+}
+
+function showEmoteTab(tab) {
+  for (const t of $('emote-tabs').children) { const on = t.dataset.tab === tab.id; t.setAttribute('aria-selected', String(on)); t.classList.toggle('on', on); }
+  $('emote-grid').replaceChildren(...tab.ids.map(emoteButton));
 }
 
 function buildEmotes() {
-  $('emotes-toggle').addEventListener('click', () => setEmotesOpen(!$('emotes').classList.contains('open')));
-  document.addEventListener('pointerdown', (e) => { if (!e.target.closest('#emotes, #emotes-toggle')) setEmotesOpen(false); });
+  const isOpen = () => !$('emote-panel').hidden;
+  $('emotes-toggle').addEventListener('click', () => setEmotesOpen(!isOpen()));
+  document.addEventListener('pointerdown', (e) => { if (!e.target.closest('#emote-panel, #emotes-toggle, #emotes .more')) setEmotesOpen(false); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setEmotesOpen(false); });
-  const nav = $('emotes');
-  for (const [id, label] of Object.entries(EMOTES)) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = label.length > 2 && !/\p{Extended_Pictographic}/u.test(label) ? 'btn text' : 'btn';
-    b.textContent = label;
-    b.setAttribute('aria-label', label);
-    b.addEventListener('click', () => { if (town) town.emote(id); setEmotesOpen(false); });
-    nav.append(b);
+  $('emotes').append(...EMOTE_QUICK.map(emoteButton));
+  const more = document.createElement('button');
+  more.type = 'button';
+  more.className = 'btn text more';
+  more.textContent = 'Más';
+  more.setAttribute('aria-expanded', 'false');
+  more.setAttribute('aria-controls', 'emote-panel');
+  more.addEventListener('click', () => setEmotesOpen(!isOpen()));
+  $('emotes').append(more);
+  for (const tab of EMOTE_TABS) {
+    const t = document.createElement('button');
+    t.type = 'button';
+    t.className = 'tab';
+    t.dataset.tab = tab.id;
+    t.setAttribute('role', 'tab');
+    t.textContent = tab.label;
+    t.addEventListener('click', () => showEmoteTab(tab));
+    $('emote-tabs').append(t);
   }
+  $('emote-phrases').append(...EMOTE_PHRASES.map(emoteButton));
+  showEmoteTab(EMOTE_TABS[0]);
 }
 
 // ---- a pet visiting from its board (docs/trip-api.md) ------------------------------------------------------------------------------

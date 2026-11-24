@@ -11,11 +11,26 @@ export const STAGES = ['baby', 'child', 'adult', 'elder'];
 export const SLOTS = ['head', 'face', 'neck', 'back'];
 export const DIRS = ['up', 'right', 'down', 'left'];
 
-/** The presets: id -> what a bubble shows. No free text ever travels. */
+/** The presets: id -> what a bubble shows. No free text ever travels; an id an older client does not know is dropped by validateMessage. */
 export const EMOTES = {
+  // the first seven are the original ids: keep them so older clients still understand them
   wave: '👋', heart: '❤️', smile: '😄', party: '🎉',
   hola: '¡Hola!', juguemos: '¡Juguemos!', chau: '¡Chau!',
+  laugh: '😂', love: '😍', sad: '😢', wow: '😮', angry: '😡', sleepy: '😴', think: '🤔',
+  thumbs: '👍', clap: '👏', pray: '🙏', strong: '💪', peace: '✌️',
+  star: '⭐', fire: '🔥', tree: '🎄', gift: '🎁', fish: '🐟', pizza: '🍕', ball: '⚽', game: '🎮',
+  gracias: '¡Gracias!', bienhecho: '¡Bien hecho!', suerte: '¡Suerte!',
 };
+
+/** How the picker groups the emotes (tabs inside the fan, then the phrases): every id of EMOTES is in exactly one group. */
+export const EMOTE_TABS = [
+  { id: 'mood', label: 'Ánimo', ids: ['smile', 'laugh', 'love', 'sad', 'wow', 'angry', 'sleepy', 'think'] },
+  { id: 'gestures', label: 'Gestos', ids: ['wave', 'thumbs', 'clap', 'pray', 'strong', 'peace'] },
+  { id: 'things', label: 'Cosas', ids: ['heart', 'party', 'star', 'fire', 'tree', 'gift', 'fish', 'pizza', 'ball', 'game'] },
+];
+export const EMOTE_PHRASES = ['hola', 'juguemos', 'chau', 'gracias', 'bienhecho', 'suerte'];
+/** The always-visible row on a desktop: the most used ones. */
+export const EMOTE_QUICK = ['wave', 'heart', 'smile', 'party', 'hola', 'juguemos', 'chau'];
 
 /** A display name: letters, digits, space and _ ' . - only, collapsed, at most MAX_NAME characters; a placeholder when nothing is left. */
 export function sanitizeName(input) {

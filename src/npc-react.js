@@ -2,7 +2,7 @@
 // player can send) is answered by the nearest such villager with a short line, and for the happy ones an emote of its own. All of it is local to this screen:
 // what goes over the network is only the player's own emote, which the others see like any emote. Lines are short, in neutral Spanish and kid-safe.
 import { hashSeed } from './life.js';
-import { EMOTES } from './protocol.js';
+import { EMOTES, EMOTE_TABS } from './protocol.js';
 
 export const REPLY_WINDOW_MS = 6000;       // a villager hears the emote when it spoke this recently...
 export const REPLY_RANGE = 6;              // ...and is this close (tiles)
@@ -21,9 +21,18 @@ export const REACTIONS = {
   chau: { emote: 'wave', lines: ['¡Chau, {name}! ¡Vuelve pronto!', '¡Hasta luego, amigo!', '¡Que te vaya muy bien!', '¡Nos vemos pronto!'] },
 };
 
+/** The emotes without lines of their own are answered by their tab's pool (mood, gestures, things) and the phrases by a kind one. */
+const GROUP_REACTIONS = {
+  mood: { emote: 'smile', lines: ['¡Te entiendo, {name}!', 'Los ánimos suben y bajan.', '¡Qué expresivo eres!', 'Cuéntame cómo te sientes.'] },
+  gestures: { emote: 'wave', lines: ['¡Qué buen gesto, {name}!', '¡Igualmente, amigo!', '¡Me gusta tu estilo!', '¡Muy bien, {name}!'] },
+  things: { emote: 'smile', lines: ['¡Qué buena idea, {name}!', '¡Me encanta eso!', '¡Qué divertido!', '¡Gran elección!'] },
+  phrases: { emote: 'smile', lines: ['¡Qué amable, {name}!', '¡De nada, amigo!', '¡Muchas gracias a ti!', '¡Que tengas un lindo día!'] },
+};
+const groupOf = (emote) => (EMOTE_TABS.find((t) => t.ids.includes(emote)) || { id: 'phrases' }).id;
+
 /** The answer of villager `villager` to emote `emote` from a pet called `name`; `n` (how many answers there were) moves it along the pool. -> { emote, line } or null. */
 export function reactionTo(emote, villager, name = '', n = 0) {
-  const r = Object.hasOwn(REACTIONS, emote) ? REACTIONS[emote] : null;
+  const r = Object.hasOwn(REACTIONS, emote) ? REACTIONS[emote] : Object.hasOwn(EMOTES, emote) ? GROUP_REACTIONS[groupOf(emote)] : null;
   if (!r) return null;
   const line = r.lines[(hashSeed(`${villager}:${emote}`) + n) % r.lines.length].replaceAll('{name}', name || 'amigo');
   return { emote: r.emote, line };
@@ -45,4 +54,4 @@ export function hearer(voices, pet, spokeAt, now) {
 }
 
 /** Every emote the player can send has an answer (a test keeps this true when emotes are added). */
-export const answersAll = () => Object.keys(EMOTES).every((e) => Object.hasOwn(REACTIONS, e));
+export const answersAll = () => Object.keys(EMOTES).every((e) => reactionTo(e, 'tito') !== null);
