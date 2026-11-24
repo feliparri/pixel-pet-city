@@ -18,7 +18,7 @@ Owner 2026-11-24: "falta musica en la ciudad y sonidos de ambiente, la hora est√
 
 ## Tasks
 - [x] WX.1 Weather rules (pure): kind and intensity from UTC time and a fixed seed, fades between spells, snow only in the Christmas season; dev `?weather=<kind>`. Tests. Route: delegated (one writer for the feature, 4+ files). Done 5ad5104: src/weather.js (30 min slots, spells of 1-2 slots, 8 min fades, lightning strikes, dev override), 10 tests, full suite 713 pass.
-- [ ] WX.2 Weather on screen: rain streaks and splashes, cloud dimming, fog, lightning flash, in HD-2D and flat, with the existing snow folded in. The fishing scene shows the weather too. Screenshots at 844x390 and the perf box checked. Route: delegated.
+- [x] WX.2 Weather on screen: rain streaks and splashes, cloud dimming, fog, lightning flash, in HD-2D and flat, with the existing snow folded in. The fishing scene shows the weather too. Screenshots at 844x390 and the perf box checked. Route: delegated. Done 90e59e3: src/weather-fx.js (one-stroke rain, bounded splashes, cached cloud and fog in the fx overlay, flash), snow folded in (?dev=1&snow=1 = weather snow), flat and fishing views, life shelters in rain. Screenshots ../.playwright-mcp/wx-*.png. Perf 6x CPU, night: clear dibujo 4.5 ms, rain 5.1, storm 5.0, rain with skip=clima 4.7; no throttle 1.9 vs 1.8 vs 2.1. 720 tests pass.
 - [ ] AM.1 City music: day, night and rain variants, sound switch respected, silent under the arcade and fishing layers. Route: delegated.
 - [ ] AM.2 Ambient sound: birds, crickets, water, rain and thunder, farm animals, by area and moment. Route: delegated.
 
