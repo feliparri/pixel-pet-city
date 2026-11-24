@@ -13,7 +13,7 @@ import { bakeArea } from './art/bake.js';
 import { rippleSpots } from './art/ground.js';
 import { rippleColour } from './art/beach.js';
 import { fountainFrame } from './art/props.js';
-import { P } from './art/palette.js';
+import { P, noise } from './art/palette.js';
 import { badge, bobY, BADGE } from './art/icons.js';
 import { drawChicken, CHICKEN_SIZE } from './art/chicken.js';
 import { ball as drawBall } from './art/places.js';
@@ -100,6 +100,17 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
     if (x - cam.x < -TILE || x - cam.x > vw || y - cam.y < -TILE || y - cam.y > vh) continue;
     sctx.fillStyle = ch ? rippleColour(ch) : P.a3;
     for (const [dx, dy, w] of rippleSpots(tx, ty, frame)) sctx.fillRect(x + dx - cam.x, y + dy - cam.y, w, 1);
+  }
+  if (amb.night > 0.3 && baked.water.length) {                                 // the stars in the water (a simple version of src/hd2d/reflect.js): a few twinkling pale dots on every water tile in view
+    const level = Math.min(1, (amb.night - 0.3) / 0.45) * 0.8;
+    for (const [x, y, tx, ty] of baked.water) {
+      if (x - cam.x < -TILE || x - cam.x > vw || y - cam.y < -TILE || y - cam.y > vh) continue;
+      for (let i = 0; i < 2; i++) {
+        const a = (0.5 + 0.5 * Math.sin(now / (380 + noise(tx, ty, 300 + i) * 500) + noise(tx, ty, 310 + i) * 6.28)) * level;
+        sctx.fillStyle = `rgba(190,215,255,${a})`;
+        sctx.fillRect(Math.round(x + 1 + noise(tx, ty, 200 + i) * 13 - cam.x), Math.round(y + 2 + noise(tx, ty, 210 + i) * 12 - cam.y), 1, 1);
+      }
+    }
   }
   if (wave && baked.water.length) {                                           // the surf's foam: the wave of the clock running to the shore (src/surf.js)
     for (const q of waveStrokes(wave, 1, area.h - 2, TILE, shallowFrom)) {

@@ -10,6 +10,7 @@ import { cameraFor, PHONE_OUT, followFocus, followMargin, snapFocus, sortBackToF
 import { groundMult, approach } from './light.js';
 import { buildWorld, bakeGround, visibleWater, drawGround, standingItems, drawGlows, fountainItem, paintFarm, decorItems, drawDecorGlows, drawGhosts } from './scene.js';
 import { createFx } from './fx.js';
+import { createReflector } from './reflect.js';
 import { zoomFactor, ZOOM_SECS } from '../sea.js';
 import { createGlLayer } from './gl.js';
 import { createGovernor, encodeLevel, decodeLevel } from './quality.js';
@@ -42,6 +43,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
   const ref = compact ? 148 : 230, out = compact ? PHONE_OUT : 1;
   const painter = createPetPainter(sprites);
   const things = createThings();
+  const reflector = createReflector();                                              // the sky in the water (stars at night, the show's lights): src/hd2d/reflect.js
   let darkCanvas = null;
   let world = null, ground = null, fx = null, box = null, areaName = 'town';
   const worlds = new Map();                                                         // one baked world per outdoor area, built the first time it is visited
@@ -51,7 +53,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
   const fxOpts = { bloom: true, tiltshift: true, cloud: 0, fog: 0 };                // what fx.apply reads each frame (reused: no allocation)
   let showFx = null, kShow = 0, kSwim = 0, stars = null, starsSeed = null;                // kSwim: the camera's zoom-out for the water, eased
   const gov = createGovernor({ start: savedLevel(), allowFlat: false });            // slow frames only lower the quality: the view never falls back to flat by itself (owner 2026-11-24); a crash still does
-  const stat = { ms: 0, dt: 33, build: 0, parts: { ground: 0, items: 0, fx: 0, overlay: 0 } };                                         // moving averages: the cost of drawing a frame, and the time between frames
+  const stat = { ms: 0, dt: 33, build: 0, parts: { ground: 0, items: 0, fx: 0, overlay: 0, refl: 0 } };                                         // moving averages: the cost of drawing a frame, and the time between frames
 
   function resize(b) {
     box = b;
@@ -158,6 +160,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
       ctx.fillStyle = g; ctx.fillRect(0, edge.y - 2, view.w, 44 * u * 0.5 + 2);
     }
     const tGround = performance.now();
+    const reflected = !skip.has('reflejo') && reflector.draw(ctx, { world, cam, view, now, n, sh, sky, scam, u, hy, k, alpha }), tRefl = reflected ? performance.now() : tGround;      // the stars and the show in the water
     if (state.wave && world.waterRows.size) {                              // the surf's foam, over the sea and under everything that stands on it
       ctx.fillStyle = '#eaf7ff';
       for (const q of waveStrokes(state.wave, 1, getArea(areaName).h - 2, TILE, shallowFrom)) {
@@ -229,7 +232,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
     if (state.fade > 0) { ctx.fillStyle = `rgba(14,16,26,${Math.min(1, state.fade)})`; ctx.fillRect(0, 0, view.w, view.h); }
     const tEnd = performance.now(), pt = stat.parts;
     stat.ms += (tEnd - t0 - stat.ms) * 0.05;
-    pt.ground += (tGround - t0 - pt.ground) * 0.05; pt.items += (tItems - tGround - pt.items) * 0.05;      // ?perf=1 shows where a frame goes
+    pt.ground += (tGround - t0 - pt.ground) * 0.05; pt.items += (tItems - tRefl - pt.items) * 0.05; pt.refl += (tRefl - tGround - pt.refl) * 0.05;      // ?perf=1 shows where a frame goes
     pt.fx += (tFx - tItems - pt.fx) * 0.05; pt.overlay += (tEnd - tFx - pt.overlay) * 0.05;
   }
 

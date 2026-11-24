@@ -20,7 +20,7 @@ export function createMeter() {
   };
 }
 
-const PARTS = ['suelo', 'cosas', 'efectos', 'clima', 'textos'];
+const PARTS = ['suelo', 'cosas', 'efectos', 'clima', 'textos', 'reflejo'];
 /** ?perf=1&skip=suelo,efectos: the HD-2D parts to leave out (only with perf=1, so a stray skip never strips the town). */
 export function perfSkip(search) {
   const q = new URLSearchParams(search);
@@ -40,7 +40,7 @@ export function perfLines({ town, hd, view }) {
   if (hd.parts && hd.mode === 'hd') {
     const p = hd.parts;
     lines.push(`suelo ${f1(p.ground)}  cosas ${f1(p.items)}`);
-    lines.push(`efectos ${f1(p.fx)}  textos ${f1(p.overlay)}`);
+    lines.push(`efectos ${f1(p.fx)}  textos ${f1(p.overlay)}  reflejo ${f1(p.refl)}`);
     if (hd.gl && hd.gl.on) lines.push(`WebGL ${hd.gl.quads} quads  ${hd.gl.calls} llamadas  ${hd.gl.uploads} texturas`);
   }
   if (hd.skip && hd.skip.length) lines.push(`sin: ${hd.skip.join(', ')}`);
