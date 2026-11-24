@@ -10,10 +10,12 @@ export const DEFAULT_SWIM_PACE = 1.25;
 /** 'shallow', 'deep' or null for the tile (x, y) of `area`. */
 export const depthAt = (area, x, y) => waterAt(x, y, area);
 
-/** The step time multiplier for a pet of `species` stepping onto (x, y): 1 on land and in the shallows. */
-export function paceFactor(area, x, y, species) {
-  return depthAt(area, x, y) === 'deep' ? (SWIM_PACE[species] ?? DEFAULT_SWIM_PACE) : 1;
+/** The step time multiplier for a pet of `species` stepping onto (x, y), on its board or not: 1 on land and in the shallows. */
+export function paceFactor(area, x, y, species, board = false) {
+  return depthAt(area, x, y) === 'deep' ? (SWIM_PACE[species] ?? DEFAULT_SWIM_PACE) * (board ? BOARD_PACE : 1) : 1;
 }
+/** Paddling on a board is quicker than swimming: a step in deep water takes this much of the swimmer's. */
+export const BOARD_PACE = 0.8;
 
 /**
  * The water a walker is in, for its pose: the tile it started the step on for the first half of the step, the one it is going to after that (so the pet sinks and

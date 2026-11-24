@@ -82,56 +82,67 @@ export { rippleSpots };
 
 // ---- upright things ---------------------------------------------------------------------------------------------------------------------------
 
-/** A palm, 32 x 48: a leaning trunk with rings, a crown of drooping fronds and a few coconuts. */
+/** A palm, 56 x 88 (about 1.8 times the first one): a tall leaning trunk with rings, a crown of long drooping fronds and a few coconuts. */
 export function palm(seed = 0) {
-  const c = canvas(32, 48), ctx = c.getContext('2d');
-  const lean = seed % 2 ? 3 : -3;
-  const trunk = (t) => ({ x: 15 + lean * t * t, y: 47 - t * 31 });                     // t 0 (foot) .. 1 (crown)
-  for (let k = 0; k <= 30; k++) {
-    const t = k / 30, p = trunk(t), w = 4 - t * 1.6, px = Math.round(p.x - w / 2), py = Math.round(p.y);
+  const c = canvas(56, 88), ctx = c.getContext('2d');
+  const lean = seed % 2 ? 6 : -6;
+  const trunk = (t) => ({ x: 27 + lean * t * t, y: 87 - t * 62 });                     // t 0 (foot) .. 1 (crown)
+  for (let k = 0; k <= 62; k++) {
+    const t = k / 62, p = trunk(t), w = 6.4 - t * 2.4, px = Math.round(p.x - w / 2), py = Math.round(p.y);
     rect(ctx, P.ink, px - 1, py, Math.round(w) + 2, 2);
-    rect(ctx, k % 4 < 2 ? P.w3 : P.w2, px, py, Math.round(w), 2);
+    rect(ctx, k % 6 < 3 ? P.w3 : P.w2, px, py, Math.round(w), 2);
     dot(ctx, P.w4, px, py);
+    if (k % 6 === 0) rect(ctx, P.w1, px, py, Math.round(w), 1);                        // the rings of the trunk
   }
+  rect(ctx, P.ink, 22, 85, 12, 3); rect(ctx, P.w2, 23, 85, 10, 2);                    // the foot
   const top = trunk(1), cx = Math.round(top.x), cy = Math.round(top.y);
-  const fronds = [[-170, 13], [-140, 15], [-105, 11], [-70, 11], [-40, 15], [-10, 13], [20, 10], [160, 10]];
+  const fronds = [[-172, 25], [-142, 28], [-108, 21], [-72, 21], [-38, 28], [-8, 25], [24, 19], [158, 19]];
   const leaf = [P.g1, P.g2, P.g3];
   for (const [deg, len] of fronds) {
     const a = (deg * Math.PI) / 180;
+    const at = (s) => { const t = s / len; return [Math.round(cx + Math.cos(a) * s), Math.round(cy - Math.sin(a) * s * 0.7 + t * t * 17)]; };
+    for (let s = 0; s <= len; s++) { const [x, y] = at(s); rect(ctx, P.gOut, x - 2, y - 2, 4, 4); }
     for (let s = 0; s <= len; s++) {
-      const t = s / len, px = cx + Math.cos(a) * s, py = cy - Math.sin(a) * s * 0.7 + t * t * 9;
-      const x = Math.round(px), y = Math.round(py);
-      rect(ctx, P.gOut, x - 1, y - 1, 3, 3);
-    }
-    for (let s = 0; s <= len; s++) {
-      const t = s / len, px = cx + Math.cos(a) * s, py = cy - Math.sin(a) * s * 0.7 + t * t * 9;
-      const x = Math.round(px), y = Math.round(py);
-      rect(ctx, leaf[(s + (seed >> 1)) % 3 === 0 ? 0 : s % 2 ? 1 : 2], x - 1, y - 1, 2, 2);
-      if (s % 3 === 1 && t > 0.2) dot(ctx, leaf[1], x - 1, y + 1);
+      const [x, y] = at(s), t = s / len;
+      rect(ctx, leaf[(s + (seed >> 1)) % 4 === 0 ? 0 : s % 2 ? 1 : 2], x - 1, y - 1, 3, 3);
+      if (s % 3 === 1 && t > 0.15) { dot(ctx, leaf[1], x - 2, y + 2); dot(ctx, leaf[0], x + 2, y + 2); }      // the leaflets
     }
   }
-  rect(ctx, P.ink, cx - 2, cy, 5, 3); rect(ctx, P.w2, cx - 1, cy, 3, 2);
-  for (const [dx, dy] of [[-2, 3], [1, 3]]) { rect(ctx, P.ink, cx + dx - 1, cy + dy, 3, 3); rect(ctx, P.w3, cx + dx, cy + dy, 2, 2); dot(ctx, P.w5, cx + dx, cy + dy); }
+  rect(ctx, P.ink, cx - 4, cy, 9, 5); rect(ctx, P.w2, cx - 3, cy, 7, 4);
+  for (const [dx, dy] of [[-3, 5], [2, 5], [-0, 7]]) { rect(ctx, P.ink, cx + dx - 2, cy + dy, 5, 5); rect(ctx, P.w3, cx + dx - 1, cy + dy + 1, 3, 3); dot(ctx, P.w5, cx + dx - 1, cy + dy + 1); }
   return c;
 }
 
-/** A beach umbrella, 24 x 32: a striped canopy on a pole. `seed` picks the colour pair. */
+/** A beach umbrella, 36 x 48 (1.5 times the first one): a striped canopy on a pole. `seed` picks the colour pair. */
 export function umbrella(seed = 0) {
-  const c = canvas(24, 32), ctx = c.getContext('2d');
+  const c = canvas(36, 48), ctx = c.getContext('2d');
   const pal = [[P.red, P.cream], ['#3f7ad0', P.cream], ['#f0b030', P.cream], ['#2fa87a', P.cream]][seed % 4];
-  rect(ctx, P.ink, 11, 10, 3, 22); rect(ctx, P.w4, 12, 10, 1, 22); rect(ctx, P.w2, 13, 10, 1, 22);      // the pole
-  rect(ctx, P.ink, 9, 30, 7, 2); rect(ctx, P.w3, 10, 30, 5, 1);
-  const cx = 12.5, cy = 11;
-  for (let j = 0; j < 11; j++) for (let i = 0; i < 25; i++) {
-    const dx = (i - cx) / 12, dy = (j - cy + 0.5) / 9.5, d = dx * dx + dy * dy;
+  rect(ctx, P.ink, 16, 15, 4, 33); rect(ctx, P.w4, 17, 15, 1, 33); rect(ctx, P.w2, 18, 15, 1, 33);      // the pole
+  rect(ctx, P.ink, 13, 45, 10, 3); rect(ctx, P.w3, 14, 45, 8, 1);
+  const cx = 18.5, cy = 16.5;
+  for (let j = 0; j < 17; j++) for (let i = 0; i < 37; i++) {
+    const dx = (i - cx) / 18, dy = (j - cy + 0.5) / 15, d = dx * dx + dy * dy;
     if (d > 1) continue;
-    const edge = d > 0.82 || j === 0;
-    const stripe = Math.floor((i + 1) / 4) % 2 === 0;
-    rect(ctx, edge ? P.ink : stripe ? pal[0] : pal[1], i - 0, j + 1, 1, 1);
-    if (!edge && stripe && j < 4) dot(ctx, P.cream, i, j + 1);
+    const edge = d > 0.86 || j === 0;
+    const stripe = Math.floor((i + 1) / 6) % 2 === 0;
+    rect(ctx, edge ? P.ink : stripe ? pal[0] : pal[1], i, j + 1, 1, 1);
+    if (!edge && stripe && j < 6) dot(ctx, P.cream, i, j + 1);
   }
-  for (let i = 1; i < 24; i += 4) { dot(ctx, P.ink, i, 12); dot(ctx, i % 8 === 1 ? pal[0] : pal[1], i + 1, 12); }          // the scalloped hem
-  dot(ctx, P.ink, 12, 0); dot(ctx, P.ink, 12, 1);
+  for (let i = 1; i < 36; i += 6) { rect(ctx, P.ink, i, 18, 2, 1); rect(ctx, i % 12 === 1 ? pal[0] : pal[1], i + 2, 18, 3, 1); }          // the scalloped hem
+  rect(ctx, P.ink, 18, 0, 1, 2);
+  return c;
+}
+
+/** A lounger (deck chair), 28 x 18: a wooden frame, a striped cushion and a raised back at one end. `seed` picks the colours. */
+export function lounger(seed = 0) {
+  const c = canvas(28, 18), ctx = c.getContext('2d');
+  const pal = [[P.red, P.cream], ['#3f7ad0', P.cream], ['#2fa87a', P.yellow2]][seed % 3];
+  rect(ctx, P.ink, 4, 14, 3, 4); rect(ctx, P.ink, 21, 14, 3, 4); rect(ctx, P.w3, 5, 14, 1, 3); rect(ctx, P.w3, 22, 14, 1, 3);            // the legs
+  rect(ctx, P.ink, 3, 10, 23, 5); rect(ctx, P.w4, 4, 11, 21, 3);                                                                      // the frame
+  for (let i = 0; i < 21; i++) rect(ctx, i % 6 < 3 ? pal[0] : pal[1], 4 + i, 10, 1, 4);                                              // the cushion
+  rect(ctx, P.ink, 3, 9, 23, 1); rect(ctx, P.w2, 4, 14, 21, 1);
+  for (let k = 0; k < 7; k++) { rect(ctx, P.ink, 2 + k, 9 - k, 8, 1); rect(ctx, P.ink, 2 + k, 9 - k, 1, 2); rect(ctx, k % 2 ? pal[1] : pal[0], 3 + k, 9 - k, 6, 1); }   // the raised back
+  rect(ctx, P.ink, 2, 3, 8, 1);
   return c;
 }
 

@@ -27,6 +27,7 @@ import { paintSky, drawWeatherTop } from './weather-fx.js';
 import { waterOf, SUBMERGE } from './sea.js';
 import { waveStrokes } from './surf.js';
 import { drawWake, drawBoard } from './sea-draw.js';
+import { lying } from './lounge.js';
 
 export const VIEW_W = 224;              // the portrait reference view; a box taller than wide is fitted to it (and the dev previews use it)
 export const VIEW_H = 288;
@@ -137,8 +138,8 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
   for (const e of all) {
     const p = e.walker.pos();
     const k = e.walker.moving ? Math.min(1, e.walker.t / e.walker.stepMs()) : 0;
-    const ride = e.surf === 1, wiped = e.surf === 2, water = e.npc ? null : waterOf(areaName, e.walker) || (ride || wiped ? 'deep' : null), swim = water === 'deep' && !ride;      // swimming: the lower part is under the surface and the pet bobs; a surfer stands on its board
-    const hop = e.walker.moving && !swim && !ride ? Math.round(Math.abs(Math.sin(k * Math.PI)) * 3) : 0;
+    const ride = e.surf === 1, wiped = e.surf === 2, water = e.npc ? null : waterOf(areaName, e.walker) || (ride || wiped ? 'deep' : null), paddle = e.surf === 3 && !!water && !ride && !wiped, swim = water === 'deep' && !ride && !paddle, lie = !e.npc && !water && lying(areaName, e.walker);      // swimming: the lower part is under the surface and the pet bobs; a surfer stands on its board
+    const hop = e.walker.moving && !swim && !ride && !paddle ? Math.round(Math.abs(Math.sin(k * Math.PI)) * 3) : 0;
     const air = jumpLift(now, e.jumpAt);                                                                      // a jump (Space): the pet rises, its shadow stays
     const bx = Math.round(p.x * TILE + TILE / 2 - cam.x), by = Math.round(p.y * TILE + TILE - cam.y);       // the feet
     if (bx < -20 || bx > vw + 20 || by < 0 || by > vh + 40) continue;                                       // off screen: nothing to draw
@@ -156,13 +157,14 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
         if (!(fx && flickers(e.fx.id, e.fx.phase, now - e.fx.t0))) {
           const flap = (e.walker.moving || lift > 0) && Math.floor(now / 140) % 2 === 1;
           small(px, by - lift, () => {
-            if (ride) { drawBoard(sctx, 0, -1, 1, { squash: 0.5, night: amb.night }); sctx.translate(0, -2); }
+            if (ride || paddle) { drawBoard(sctx, 0, -1, 1, { squash: 0.5, night: amb.night }); sctx.translate(0, -2); if (paddle) sctx.scale(1, 0.82); }
+            if (lie) { const dir = e.walker.d === 'left' ? -1 : 1; sctx.translate(-dir * 7, -8); sctx.rotate((dir * Math.PI) / 2); sctx.translate(0, CELL - 2); }
             if (swim) { const sub = wiped ? { sink: 9, cut: 12 } : SUBMERGE; sctx.beginPath(); sctx.rect(-CELL, -2 * CELL, 2 * CELL, 2 * CELL - sub.cut + 1 + sub.sink - 5); sctx.clip(); sctx.translate(0, sub.sink - 4 + Math.round(Math.sin(now / (wiped ? 110 : 320) + e.id.charCodeAt(0)) * (wiped ? 2 : 1))); }      // only what is above the water
-            drawPet(sctx, e.sprites || sprites, e.look, -CELL / 2, -CELL + 2 - hop - air, { frame: lift > 0 ? 'happy' : headFrame(e, now, e.id), flip: e.walker.d === 'left', flap, now });
+            drawPet(sctx, e.sprites || sprites, e.look, -CELL / 2, -CELL + 2 - hop - air, { frame: lift > 0 ? 'happy' : lie ? 'blink' : headFrame(e, now, e.id), flip: e.walker.d === 'left', flap, now });
           });
         }
         if (wiped) small(px, by, () => drawBoard(sctx, 15, 1, 1, { squash: 0.5, night: amb.night, tilt: Math.sin(now / 200) }));
-        if (water) small(px, by - (swim ? 1 : 0), () => drawWake(sctx, 0, 0, 1, { depth: water, moving: ride || e.walker.moving, d: ride ? 'right' : e.walker.d, squash: 0.5, now, night: amb.night, seed: e.id.charCodeAt(0) }));
+        if (water) small(px, by - (swim ? 1 : 0), () => drawWake(sctx, 0, 0, 1, { depth: water, moving: ride || e.walker.moving, d: ride ? 'right' : e.walker.d, paddle, squash: 0.5, now, night: amb.night, seed: e.id.charCodeAt(0) }));
         labels.push({ text: e.name, x: px - Math.floor(textWidth(font, e.name) / 2), y: by + 2 - lift, colour: e === me ? '#f8d040' : e.npc ? '#a8e6cf' : '#f4f6fa' });
       }
       if (fx) small(px, by - lift, () => drawEntranceFx(sctx, e.fx.id, fx, 0, 0, CELL, true));

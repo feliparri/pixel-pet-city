@@ -13,7 +13,7 @@ import { drawPet, CELL } from '../sprites.js';
 import { SHOPKEEPER } from '../npcs.js';
 
 let sprites = null;
-const kit = () => sprites || (sprites = { barn: FM.barn(), well: FM.well(), scarecrow: FM.scarecrow(), stallBack: FM.stallBack(), stallFront: FM.stallFront(), fruit: [FM.fruitTree(0), FM.fruitTree(1), FM.fruitTree(2)], palm: [BE.palm(0), BE.palm(1)], umbrella: [0, 1, 2, 3].map((i) => BE.umbrella(i)), lifeguard: BE.lifeguard(), rocks: [BE.rocks(0), BE.rocks(1)], oak: [oak(1), oak(2)], pine: [pine(1), pine(2)], bush: [bush(0), bush(1)], lamp: lamp(), lampLit: lampLit(), coop: PL.coop(), counter: counter(), nightWindow: nightWindow() });
+const kit = () => sprites || (sprites = { barn: FM.barn(), well: FM.well(), scarecrow: FM.scarecrow(), stallBack: FM.stallBack(), stallFront: FM.stallFront(), fruit: [FM.fruitTree(0), FM.fruitTree(1), FM.fruitTree(2)], palm: [BE.palm(0), BE.palm(1)], umbrella: [0, 1, 2, 3].map((i) => BE.umbrella(i)), lounger: [0, 1, 2].map((i) => BE.lounger(i)), lifeguard: BE.lifeguard(), rocks: [BE.rocks(0), BE.rocks(1)], oak: [oak(1), oak(2)], pine: [pine(1), pine(2)], bush: [bush(0), bush(1)], lamp: lamp(), lampLit: lampLit(), coop: PL.coop(), counter: counter(), nightWindow: nightWindow() });
 
 /** The outdoor areas: the town (plaza, fountain, houses) and the farm (fields, barn, orchard) share every tile that is the same. */
 function bakeOutdoor(area) {
@@ -42,9 +42,10 @@ function bakeOutdoor(area) {
       case 'i': BE.shore(ctx, x, y, tx, ty); break;
       case '-': BE.boardwalk(ctx, x, y, tx, ty); break;
       case 'Q': BE.towel(ctx, x, y, tx, ty); break;
+      case '&': BE.sand(ctx, x, y, tx, ty); shadow(ctx, x + 8, y + 14, 9, 2, 0.25); out.props.push({ x: x - 6, y: y + 16 - 18, sortY: y + 13, sprite: k.lounger[(tx + ty) % 3] }); break;
       case 'l': case 'D': case 'K': case '%': BE.sea(ctx, x, y, tx, ty, ch, at); if (ch !== '%') out.water.push([x, y, tx, ty, ch]); break;
-      case 'O': BE.sand(ctx, x, y, tx, ty); shadow(ctx, x + 9, y + 14, 9, 2.5, 0.28); out.props.push({ x: x - 4, y: y + 16 - 32, sortY: y + 16, sprite: k.umbrella[(tx * 3 + ty) & 3] }); break;
-      case 'J': BE.sand(ctx, x, y, tx, ty); shadow(ctx, x + 12, y + 14, 10, 3, 0.3); out.props.push({ x: x - 8, y: y + 16 - 48, sortY: y + 16, sprite: k.palm[(tx + ty) & 1] }); break;
+      case 'O': BE.sand(ctx, x, y, tx, ty); shadow(ctx, x + 9, y + 14, 14, 3.5, 0.28); out.props.push({ x: x - 10, y: y + 16 - 48, sortY: y + 16, sprite: k.umbrella[(tx * 3 + ty) & 3] }); break;
+      case 'J': BE.sand(ctx, x, y, tx, ty); shadow(ctx, x + 12, y + 14, 14, 3.5, 0.3); out.props.push({ x: x - 20, y: y + 16 - 88, sortY: y + 16, sprite: k.palm[(tx + ty) & 1] }); break;
       case 'X': BE.sand(ctx, x, y, tx, ty); shadow(ctx, x + 8, y + 14, 8, 2, 0.28); out.props.push({ x, y: y + 16 - 14, sortY: y + 14, sprite: k.rocks[(tx * 5 + ty) & 1] }); break;
       case 'I': BE.sand(ctx, x, y, tx, ty); shadow(ctx, x + 10, y + 15, 11, 3, 0.3); out.props.push({ x: x - 4, y: y + 16 - 40, sortY: y + 16, sprite: k.lifeguard }); break;
       case 'p': PL.pad(ctx, x, y, tx, ty); break;

@@ -50,6 +50,7 @@ export const TILES = {
   'i': { name: 'shore', solid: false },        // wet sand where the waves end
   '-': { name: 'boardwalk', solid: false },
   'Q': { name: 'towel', solid: false },
+  '&': { name: 'lounger', solid: false },       // a deck chair: open ground; a pet that stands still on it lies down (src/lounge.js)
   'l': { name: 'shallows', solid: false, water: 'shallow' },      // walkable at the normal pace
   'D': { name: 'deep water', solid: false, water: 'deep' },       // the pet swims here, slower (see src/sea.js)
   'K': { name: 'break', solid: false, water: 'deep', surf: true },   // deep water where the waves rise: with a board, the pet catches them from here
@@ -353,9 +354,10 @@ function buildBeach() {
     fill(32, BEACH.door[0], w - 32, 2, '-');
     // the sand's furniture: umbrellas with their towels, rocks, palms, the lifeguard post
     for (const [x, y] of [[31, 5], [36, 8], [41, 5], [33, 12], [40, 12], [31, 24], [37, 27], [43, 24], [35, 31], [44, 30]]) { set(x, y, 'O'); set(x + 1, y + 1, 'Q'); }
+    for (const [x, y] of [[32, 6], [42, 6], [41, 13], [32, 25], [44, 25], [36, 32]]) set(x, y, '&');      // loungers in the shade, in place of some towels
     for (const [x, y] of [[29, 21], [27, 11]]) set(x, y, 'I');
     for (const [x, y] of [[28, 3], [29, 3], [28, 4], [45, 22], [46, 22], [45, 23], [29, 33], [30, 33], [30, 32], [44, 12], [38, 15], [39, 15], [26, 28]]) set(x, y, 'X');
-    for (const [x, y] of [[34, 3], [38, 2], [44, 8], [46, 11], [33, 20], [42, 21], [36, 24], [40, 30], [46, 28], [28, 15], [32, 9], [45, 33], [30, 29]]) set(x, y, 'J');
+    for (const [x, y] of [[34, 3], [38, 2], [46, 8], [46, 11], [33, 20], [42, 21], [36, 24], [40, 30], [46, 28], [28, 15], [27, 8], [45, 33], [30, 29]]) set(x, y, 'J');
     for (const [x, y] of [[33, 16], [39, 16], [45, 16], [36, 19], [42, 19]]) set(x, y, 'L');          // lamps along the boardwalk
     // signs
     for (const s of SIGNS) if (s.area === 'beach') set(s.x, s.y, 'S');

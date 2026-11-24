@@ -13,6 +13,7 @@ import { grade } from './scene.js';
 import { createFrameCache, createShadows, drawShadow } from './framecache.js';
 import { waterOf, SUBMERGE } from '../sea.js';
 import { drawWake, drawBoard } from '../sea-draw.js';
+import { lying } from '../lounge.js';
 
 const PET_RINGS = [[1, 0.16], [8.5 / 11, 0.2], [6 / 11, 0.24]];            // the soft ground shadow: three discs of 11, 8.5 and 6 px
 
@@ -65,8 +66,10 @@ export function createPetPainter(sprites) {
     if (cx < -SIZE * s || cx > view.w + SIZE * s || cy < 0 || cy > view.h + FEET_Y * s) return null;
     const k = e.walker.moving ? Math.min(1, e.walker.t / e.walker.stepMs()) : 0;
     const ride = e.surf === 1, wiped = e.surf === 2, water = e.npc ? null : waterOf(area, e.walker) || (ride || wiped ? 'deep' : null);
-    const swim = water === 'deep' && !ride;                                                       // in deep water the pet swims: its lower part is under the surface and it bobs instead of hopping; a surfer stands on its board
-    const hop = e.walker.moving && !swim && !ride ? Math.round(Math.abs(Math.sin(k * Math.PI)) * 3) : 0;
+    const paddle = e.surf === 3 && !!water && !ride && !wiped;                                      // with a board, a pet in the water kneels on it and paddles
+    const swim = water === 'deep' && !ride && !paddle;                                              // in deep water the pet swims: its lower part is under the surface and it bobs instead of hopping; a surfer stands on its board
+    const lie = !e.npc && !water && lying(area, e.walker);                                          // standing still on a lounger: lying down
+    const hop = e.walker.moving && !swim && !ride && !paddle ? Math.round(Math.abs(Math.sin(k * Math.PI)) * 3) : 0;
     const bob = wiped ? Math.round(Math.sin(now / 110 + e.id.charCodeAt(0)) * 2) : swim ? Math.round(Math.sin(now / 320 + e.id.charCodeAt(0))) : 0;
     const dip = wiped ? { sink: 9, cut: 12 } : SUBMERGE, stand = ride ? 2 : 0;
     const air = jumpLift(now, e.jumpAt);
@@ -80,7 +83,7 @@ export function createPetPainter(sprites) {
         if (!water && lift < (cy / s) * 0.6) drawShadow(c, shadowOf('pet', PET_RINGS, 11 * s), cx, cy - s, Math.max(0.3, cam.sin) * 0.5, 1 - air * 0.04);   // it grows as the pet lands, and stays down in a jump
         if (!(fx && flickers(e.fx.id, e.fx.phase, now - e.fx.t0))) {
           const flap = (e.walker.moving || lift > 0) && Math.floor(now / 140) % 2 === 1;
-          const L = layoutFor(e.sprites || sprites, e.look), frame = lift > 0 ? 'happy' : headFrame(e, now, e.id), flip = e.walker.d === 'left';
+          const L = layoutFor(e.sprites || sprites, e.look), frame = lift > 0 ? 'happy' : lie ? 'blink' : headFrame(e, now, e.id), flip = e.walker.d === 'left';
           const key = `${L.id}|${frame}|${flip ? 1 : 0}|${flap ? 1 : 0}|${hop}|${animKey(L, now)}`;
           const paint = (t) => drawPet(t, e.sprites || sprites, e.look, L.origin.x, L.origin.y - hop, { frame, flip, flap, now });
           const img = frames.graded(key, L.w, L.h, paint, n, lightAt(world.lights, wx, wy));   // night: the veil, and the warm wash where a lamp reaches
@@ -92,12 +95,14 @@ export function createPetPainter(sprites) {
             tctx.globalCompositeOperation = 'source-atop'; tctx.fillStyle = `rgba(${tint.r | 0},${tint.g | 0},${tint.b | 0},${tint.a})`; tctx.fillRect(0, 0, L.w, L.h);
             src = t;
           }
-          if (ride) drawBoard(c, cx, cy - s, s, { squash: Math.max(0.3, cam.sin) * 0.6, night: n });                                   // the board under the surfer
+          if (ride || paddle) drawBoard(c, cx, cy - s, s, { squash: Math.max(0.3, cam.sin) * 0.6, night: n });                                   // the board under the surfer
           if (swim) { const sh = L.feetY - dip.cut; c.drawImage(src, 0, 0, L.w, sh, cx - L.feetX * s + sway * s, cy - (L.feetY + air + lift - dip.sink - bob) * s, L.w * s, sh * s); }      // only what is above the water
+          else if (lie) { c.save(); c.translate(Math.round(cx + sway * s - (flip ? -1 : 1) * L.feetY * 0.45 * s), Math.round(cy - 8 * s)); c.rotate(flip ? -Math.PI / 2 : Math.PI / 2); c.drawImage(src, 0, 0, L.w, L.h, -L.feetX * s, -L.feetY * s, L.w * s, L.h * s); c.restore(); }      // on its back on the lounger: the sprite turned a quarter, head to the side it faces
+          else if (paddle) { const k = 0.8, bobP = Math.round(Math.sin(now / 260 + e.id.charCodeAt(0))); c.drawImage(src, 0, 0, L.w, L.h, cx - L.feetX * s + sway * s, cy - (L.feetY * k + air + lift + 1 + bobP) * s, L.w * s, L.h * k * s); }      // kneeling on the board, a little lower
           else c.drawImage(src, 0, 0, L.w, L.h, cx - L.feetX * s + sway * s, cy - (L.feetY + air + lift + stand) * s, L.w * s, L.h * s);
         }
         if (wiped) { drawBoard(c, cx + 15 * s, cy + s, s, { squash: Math.max(0.3, cam.sin) * 0.6, night: n, tilt: Math.sin(now / 200) }); drawWake(c, cx, cy - s, s * 1.3, { depth: 'deep', moving: false, d: 'down', squash: Math.max(0.3, cam.sin) * 0.6, now: now * 2, night: n, seed: 3 }); }
-        if (water) drawWake(c, cx, cy - (swim ? 1 : 0) * s, s, { depth: water, moving: ride || e.walker.moving, d: ride ? 'right' : e.walker.d, squash: Math.max(0.3, cam.sin) * 0.6, now, night: n, seed: e.id.charCodeAt(0) });      // rings and foam on the water instead of the ground shadow
+        if (water) drawWake(c, cx, cy - (swim ? 1 : 0) * s, s, { depth: water, moving: ride || e.walker.moving, d: ride ? 'right' : e.walker.d, paddle, squash: Math.max(0.3, cam.sin) * 0.6, now, night: n, seed: e.id.charCodeAt(0) });      // rings and foam on the water instead of the ground shadow
         ov.labels.push({ text: e.name, x: cx + sway * s, y: cy + (2 - lift) * s, colour: e === me ? '#f8d040' : e.npc ? '#a8e6cf' : '#f4f6fa' });
       }
       if (fx) effects(true, sway, -lift);

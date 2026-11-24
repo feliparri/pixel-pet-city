@@ -12,7 +12,7 @@ export const GROUNDS = ['grass', 'path', 'stone', 'wood', 'sand', 'snow', 'wet',
 const BY_NAME = {
   grass: 'grass', flowers: 'grass', bush: 'grass', pitch: 'grass', furrow: 'grass', carrots: 'grass', lettuce: 'grass', pumpkins: 'grass', wheat: 'grass',
   path: 'path', mat: 'path', gate: 'path', track: 'path', hurdle: 'path', hay: 'path', finish: 'path', spot: 'path',
-  plaza: 'stone', floor: 'wood', rug: 'wood', door: 'wood', exit: 'wood', puddle: 'wet', sand: 'sand', dock: 'wood', bridge: 'wood', shore: 'sand', towel: 'sand', boardwalk: 'wood', shallows: 'splash', 'deep water': 'swim', break: 'swim',
+  plaza: 'stone', floor: 'wood', rug: 'wood', door: 'wood', exit: 'wood', puddle: 'wet', sand: 'sand', dock: 'wood', bridge: 'wood', shore: 'sand', towel: 'sand', lounger: 'sand', boardwalk: 'wood', shallows: 'splash', 'deep water': 'swim', break: 'swim',
 };
 /** The ground under tile (x, y) of an area, given the weather's amounts (`wx`: rain, snow 0..1, or null): outdoors, rain makes it wet and snow covers grass, paths and paving. */
 export function groundOf(area, x, y, wx = null) {

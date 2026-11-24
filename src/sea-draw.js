@@ -16,13 +16,18 @@ const dots = (c, cx, cy, rx, ry, n, u, a, night, phase = 0) => {
  * Rings on the water round a pet. `depth` 'deep' (two rings out of step) or 'shallow' (one small one); `moving`: foam trails behind it, away from `d` (the way it faces);
  * `squash` the tilt of the ground (about 0.5 in the tilted view, 1 flat), `night` 0..1 dims the foam.
  */
-export function drawWake(c, cx, cy, u, { depth, moving, d, squash = 0.5, now, night = 0, seed = 0 }) {
+export function drawWake(c, cx, cy, u, { depth, moving, d, squash = 0.5, now, night = 0, seed = 0, paddle = false }) {
   const t = now / 700 + seed * 0.37;
   if (depth === 'shallow') {
     const p = t % 1;
     dots(c, cx, cy, (5 + 4 * p) * u, (5 + 4 * p) * u * squash, 10, u, 0.6 * (1 - p), night);
   } else {
     for (const k of [0, 0.5]) { const p = (t + k) % 1; dots(c, cx, cy, (6 + 9 * p) * u, (6 + 9 * p) * u * squash, 14, u, 0.95 * (1 - p), night, k * 5); }
+  }
+  if (paddle && moving) {                                                  // the strokes of the paddling arms: a splash at each side, one after the other
+    const side = Math.floor(now / 220) % 2 ? 1 : -1, dd = Math.max(1, Math.round(u * 1.4));
+    c.fillStyle = `rgba(${FOAM[0]},${FOAM[1]},${FOAM[2]},${0.9 * (1 - 0.45 * night)})`;
+    for (let k = 0; k < 3; k++) c.fillRect(Math.round(cx + side * (9 + k * 2) * u - dd / 2), Math.round(cy + (k - 1) * u * squash * 2 - dd / 2), dd, dd);
   }
   if (moving) {
     const away = d === 'left' ? 1 : d === 'right' ? -1 : 0, vert = d === 'up' ? 1 : d === 'down' ? -1 : 0;

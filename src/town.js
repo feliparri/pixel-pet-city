@@ -3,7 +3,8 @@ import { findPath, dirVector } from './path.js';
 import { isWalkable, doorAt, spotAt, tileAt, getArea, waterAt, isBreak, TILES, GAME_PLACES, SPAWNS } from './map.js';
 import { Walker, REMOTE_SNAP } from './walker.js';
 import { paceFactor, waterOf, zoomTarget } from './sea.js';
-import { createSurf, surfFlag, surfAction, press as surfPress, wipeout, wipeOver, finishRide, rideDecide, waveAt, RIDE_MS, SAY } from './surf.js';
+import { createSurf, surfFlag, surfAction, press as surfPress, wipeout, wipeOver, finishRide, rideDecide, waveAt, RIDE_MS, SAY, BOARD } from './surf.js';
+import { loungeAt } from './lounge.js';
 import { isTyping, isJumpKey, runs, tapWalks } from './keys.js';
 import { createTouchpad } from './touchpad.js';
 import { JUMP_MS } from './jump.js';
@@ -67,7 +68,8 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   const [sx, sy] = spawnFor(net.id);
   const self = { id: net.id, name: me.name, look: me.look, stats: me.stats || null, act: 'idle', walker: new Walker(sx, sy), emote: null, jumpAt: null, area: 'town' };
   const surf = createSurf();                                       // surfing at the beach's break (src/surf.js): idle, riding a wave, or wiped out
-  self.walker.tileMult = (x, y) => paceFactor(self.area, x, y, self.look.species);      // the sea slows the pet (the seal swims faster than it walks), src/sea.js
+  const hasBoard = () => tools().includes(BOARD), paddling = (x, y) => hasBoard() && !!waterAt(x, y, self.area);      // with the board, the pet is on it as soon as it is in the water
+  self.walker.tileMult = (x, y) => paceFactor(self.area, x, y, self.look.species, hasBoard());      // the sea slows the pet (the seal swims faster than it walks), src/sea.js
   if (entrance) self.fx = { id: entrance, phase: 'arrive', t0: performance.now(), resolve: null };
   const others = new Map();
   const state = { me: self, others: [], marker: null, area: 'town', amb: ambientAt(hourNow(location.search)), fade: 0 };
@@ -119,14 +121,14 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   const giftWorld = createGiftWorld({ room: net.code || net.id, storage: (() => { try { return localStorage; } catch { return null; } })() });      // the seasonal gifts of the room (src/gift-world.js)
   let giftBusy = new Set(), giftHinted = false, giftCapDay = null, giftRetry = new Map(), giftScanAt = -Infinity, selfSay = null;      // giftBusy: ids being opened; giftHinted: the "travel with your pet" hint was shown; giftCapDay: the town day the server said the cap was reached; giftRetry: id -> when to try again
   let racing = false, slowUntil = 0, lastTile = null;          // the obstacle race: a pet that steps onto an obstacle walks slower for RACE.slowMs
-  self.walker.onStep = (x, y, d) => { net.sendPos(x, y, d, self.area, surfFlag(surf)); if (!self.fx && !suspended && surf.mode !== 'ride') pets.step(self.area, x, y, self.walker.run, wxLv); stepGift(x, y); };      // a step onto or next to a seasonal gift opens it
+  self.walker.onStep = (x, y, d) => { net.sendPos(x, y, d, self.area, surfFlag(surf, paddling(x, y))); if (!self.fx && !suspended && surf.mode !== 'ride') pets.step(self.area, x, y, self.walker.run, wxLv); stepGift(x, y); };      // a step onto or next to a seasonal gift opens it
   net.sendPos(sx, sy, 'down', 'town');
 
   const addPeer = (p) => {
     const w = new Walker(p.x ?? 0, p.y ?? 0, p.d || 'down');
     w.hurry = true;
     const o = { id: p.id, name: p.name, look: p.look, walker: w, emote: null, jumpAt: null, placed: p.x != null, area: p.area || 'town' };
-    w.tileMult = (x, y) => paceFactor(o.area, x, y, o.look.species);                  // the same rule for a remote pet: its steps in the water last as long as the sender's
+    w.tileMult = (x, y) => paceFactor(o.area, x, y, o.look.species, o.surf === 3);                  // the same rule for a remote pet: its steps in the water last as long as the sender's
     w.onStep = (x, y) => { if (o.placed && o.area === self.area && !suspended) pets.peerStep(o.id, Math.hypot(x - self.walker.tileX, y - self.walker.tileY), o.area, x, y, wxLv); };      // another pet's step: heard only when near
     others.set(p.id, o);
   };
@@ -220,13 +222,13 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       w.stepOverride = RIDE_MS;
       if (!w.busy) {
         const wave = waveAt(utc), steer = held.findLast((d) => d === 'up' || d === 'down');
-        const dec = rideDecide({ crestX: wave ? wave.crestX : Infinity, x: w.tileX, y: w.tileY, steer: steer === 'up' ? -1 : steer === 'down' ? 1 : 0, walkable: (x, y) => isWalkable(x, y, 'beach'), water: (x, y) => waterAt(x, y, 'beach') });
-        if (dec.type === 'move') w.stepToward(w.tileX + dec.dx, w.tileY + dec.dy);
+        const dec = rideDecide({ k: wave ? wave.k : null, x: w.tileX, y: w.tileY, steer, steps: surf.steps, walkable: (x, y) => isWalkable(x, y, 'beach'), water: (x, y) => waterAt(x, y, 'beach') });
+        if (dec.type === 'move') { surf.steps++; w.stepToward(w.tileX + dec.dx, w.tileY + dec.dy); }
         else if (dec.type === 'end') endRide(dec.why, t);
       }
-    } else if (surf.mode === 'wipe' && wipeOver(surf, t)) net.sendPos(w.tileX, w.tileY, w.d, self.area, 0);      // free again
+    } else if (surf.mode === 'wipe' && wipeOver(surf, t)) net.sendPos(w.tileX, w.tileY, w.d, self.area, surfFlag(surf, paddling(w.tileX, w.tileY)));      // free again
     pets.ride(surf.mode === 'ride' && !suspended);
-    self.surf = surfFlag(surf);
+    self.surf = surfFlag(surf, self.area === 'beach' && hasBoard() && !!waterOf(self.area, w));
     w.update(dt);
     if (!w.busy && !self.fx) {                                    // arrived on a door: go through it
       const door = doorAt(w.tileX, w.tileY, self.area);
@@ -294,7 +296,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       farmAction = !w.busy && !self.fx && !modal && !mv.closed ? actionAt('farm', w.tileX, w.tileY, w.d, { basket: canasta, mem: farmMemory, room: net.code || net.id, nowMs: devNpcT === null ? events.serverNow() : devNpcT, tools: tools() }) : null;
     } else { state.farm = null; farmAction = null; }
     if (self.area === 'town' && !farmAction && !w.busy && !self.fx && !modal && !mv.closed) farmAction = pondAction(self.area, w.tileX, w.tileY, tools());      // beside the park's pond: A fishes (with the rod)
-    if (self.area === 'beach' && !farmAction && !w.busy && !self.fx && !modal && !mv.closed && surf.mode === 'idle') farmAction = surfAction(utc, w.tileX, w.tileY, tools());      // at the break: A catches the wave (with the board), or what is missing
+    if (self.area === 'beach' && !farmAction && !w.busy && !self.fx && !modal && !mv.closed && surf.mode === 'idle') farmAction = surfAction(utc, w.tileX, w.tileY, tools()) || loungeAt(w.tileX, w.tileY);      // at the break: A catches the wave (with the board), or what is missing
     const talkTo = !w.busy && !self.fx && !modal && !mv.closed && !claiming && missions && missions.enabled() ? talkTarget() : null;
     nearTalkId = talkTo ? talkTo.id : null;
     const atStore = self.area === 'farm' && !w.busy && !self.fx && !modal && !mv.closed && nearStore(w.tileX, w.tileY);
@@ -471,13 +473,14 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     pets.cue('splash'); pets.cue('reward');
     selfSay = { text: SAY.done, until: t + 1800 };
     self.jumpAt = t; net.sendJump();
-    net.sendPos(w.tileX, w.tileY, w.d, self.area, 0);
+    net.sendPos(w.tileX, w.tileY, w.d, self.area, surfFlag(surf, paddling(w.tileX, w.tileY)));
   }
   /** Does the farm action of this pet's reach (the object that was tapped, or the pet's own tile)? Does it and returns true. */
   function farmDo() {
     if (!farmAction || farmAction.id === 'hint') return false;
     if (farmAction.id === 'store') { pets.cue('door'); onStore(); return true; }
     if (farmAction.id === 'surf') { catchWave(); return true; }
+    if (farmAction.id === 'lounge') { self.walker.setPath([farmAction.target]); return true; }      // onto the lounger: a pet that stands still on one lies on it (src/lounge.js)
     if (farmAction.id === 'fish') { pets.cue('confirm'); onFish(); return true; }
     if (farmAction.id === 'talk') { talk(farmAction.target); return true; }
     const res = perform(farmAction, { basket: canasta, mem: farmMemory, tools: tools() });
