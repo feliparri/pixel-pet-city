@@ -30,16 +30,16 @@ export function createBestStore(storage) {
 /** Stars for a run: one when it reached the goal (the station, the house) and today's cap is not spent. A run that ended in a crash earns none, whatever its score. */
 export const starsFor = (arrived, earnedToday, cap = STAR_CAP_PER_DAY) => (arrived === true && earnedToday < cap ? 1 : 0);
 
-/** Today's stars from this arcade, per local day: { earned(), award(n) }. `today()` gives the day string (e.g. 2026-11-21). */
-export function createDailyStars(storage, today) {
+/** Today's stars from this arcade (or from another game with its own storage `key`), per local day: { earned(), award(n) }. `today()` gives the day string (e.g. 2026-11-21). */
+export function createDailyStars(storage, today, key = STARS_KEY) {
   const load = () => {
-    try { const v = JSON.parse(read(storage, STARS_KEY) || 'null'); if (v && v.day === today() && Number.isInteger(v.n) && v.n >= 0) return v.n; } catch { /* unreadable: start again */ }
+    try { const v = JSON.parse(read(storage, key) || 'null'); if (v && v.day === today() && Number.isInteger(v.n) && v.n >= 0) return v.n; } catch { /* unreadable: start again */ }
     return 0;
   };
   let mem = null, day = null;
   const current = () => { if (day !== today()) { day = today(); mem = load(); } return mem; };
   return {
     earned: current,
-    award(n) { mem = current() + n; write(storage, STARS_KEY, JSON.stringify({ day, n: mem })); return mem; },
+    award(n) { mem = current() + n; write(storage, key, JSON.stringify({ day, n: mem })); return mem; },
   };
 }
