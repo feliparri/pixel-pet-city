@@ -25,10 +25,12 @@ Owner 2026-11-23: the town is heavy on the phone and falls back to the flat view
 - [x] CP.2 Governor: reset on area change, farm prebuilt when idle, saved level expires, flat needs two slow windows in a row at the last level. Route: delegated (quality.js, renderer.js, town.js, tests).
 - [x] CP.3 Cheaper effects: haze and vignette in one cached overlay, bloom only at night and during shows, lighter tilt-shift. Route: delegated with CP.2 (fx.js, tests, before/after shots).
 - [ ] CP.4 Tilt: owner asked for it "un poco más arriba"; waiting on whether it means the camera angle or the tilt-shift band.
-- [ ] CP.5 Ground in fewer draws and a sprite atlas, if the phone still falls after CP.2 and CP.3.
+- [x] CP.6 Phone log: ?perf=1&log=1 posts the numbers to tools/perf-serve.mjs. Route: inline. Commit ce26aee.
+- [ ] CP.5 Moving things cached (replaces "ground in fewer draws"; the phone log shows the ground costs 1 ms): pets, villagers, birds, ducks, farm animals and the chicken are repainted and night-graded into a scratch canvas every frame. Cache each painted frame by its look and pose, and its night grade by quantised night and light, like nightSprite does for standing things; the soft shadow as one cached sprite instead of three arcs per thing per frame. Route: delegated (things.js, pets.js, scene.js, tests).
 
 ## Progress
 - 2026-11-23 CP.1 done (see Evidence).
 - 2026-11-23 CP.2 done (commit 05dab0f): governor reset on area change, farm built in idle time after 90 town frames, saved level stored as {l,t} and ignored after 3 days (old plain number = expired), flat needs two slow windows at the last level. Checks: stamp, node --test 642 pass 0 fail.
 - 2026-11-23 CP.3 done (commit effe3d5): haze+vignette in one cached overlay (16 night steps), bloom only above night 0.3 (fades in to 0.45, formula unchanged above), tilt-shift blurred and masked at half size with only the top and bottom bands drawn. Chrome no GPU, CPU 4x, level 0: day 43 -> 60 fps (effects 17.1 -> 8.7 ms), night 30 -> 36 fps. Checks: stamp, node --test pass.
 - 2026-11-23 Parent check: tests 642/642; night before/after shots match; town -> farm -> town in the browser stays at level 0, 60 fps, no errors.
+- 2026-11-23 Phone log (Android 10, Chrome 157, canvas 640x242 at level 4, night): fell to flat after 8 s at 24 fps; per frame ground 1.0 ms, effects 0.1, labels 0.4, sprites ("cosas") 25 ms. The cost is CPU in the moving things. Desktop profile at CPU 6x: things.js stand draw 22% and grade 13.5% of all time, pets.js draw 8%; grade runs per thing per frame.
