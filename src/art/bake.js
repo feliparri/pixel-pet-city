@@ -5,6 +5,7 @@ import { canvas, noise, shadow } from './palette.js';
 import * as G from './ground.js';
 import * as PL from './places.js';
 import * as FM from './farm.js';
+import * as BE from './beach.js';
 import { oak, pine, bush, lamp, lampLit, LAMP_GLOW, drawFountain } from './props.js';
 import { drawHouse, windowsOf, litWindow } from './buildings.js';
 import { drawInterior, counter, nightWindow, raccoon } from './interior.js';
@@ -12,11 +13,11 @@ import { drawPet, CELL } from '../sprites.js';
 import { SHOPKEEPER } from '../npcs.js';
 
 let sprites = null;
-const kit = () => sprites || (sprites = { barn: FM.barn(), well: FM.well(), scarecrow: FM.scarecrow(), stallBack: FM.stallBack(), stallFront: FM.stallFront(), fruit: [FM.fruitTree(0), FM.fruitTree(1), FM.fruitTree(2)], oak: [oak(1), oak(2)], pine: [pine(1), pine(2)], bush: [bush(0), bush(1)], lamp: lamp(), lampLit: lampLit(), coop: PL.coop(), counter: counter(), nightWindow: nightWindow() });
+const kit = () => sprites || (sprites = { barn: FM.barn(), well: FM.well(), scarecrow: FM.scarecrow(), stallBack: FM.stallBack(), stallFront: FM.stallFront(), fruit: [FM.fruitTree(0), FM.fruitTree(1), FM.fruitTree(2)], palm: [BE.palm(0), BE.palm(1)], umbrella: [0, 1, 2, 3].map((i) => BE.umbrella(i)), lifeguard: BE.lifeguard(), rocks: [BE.rocks(0), BE.rocks(1)], oak: [oak(1), oak(2)], pine: [pine(1), pine(2)], bush: [bush(0), bush(1)], lamp: lamp(), lampLit: lampLit(), coop: PL.coop(), counter: counter(), nightWindow: nightWindow() });
 
 /** The outdoor areas: the town (plaza, fountain, houses) and the farm (fields, barn, orchard) share every tile that is the same. */
 function bakeOutdoor(area) {
-  const town = area.name === 'town', k = kit();
+  const town = area.name === 'town', beach = area.name === 'beach', k = kit();
   const W = area.w * TILE, H = area.h * TILE;
   const ground = canvas(W, H), ctx = ground.getContext('2d');
   const out = { name: area.name, w: W, h: H, outdoor: true, ground, props: [], water: [], fountain: null, overlays: [], glows: [] };
@@ -25,7 +26,7 @@ function bakeOutdoor(area) {
   const paved = (x, y) => town && inPlaza(x, y);
   const surfaceAt = (tx, ty) => (dx, dy) => (paved(tx + dx, ty + dy) ? '+' : raw(tx + dx, ty + dy));
   for (let ty = 0; ty < area.h; ty++) for (let tx = 0; tx < area.w; tx++) {
-    const ch = raw(tx, ty), x = tx * TILE, y = ty * TILE, at = surfaceAt(tx, ty), base = () => (paved(tx, ty) ? G.plaza(ctx, x, y, tx, ty, at) : G.grass(ctx, x, y, tx, ty));
+    const ch = raw(tx, ty), x = tx * TILE, y = ty * TILE, at = surfaceAt(tx, ty), earth = () => (beach ? BE.sand(ctx, x, y, tx, ty) : G.grass(ctx, x, y, tx, ty)), base = () => (paved(tx, ty) ? G.plaza(ctx, x, y, tx, ty, at) : earth());
     switch (ch) {
       case ',': G.grass(ctx, x, y, tx, ty, true); break;
       case '=': G.path(ctx, x, y, tx, ty, at); break;
@@ -36,7 +37,16 @@ function bakeOutdoor(area) {
       case 'h': G.grass(ctx, x, y, tx, ty); G.hedge(ctx, x, y, tx, ty, at); break;
       case 'F': G.grass(ctx, x, y, tx, ty); G.fence(ctx, x, y, tx, ty, at); break;
       case 'n': base(); G.bench(ctx, x, y, tx, ty); break;
-      case 'S': G.grass(ctx, x, y, tx, ty); G.sign(ctx, x, y); break;
+      case 'S': earth(); G.sign(ctx, x, y); break;
+      case 's': BE.sand(ctx, x, y, tx, ty); break;
+      case 'i': BE.shore(ctx, x, y, tx, ty); break;
+      case '-': BE.boardwalk(ctx, x, y, tx, ty); break;
+      case 'Q': BE.towel(ctx, x, y, tx, ty); break;
+      case 'l': case 'D': case 'K': case '%': BE.sea(ctx, x, y, tx, ty, ch, at); if (ch !== '%') out.water.push([x, y, tx, ty, ch]); break;
+      case 'O': BE.sand(ctx, x, y, tx, ty); shadow(ctx, x + 9, y + 14, 9, 2.5, 0.28); out.props.push({ x: x - 4, y: y + 16 - 32, sortY: y + 16, sprite: k.umbrella[(tx * 3 + ty) & 3] }); break;
+      case 'J': BE.sand(ctx, x, y, tx, ty); shadow(ctx, x + 12, y + 14, 10, 3, 0.3); out.props.push({ x: x - 8, y: y + 16 - 48, sortY: y + 16, sprite: k.palm[(tx + ty) & 1] }); break;
+      case 'X': BE.sand(ctx, x, y, tx, ty); shadow(ctx, x + 8, y + 14, 8, 2, 0.28); out.props.push({ x, y: y + 16 - 14, sortY: y + 14, sprite: k.rocks[(tx * 5 + ty) & 1] }); break;
+      case 'I': BE.sand(ctx, x, y, tx, ty); shadow(ctx, x + 10, y + 15, 11, 3, 0.3); out.props.push({ x: x - 4, y: y + 16 - 40, sortY: y + 16, sprite: k.lifeguard }); break;
       case 'p': PL.pad(ctx, x, y, tx, ty); break;
       case 'a': PL.gate(ctx, x, y, tx, ty); break;
       case 'y': PL.pitch(ctx, x, y, tx, ty); break;
@@ -67,7 +77,7 @@ function bakeOutdoor(area) {
       case 'T': G.grass(ctx, x, y, tx, ty); shadow(ctx, x + 14, y + 13, 11, 3.5, 0.32); out.props.push({ x: x - 4, y: y + 16 - 40, sortY: y + 16, sprite: k.pine[(tx + ty) & 1] }); break;
       case 'b': G.grass(ctx, x, y, tx, ty); shadow(ctx, x + 9, y + 14, 7, 2, 0.28); out.props.push({ x, y: y + 16 - 14, sortY: y + 10, sprite: k.bush[(tx + ty) & 1], hide: { x: tx, y: ty } }); break;
       case 'L': base(); shadow(ctx, x + 11, y + 15, 6, 1.5, 0.3); out.props.push({ x, y: y + 16 - 32, sortY: y + 15, sprite: k.lamp }); out.overlays.push({ x, y: y + 16 - 32, sprite: k.lampLit }); out.glows.push({ kind: 'lamp', x: x + LAMP_GLOW.x, y: y + 16 - 32 + LAMP_GLOW.y, r: 36 }); break;
-      default: G.grass(ctx, x, y, tx, ty);                  // grass, flowers, and what the houses cover
+      default: earth();                                       // grass (or sand on the beach), flowers, and what the houses cover
     }
   }
   if (town) { drawFountain(ctx, 22 * TILE, 20 * TILE); out.fountain = { x: 22 * TILE, y: 20 * TILE }; }

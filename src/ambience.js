@@ -76,6 +76,34 @@ function loopable(a, fade) {
   for (let i = 0; i < fade; i++) { const k = (i / fade) * Math.PI / 2; out[i] = out[i] * Math.sin(k) + a[n + i] * Math.cos(k); }      // equal power: uncorrelated noise faded linearly would dip 3 dB at the join, a pulse at every loop
   return out;
 }
+/** A gull: a few drawn-out mewing cries that glide down in pitch (`variant` 0..2 picks how many and how long). */
+export function gull(variant = 0) {
+  const v = Math.abs(variant) % 3, f = make(900 + v * 250);
+  const cries = 2 + v;
+  for (let k = 0; k < cries; k++) tone(f, k * (240 + v * 40), 200 + v * 30, 1900 - k * 80, 1250 - k * 60, 1, { harm: 0.45, vib: 9, depth: 0.025 });
+  tone(f, 0, 160, 3000, 2400, 0.12);
+  return toPcm(f, 0.6);
+}
+
+/**
+ * The sea's bed: slow waves breaking and drawing back. Two layers of different lengths (9.6 s and 7.3 s, each with its own swell of exactly one cycle per loop, so the join is
+ * seamless): dull noise that rises and falls like a swell, and a brighter hiss of foam that follows the crest a little later.
+ */
+export function seaBed() {
+  const layer = (seed, secs, dull, foam, lag) => {
+    const r = mulberry32(seed), fade = 4000, n = Math.round(secs * SFX_RATE), a = new Float32Array(n + fade + 500), b = new Float32Array(n + fade + 500);
+    for (let i = 0; i < a.length; i++) { a[i] = r() * 2 - 1; b[i] = r() * 2 - 1; }
+    lowpass(a, dull); lowpass(a, dull * 2.2);
+    lowpass(b, 0.4);
+    for (let i = 0; i < a.length; i++) {
+      const ph = (i / n) * TAU, swell = 0.5 + 0.5 * Math.sin(ph), crest = 0.5 + 0.5 * Math.sin(ph - lag);
+      a[i] = a[i] * 8 * (0.25 + 0.75 * swell * swell) + b[i] * foam * crest ** 3;
+    }
+    return toPcm(loopable(a.subarray(500), fade), 0.7);          // (the first 500 samples, while the filters warm up, are left out)
+  };
+  return [layer(0x5ea1, 9.6, 0.05, 0.9, 0.9), layer(0x1d77, 7.3, 0.06, 0.6, 1.4)];
+}
+
 /** One layer of hiss: `secs` seconds of noise with its lows taken out, looped with a long equal-power join (a quarter second). */
 function hiss(seed, secs, dullAlpha, mul) {
   const r = mulberry32(seed), fade = 4000, n = Math.round(secs * SFX_RATE) + fade, a = new Float32Array(n), dull = new Float32Array(n);
@@ -116,18 +144,25 @@ export function waterNear(area, x, y) {
   return best >= WATER_REACH ? 0 : 1 - best / WATER_REACH;
 }
 
+/** How loud the sea is at a tile of an area: full over the water and the shore, fading to a murmur at the far end of the sand (0 away from the beach). */
+export function seaLevel(area, x) {
+  if (area !== 'beach') return 0;
+  const shore = 24, end = 47;
+  return x <= shore ? 1 : 1 - 0.6 * Math.min(1, (x - shore) / (end - shore));
+}
+
 // ---- the scheduler --------------------------------------------------------------------------------------------------------------------------
 /** How loud each thing is (0..1 of the ambient channel's gain): low on purpose, the music and the effects stay in front. */
-export const GAIN = { chirp: 0.35, cricket: 0.22, animal: 0.3, thunder: 0.8, rain: 0.28, water: 0.22 };
+export const GAIN = { chirp: 0.35, cricket: 0.22, animal: 0.3, thunder: 0.8, rain: 0.28, water: 0.22, sea: 0.26, gull: 0.3 };
 /** The waits between two sounds, ms [min, max]: sparse and random. */
-export const EVERY = { bird: [6000, 16000], farmBird: [5000, 12000], cricket: [3500, 9000], animal: [10000, 26000] };
+export const EVERY = { bird: [6000, 16000], farmBird: [5000, 12000], cricket: [3500, 9000], animal: [10000, 26000], gull: [6000, 15000] };
 
 /**
  * `sound`: the player (ambient, bed, stopBeds, running, isMuted); `rand`: a 0..1 source (Math.random; tests give a fixed one). step(ms, info) once a frame with
  * info = { area, outdoor, night 0..1, weather (src/weather.js levels, with .skew), x, y (the pet's tile), utcMs }; silence() stops the beds and forgets what was planned.
  */
 export function createAmbience({ sound, rand = Math.random }) {
-  const next = { bird: null, cricket: null, animal: null };
+  const next = { bird: null, cricket: null, animal: null, gull: null };
   let strikeFrom = null, thunders = [];
   const wait = ([a, b]) => a + rand() * (b - a);
   const play = (samples, gain) => { try { return !!sound.ambient(samples, gain); } catch { return false; } };
@@ -139,6 +174,7 @@ export function createAmbience({ sound, rand = Math.random }) {
       if (!sound.running() || sound.isMuted()) { if (strikeFrom !== null || thunders.length) { strikeFrom = null; thunders = []; } return; }
       const w = info.weather || { rain: 0, storm: 0, snow: 0 }, out = info.outdoor;
       bed('rain', rainBed, out ? Math.min(1, w.rain) * GAIN.rain : 0);
+      bed('sea', seaBed, out ? seaLevel(info.area, info.x) * GAIN.sea * (1 - 0.3 * Math.min(1, w.rain)) : 0);
       bed('water', waterBed, out ? waterNear(info.area, info.x, info.y) * GAIN.water * (1 - 0.5 * Math.min(1, w.rain)) : 0);
       for (const k of Object.keys(next)) if (next[k] !== null) next[k] = Math.max(0, next[k] - ms);
       if (!out) { strikeFrom = null; thunders = []; return; }
@@ -149,8 +185,10 @@ export function createAmbience({ sound, rand = Math.random }) {
         next[k] = wait(range) * scale; return true;
       };
       const calm = w.rain < 0.25 && w.storm < 0.2 && w.snow < 0.5;
-      if (info.night < 0.4 && calm && due('bird', info.area === 'farm' ? EVERY.farmBird : EVERY.bird)) play(chirp(Math.floor(rand() * 4)), GAIN.chirp);
-      if (info.night > 0.6 && w.rain < 0.3 && w.snow < 0.5 && due('cricket', EVERY.cricket)) play(cricket(Math.floor(rand() * 2)), GAIN.cricket);
+      const beach = info.area === 'beach';                                  // on the beach the sea's own birds, the gulls, take the place of the songbirds and the crickets
+      if (!beach && info.night < 0.4 && calm && due('bird', info.area === 'farm' ? EVERY.farmBird : EVERY.bird)) play(chirp(Math.floor(rand() * 4)), GAIN.chirp);
+      if (beach && info.night < 0.5 && calm && due('gull', EVERY.gull)) play(gull(Math.floor(rand() * 3)), GAIN.gull);
+      if (!beach && info.night > 0.6 && w.rain < 0.3 && w.snow < 0.5 && due('cricket', EVERY.cricket)) play(cricket(Math.floor(rand() * 2)), GAIN.cricket);
       if (info.area === 'farm' && w.rain < 0.6 && due('animal', EVERY.animal, info.night > 0.5 ? 2 : 1)) {
         const kinds = Object.keys(ANIMAL_SOUNDS);
         play(ANIMAL_SOUNDS[kinds[Math.floor(rand() * kinds.length)]](), GAIN.animal);

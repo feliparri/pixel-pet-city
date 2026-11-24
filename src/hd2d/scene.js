@@ -5,6 +5,7 @@ import * as G from '../art/ground.js';
 import { bakeArea } from '../art/bake.js';
 import { drawHouse, windowsOf, litWindow } from '../art/buildings.js';
 import { rippleSpots } from '../art/ground.js';
+import { rippleColour } from '../art/beach.js';
 import { P, shadow } from '../art/palette.js';
 import { fountainFrame, drawFountain } from '../art/props.js';
 import { PIECE_KINDS, hedgePiece, fencePiece, benchPiece, bedPiece, fountainWall } from './pieces.js';
@@ -21,6 +22,26 @@ const HOUSE_PAD = 12;                                                // transpar
 const LAMP_TOP = 25;                                                 // the lantern's height above a lamp's foot
 const OX = REGION.x * TILE, OY = REGION.y * TILE;
 const canvasOf = (w, h) => Object.assign(document.createElement('canvas'), { width: w, height: h });
+
+/**
+ * The rectangles ([x, y, w, h], world px) the water's frame changes: one box round a small pond, but a big sea is cut into one strip per tile row (the span of its water
+ * tiles in that row), so a re-bake of the part in view never touches the land, or the rest of the sea.
+ */
+export function waterRegions(water) {
+  if (!water.length) return [];
+  if (water.length <= 64) {
+    const x0 = Math.min(...water.map((q) => q.x)), y0 = Math.min(...water.map((q) => q.y));
+    return [[x0, y0, Math.max(...water.map((q) => q.x)) + TILE - x0, Math.max(...water.map((q) => q.y)) + TILE - y0]];
+  }
+  const rows = new Map();
+  for (const q of water) { const r = rows.get(q.y); if (!r) rows.set(q.y, [q.x, q.x]); else { r[0] = Math.min(r[0], q.x); r[1] = Math.max(r[1], q.x); } }
+  return [...rows].sort((a, b) => a[0] - b[0]).map(([y, [a, b]]) => [a, y, b + TILE - a, TILE]);
+}
+
+/** The water rectangles that are on screen: the ones whose rows lie between world rows `y0` and `y1` (a few rectangles, a pond and the fountain, are all kept). */
+export function visibleWater(rects, y0, y1) {
+  return rects.length <= 3 ? rects : rects.filter((r) => r[1] + r[3] > y0 && r[1] < y1);
+}
 
 /** Builds the world of an outdoor area once: { tex (day ground), props, houses, lamps, windows, pools, fountain? }. All positions are world px. */
 export function buildWorld(areaName = 'town') {
@@ -57,11 +78,11 @@ export function buildWorld(areaName = 'town') {
   for (const w of windows) pools.push({ x: w.x, y: Math.round(w.y + 28), r: 30, k: 0.4 });          // the light of a window spills on the road
   const lights = pools.map((p) => ({ ...p, r: p.r * 1.5, k: p.k * 0.9 }));                       // what lights a standing thing reaches further than the floor pool
   for (const p of props) p.light = lightAt(lights, p.x, p.y);
-  const water = baked.water.map(([x, y, tx, ty]) => ({ x, y, tx, ty }));
-  const pond = water.length ? [Math.min(...water.map((q) => q.x)), Math.min(...water.map((q) => q.y)), 0, 0] : null;
-  if (pond) { pond[2] = Math.max(...water.map((q) => q.x)) + TILE - pond[0]; pond[3] = Math.max(...water.map((q) => q.y)) + TILE - pond[1]; }
-  const waterRects = [...(pond ? [pond] : []), ...(town ? [[FOUNTAIN_AT.x, FOUNTAIN_AT.y, 64, 48]] : [])];       // what moves with the water frame (the pond and the fountain's basin)
-  return { name: area.name, tex, props, houses, lamps, windows, pools, lights, water, waterRects, fountain: town, cache: new Map(), cacheN: -1 };
+  const water = baked.water.map(([x, y, tx, ty, ch]) => ({ x, y, tx, ty, ch }));
+  const waterRows = new Map();                                                                  // the water tiles of each tile row, so a re-bake finds the ones it needs without walking them all
+  for (const q of water) { if (!waterRows.has(q.ty)) waterRows.set(q.ty, []); waterRows.get(q.ty).push(q); }
+  const waterRects = [...waterRegions(water), ...(town ? [[FOUNTAIN_AT.x, FOUNTAIN_AT.y, 64, 48]] : [])];       // what moves with the water frame (the pond, the sea row by row, the fountain's basin)
+  return { name: area.name, tex, props, houses, lamps, windows, pools, lights, water, waterRows, waterRects, fountain: town, cache: new Map(), cacheN: -1 };
 }
 
 /**
@@ -155,9 +176,13 @@ export function bakeGround(world, n, mult, frame, out = null, rects = null) {
     ctx.globalCompositeOperation = 'source-over';
     ctx.drawImage(world.tex, rx, ry, rw, rh, rx, ry, rw, rh);
     ctx.save(); ctx.beginPath(); ctx.rect(rx, ry, rw, rh); ctx.clip();
-    if (world.water.length && intersects(r, world.waterRects[0])) {                              // the pond's ripples
-      ctx.fillStyle = P.a3;
-      for (const q of world.water) for (const [dx, dy, ww] of rippleSpots(q.tx, q.ty, frame)) ctx.fillRect(q.x - OX + dx, q.y - OY + dy, ww, 1);
+    if (world.water.length) {                                                                    // the water's ripples: the tiles of the rows this rectangle covers
+      const j0 = Math.max(0, Math.floor(ry / TILE)), j1 = Math.floor((ry + rh - 1) / TILE);
+      for (let j = j0; j <= j1; j++) for (const q of world.waterRows.get(j + OY / TILE) || []) {
+        if (q.x - OX + TILE <= rx || q.x - OX >= rx + rw) continue;
+        ctx.fillStyle = q.ch ? rippleColour(q.ch) : P.a3;
+        for (const [dx, dy, ww] of rippleSpots(q.tx, q.ty, frame)) ctx.fillRect(q.x - OX + dx, q.y - OY + dy, ww, 1);
+      }
     }
     if (world.fountain && intersects(r, [FOUNTAIN_AT.x, FOUNTAIN_AT.y, 64, 48])) for (const [c, dx, dy, fw, fh] of fountainFrame(frame)) { ctx.fillStyle = c; ctx.fillRect(FOUNTAIN_AT.x - OX + dx, FOUNTAIN_AT.y - OY + dy, fw, fh); }
     ctx.restore();

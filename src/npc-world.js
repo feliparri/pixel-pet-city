@@ -6,7 +6,7 @@
 // segments (walk, stay, sleep); the timeline is built lazily as time moves on and kept, so a frame only looks a segment up.
 // Rules for sleep: nobody goes to bed before 01:00 Chile time, nobody falls asleep while a sky show runs, and wake times are after 06:00,
 // so every day starts with everybody asleep (or just up) at home and the days join without a jump.
-import { isWalkable, tileAt, doorAt, TILES, inZone, GAME_IDS, FARM, HOUSES } from './map.js';
+import { isLand, tileAt, doorAt, TILES, inZone, GAME_IDS, FARM, HOUSES } from './map.js';
 import { findPath } from './path.js';
 import { STEP_MS } from './walker.js';
 import { hashSeed, mulberry32 } from './life.js';
@@ -24,11 +24,11 @@ export const DRIVES = ['hunger', 'tired', 'bored', 'social'];
 // ---- where a villager may stand -------------------------------------------------------------------------------------------------------------
 
 /** Open town ground that is not a hiding bush, a door, or inside the Parque where the games are played. */
-export const npcTile = (x, y) => isWalkable(x, y, 'town') && !TILES[tileAt(x, y, 'town')].hide && !doorAt(x, y, 'town') && !GAME_IDS.some((g) => inZone(g, x, y));
+export const npcTile = (x, y) => isLand(x, y, 'town') && !TILES[tileAt(x, y, 'town')].hide && !doorAt(x, y, 'town') && !GAME_IDS.some((g) => inZone(g, x, y));
 const PD = FARM.paddock;
 const inPaddock = (x, y) => x >= PD.x - 1 && x <= PD.x + PD.w && y >= PD.y - 1 && y <= PD.y + PD.h;       // the animals' fence and what is inside it
 /** Open farm ground, not the paddock, not a hiding bush, not the door tile. */
-export const farmTile = (x, y) => isWalkable(x, y, 'farm') && !TILES[tileAt(x, y, 'farm')].hide && !doorAt(x, y, 'farm') && !inPaddock(x, y);
+export const farmTile = (x, y) => isLand(x, y, 'farm') && !TILES[tileAt(x, y, 'farm')].hide && !doorAt(x, y, 'farm') && !inPaddock(x, y);
 const TOWN_DOOR = [47, 29], FARM_DOOR = [0, 17];       // the east road's door tile on each side (map.js DOORS): stepping on one lands next to the other
 const FARM_IN = [1, 17], TOWN_IN = [46, 29];
 const passable = { town: (x, y) => npcTile(x, y) || (x === TOWN_DOOR[0] && y === TOWN_DOOR[1]), farm: (x, y) => farmTile(x, y) || (x === FARM_DOOR[0] && y === FARM_DOOR[1]) };

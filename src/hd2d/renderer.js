@@ -5,9 +5,9 @@ import { TILE, SIGNS, PLACES, getArea } from '../map.js';
 import { createRenderer, drawBubble, MIN_VIEW_H, VIEW_H } from '../render.js';
 import { drawText, textWidth, textCanvas } from '../font.js';
 import { badge, bobY, BADGE } from '../art/icons.js';
-import { cameraFor, PHONE_OUT, followFocus, followMargin, snapFocus, sortBackToFront, screenToTile, standAt, project } from './camera.js';
+import { cameraFor, PHONE_OUT, followFocus, followMargin, snapFocus, sortBackToFront, screenToTile, standAt, project, groundRow } from './camera.js';
 import { groundMult, approach } from './light.js';
-import { buildWorld, bakeGround, drawGround, standingItems, drawGlows, fountainItem, paintFarm, decorItems, drawDecorGlows, drawGhosts } from './scene.js';
+import { buildWorld, bakeGround, visibleWater, drawGround, standingItems, drawGlows, fountainItem, paintFarm, decorItems, drawDecorGlows, drawGhosts } from './scene.js';
 import { createFx } from './fx.js';
 import { createGlLayer } from './gl.js';
 import { createGovernor, encodeLevel, decodeLevel } from './quality.js';
@@ -77,13 +77,16 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
     stat.build = Math.max(stat.build, Math.round(performance.now() - t0));
   }
 
-  /** Once the town has run a while, builds the farm in idle time so the pet does not wait for it at the gate. Never throws into the frame loop. */
+  /** Once the town has run a while, builds the other outdoor areas (the farm, then the beach) in idle time, one at a time, so the pet does not wait for them at a door. Never throws into the frame loop. */
+  const WARM = ['farm', 'beach'], warmFailed = new Set();
   let frames = 0, warming = false;
-  function warmFarm() {
-    if (warming || ++frames < 90 || worlds.has('farm') || typeof document === 'undefined') return;
+  function warmAreas() {
+    if (warming || ++frames < 90 || typeof document === 'undefined') return;
+    const name = WARM.find((n) => !worlds.has(n) && !warmFailed.has(n));
+    if (!name) return;
     warming = true;
-    const job = () => { try { prepare('farm'); } catch { /* it is built on demand later */ } };
-    try { if (typeof requestIdleCallback === 'function') requestIdleCallback(job, { timeout: 4000 }); else setTimeout(job, 1500); } catch { /* no timers: on demand */ }
+    const job = () => { try { prepare(name); } catch { warmFailed.add(name); /* it is built on demand later */ } warming = false; frames = 30; };
+    try { if (typeof requestIdleCallback === 'function') requestIdleCallback(job, { timeout: 4000 }); else setTimeout(job, 1500); } catch { warming = false; warmFailed.add(name); /* no timers: on demand */ }
   }
 
   /** The canvas takes this renderer's layout again (the town after an interior, or the switch turned on). */
@@ -91,7 +94,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
 
   function draw(state, now) {
     ensureWorld(state.area || 'town');
-    if (areaName === 'town') warmFarm();
+    if (areaName === 'town') warmAreas();
     const MAP_W = world.tex.width, MAP_H = world.tex.height;
     const raw = last == null ? 0 : now - last, dt = last == null ? 16 : Math.min(100, Math.max(0, raw));
     last = now;
@@ -127,7 +130,11 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
     if (state.area === 'farm' && paintFarm(world, state.farm)) groundKey = '';        // a plot's soil changed (watered, or a new day): bake the ground again
     const step = k > 0.001 && k < 0.999 ? 8 : 16, nq = Math.round(n * step) * (16 / step), key = `${nq}|${mult.map((c) => c >> 2)}`, wf = Math.floor(now / 320) % 3;
     if (key !== groundKey) { bakeGround(world, nq / 16, mult, wf, ground); groundKey = key; waterFrame = wf; if (glr) glr.dirty(ground); }
-    else if (wf !== waterFrame) { bakeGround(world, nq / 16, mult, wf, ground, world.waterRects); waterFrame = wf; if (glr) glr.dirty(ground); }
+    else if (wf !== waterFrame) {                                                    // the water's next frame: only the rows of water in view (a big sea is baked row by row)
+      const rt = groundRow(cam, 0), rb = groundRow(cam, view.h - 1);
+      bakeGround(world, nq / 16, mult, wf, ground, visibleWater(world.waterRects, (rt ? rt.y : cam.focusY - 700) - TILE, (rb ? rb.y : cam.focusY + 400) + TILE));
+      waterFrame = wf; if (glr) glr.dirty(ground);
+    }
     const useGl = !!glr && glr.ok;                                       // a lost WebGL context leaves the frame to canvas 2D
     if (useGl) glr.startFrame();
 

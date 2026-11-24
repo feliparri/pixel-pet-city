@@ -3,7 +3,7 @@
 
 export const TILE = 16;
 
-/** Tile kinds: char -> { name, solid, hide? }. Town chars first, then the farm's, then the interior ones. */
+/** Tile kinds: char -> { name, solid, hide?, water?, surf? }. Town chars first, then the farm's, the beach's, then the interior ones. `water` marks the sea ('shallow' or 'deep'): a pet wades or swims there, nothing else may stand on it (see isLand). */
 export const TILES = {
   '.': { name: 'grass', solid: false },
   ',': { name: 'flowers', solid: false },     // grass with a few wild flowers
@@ -45,6 +45,19 @@ export const TILES = {
   'v': { name: 'well', solid: true },
   'Z': { name: 'scarecrow', solid: true },
   'M': { name: 'stall', solid: true },         // the Almacén's stall (see FARM.store)
+  // the beach (La Playa): sand and the sea from the shore out to the break; umbrellas, palms, rocks and the lifeguard post are solid
+  's': { name: 'sand', solid: false },
+  'i': { name: 'shore', solid: false },        // wet sand where the waves end
+  '-': { name: 'boardwalk', solid: false },
+  'Q': { name: 'towel', solid: false },
+  'l': { name: 'shallows', solid: false, water: 'shallow' },      // walkable at the normal pace
+  'D': { name: 'deep water', solid: false, water: 'deep' },       // the pet swims here, slower (see src/sea.js)
+  'K': { name: 'break', solid: false, water: 'deep', surf: true },   // deep water where the waves rise: with a board, the pet catches them from here
+  '%': { name: 'open sea', solid: true },                         // the sea's far edge: drawn as deep water, never entered
+  'O': { name: 'umbrella', solid: true },
+  'J': { name: 'palm', solid: true },
+  'X': { name: 'rocks', solid: true },
+  'I': { name: 'lifeguard post', solid: true },
   // the shop
   '_': { name: 'floor', solid: false },
   'r': { name: 'rug', solid: false },
@@ -83,6 +96,12 @@ export const DOORS = {
     { x: 35, y: 9, to: { area: 'shop', x: 6, y: 10, d: 'up' } },
     { x: 47, y: 29, to: { area: 'farm', x: 1, y: 17, d: 'right' } },          // the road east out of the town: the two tiles of its end
     { x: 47, y: 30, to: { area: 'farm', x: 1, y: 18, d: 'right' } },
+    { x: 0, y: 29, to: { area: 'beach', x: 46, y: 17, d: 'left' } },          // the road west out of the town: the way to the beach (the mirror of the farm's)
+    { x: 0, y: 30, to: { area: 'beach', x: 46, y: 18, d: 'left' } },
+  ],
+  beach: [
+    { x: 47, y: 17, to: { area: 'town', x: 1, y: 29, d: 'right' } },
+    { x: 47, y: 18, to: { area: 'town', x: 1, y: 30, d: 'right' } },
   ],
   farm: [
     { x: 0, y: 17, to: { area: 'town', x: 46, y: 29, d: 'left' } },
@@ -103,6 +122,9 @@ export const SIGNS = [
   { area: 'town', x: 13, y: 57, text: 'Cancha', sub: 'Jugar' },
   { area: 'town', x: 43, y: 69, text: 'Pista', sub: 'Jugar' },
   { area: 'town', x: 42, y: 28, text: 'La Granja', sub: 'Al este' },
+  { area: 'town', x: 4, y: 28, text: 'La Playa', sub: 'Al oeste' },
+  { area: 'beach', x: 46, y: 16, text: 'Pueblo', sub: 'Al este' },
+  { area: 'beach', x: 30, y: 16, text: 'Surf', sub: 'Con tabla' },
   { area: 'farm', x: 2, y: 16, text: 'Pueblo', sub: 'Al oeste' },
   { area: 'farm', x: 36, y: 15, text: 'Almacén', sub: 'Herramientas' },
   { area: 'shop', x: 6.5, y: 2, text: 'Tienda', sub: 'Abierto' },
@@ -250,6 +272,7 @@ function buildTown() {
     for (const [x, y] of [[2, 3], [10, 3], [18, 3], [30, 3], [40, 3], [46, 8], [2, 9], [19, 8], [29, 8], [2, 13], [3, 15], [10, 14], [20, 5], [27, 5], [46, 13], [46, 20], [46, 26], [2, 26], [2, 20], [10, 22], [45, 28], [33, 28], [13, 28]]) set(x, y, (x + y) % 3 ? 't' : 'T');
     for (const [x, y] of [[8, 14], [14, 16], [45, 12], [41, 14], [8, 24]]) set(x, y, 'b');
     fill(45, 29, 3, 2, '=');                                   // the south road runs on through the east border: the way to the farm (see DOORS)
+    fill(0, 29, 3, 2, '=');                                    // and through the west one: the way to the beach
   });
 }
 
@@ -311,6 +334,38 @@ function buildFarm() {
   });
 }
 
+/**
+ * The beach (La Playa), in tiles: the sea fills the west, the land the east. From the far edge: the open sea (solid), deep water with the break (the two columns
+ * where the waves rise) in it, the deep water towards the shore, the shallows, wet sand, then sand with umbrellas, towels, palms, rocks and the lifeguard post. The
+ * shore is a gentle curve (`shallowFrom`). A boardwalk runs from the town's door on the east edge to the sand.
+ */
+export const BEACH = { w: 48, h: 36, breakX: [5, 6], door: [17, 18] };
+/** The first column of the shallows on row `y` (the shore wobbles a little from row to row). */
+export const shallowFrom = (y) => 20 + Math.round(Math.sin(y * 0.6) * 1.4);
+
+function buildBeach() {
+  return make(BEACH.w, BEACH.h, 's', ({ g, fill, set, w, h }) => {
+    for (let y = 0; y < h; y++) {
+      const e = shallowFrom(y);
+      for (let x = 0; x < e + 5; x++) g[y][x] = x === 0 || y === 0 || y === h - 1 ? '%' : x < e ? (x >= BEACH.breakX[0] && x <= BEACH.breakX[1] ? 'K' : 'D') : x < e + 4 ? 'l' : 'i';
+    }
+    // the boardwalk from the door to the sand, and the sign by it
+    fill(32, BEACH.door[0], w - 32, 2, '-');
+    // the sand's furniture: umbrellas with their towels, rocks, palms, the lifeguard post
+    for (const [x, y] of [[31, 5], [36, 8], [41, 5], [33, 12], [40, 12], [31, 24], [37, 27], [43, 24], [35, 31], [44, 30]]) { set(x, y, 'O'); set(x + 1, y + 1, 'Q'); }
+    for (const [x, y] of [[29, 21], [27, 11]]) set(x, y, 'I');
+    for (const [x, y] of [[28, 3], [29, 3], [28, 4], [45, 22], [46, 22], [45, 23], [29, 33], [30, 33], [30, 32], [44, 12], [38, 15], [39, 15], [26, 28]]) set(x, y, 'X');
+    for (const [x, y] of [[34, 3], [38, 2], [44, 8], [46, 11], [33, 20], [42, 21], [36, 24], [40, 30], [46, 28], [28, 15], [32, 9], [45, 33], [30, 29]]) set(x, y, 'J');
+    for (const [x, y] of [[33, 16], [39, 16], [45, 16], [36, 19], [42, 19]]) set(x, y, 'L');          // lamps along the boardwalk
+    // signs
+    for (const s of SIGNS) if (s.area === 'beach') set(s.x, s.y, 'S');
+    // the land's border: palms and rocks (open where the boardwalk goes through the east edge)
+    for (let x = 1; x < w; x++) for (const y of [0, h - 1]) if (g[y][x] === 's') set(x, y, x % 2 ? 'J' : 'X');
+    for (let y = 0; y < h; y++) set(w - 1, y, y % 2 ? 'J' : 'X');
+    fill(w - 1, BEACH.door[0], 1, 2, '-');
+  });
+}
+
 function buildShop() {
   return make(14, 12, '_', ({ fill, set, w, h }) => {
     fill(0, 0, w, 2, 'x'); fill(0, 0, 1, h, 'x'); fill(w - 1, 0, 1, h, 'x'); fill(0, h - 1, w, 1, 'x');
@@ -326,6 +381,7 @@ function buildShop() {
 export const AREAS = {
   town: { name: 'town', grid: buildTown(), outdoor: true },
   farm: { name: 'farm', grid: buildFarm(), outdoor: true },
+  beach: { name: 'beach', grid: buildBeach(), outdoor: true },
   shop: { name: 'shop', grid: buildShop(), outdoor: false },
 };
 for (const a of Object.values(AREAS)) { a.h = a.grid.length; a.w = a.grid[0].length; }
@@ -357,9 +413,18 @@ export const inMap = (x, y, area = DEFAULT_AREA) => {
 };
 export const tileAt = (x, y, area = DEFAULT_AREA) => (inMap(x, y, area) ? AREAS[area].grid[y][x] : 'x');
 export const isWalkable = (x, y, area = DEFAULT_AREA) => inMap(x, y, area) && !TILES[AREAS[area].grid[y][x]].solid;
+/** The sea at a tile: 'shallow', 'deep' or null (land, or a tile outside the area). The sea exists only on the beach. */
+export const waterAt = (x, y, area = DEFAULT_AREA) => (inMap(x, y, area) ? TILES[AREAS[area].grid[y][x]].water || null : null);
+/** Is this tile the break, where a pet with a board catches the waves? */
+export const isBreak = (x, y, area = DEFAULT_AREA) => inMap(x, y, area) && !!TILES[AREAS[area].grid[y][x]].surf;
+/**
+ * Is this open ground, not sea? `isWalkable` is the pets' rule (movement, paths and what a peer may report), so it includes the sea. Everything else that stands on
+ * the map (the villagers, the chicken, the butterflies, the games and the hiding places) asks this one instead: nothing but a pet goes into the water.
+ */
+export const isLand = (x, y, area = DEFAULT_AREA) => isWalkable(x, y, area) && !waterAt(x, y, area);
 /** The fenced pen of the gallinero (its gate is at (29, 41)): the chicken of the game never goes in, it would be a dead end. */
 export const PEN = { x: 28, y: 38, w: 7, h: 4 };
 /** Where the chicken of Pillar la gallina may stand: any open tile of the town, but not a hiding bush, the pen, and never a door (it never goes inside). */
-export const chickenTile = (x, y) => isWalkable(x, y, 'town') && !(x >= PEN.x && y >= PEN.y && x < PEN.x + PEN.w && y < PEN.y + PEN.h) && !TILES[tileAt(x, y)].hide && !(DOORS.town || []).some((d) => d.x === x && d.y === y);
+export const chickenTile = (x, y) => isLand(x, y, 'town') && !(x >= PEN.x && y >= PEN.y && x < PEN.x + PEN.w && y < PEN.y + PEN.h) && !TILES[tileAt(x, y)].hide && !(DOORS.town || []).some((d) => d.x === x && d.y === y);
 /** The door at a tile, or null. */
 export const doorAt = (x, y, area = DEFAULT_AREA) => (DOORS[area] || []).find((d) => d.x === x && d.y === y) || null;

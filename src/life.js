@@ -2,7 +2,7 @@
 // the Parque, a duck and ripples on the pond, the fountain's spray. All client-side: the scene is seeded by the room code (so everybody sees
 // a similar one) and nothing of it is ever sent. Positions are pure functions of the clock; only the birds keep a tiny state. None of it
 // blocks walking: it is drawn over the town and never read by the game rules.
-import { tileAt, isWalkable, TILES, TILE, GARDEN, PARQUE, AREAS, FARM } from './map.js';
+import { tileAt, isLand, TILES, TILE, GARDEN, PARQUE, AREAS, FARM } from './map.js';
 
 export const LIFE = {
   birds: 9, birdSpacing: 5, scare: 3, calm: 4.5,             // a pet within `scare` tiles flushes a bird; it returns when every pet is farther than `calm`
@@ -37,7 +37,7 @@ function grassTiles(area = 'town') {
   const a = AREAS[area], out = [];
   for (let y = 1; y < a.h - 1; y++) for (let x = 1; x < a.w - 1; x++) {
     const c = tileAt(x, y, area);
-    if ((c === '.' || c === ',') && isWalkable(x, y, area) && !TILES[c].hide) out.push([x, y]);
+    if ((c === '.' || c === ',') && isLand(x, y, area) && !TILES[c].hide) out.push([x, y]);
   }
   return out;
 }
@@ -84,7 +84,7 @@ export function createLife(seed) {
 /** The tiles of the paddock where an animal may stand (all of them open grass: the fence is outside the rectangle). */
 const paddockTiles = () => {
   const r = FARM.paddock, out = [];
-  for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) if (isWalkable(x, y, 'farm')) out.push([x, y]);
+  for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) if (isLand(x, y, 'farm')) out.push([x, y]);
   return out;
 };
 

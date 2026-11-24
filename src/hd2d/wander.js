@@ -1,7 +1,7 @@
 // A pet that strolls on its own: it picks a walkable tile near it, walks there by the town's own paths (Walker + findPath), rests, repeats.
 import { Walker } from '../walker.js';
 import { findPath } from '../path.js';
-import { isWalkable } from '../map.js';
+import { isLand } from '../map.js';
 
 /** A small seeded random generator (mulberry32) so a screenshot is the same every time. */
 export function rng(seed) {
@@ -25,7 +25,7 @@ export class Wanderer {
     for (let tries = 0; tries < 12; tries++) {
       const x = Math.max(box.x0, Math.min(box.x1, w.tileX + Math.round((rand() - 0.5) * 14)));
       const y = Math.max(box.y0, Math.min(box.y1, w.tileY + Math.round((rand() - 0.5) * 12)));
-      if (!isWalkable(x, y)) continue;
+      if (!isLand(x, y)) continue;
       const path = findPath(w.tileX, w.tileY, x, y);
       if (path.length >= 3 && path.length <= 16) { w.setPath(path); break; }
     }

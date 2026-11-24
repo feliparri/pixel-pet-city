@@ -11,6 +11,7 @@ import { EMOTES } from './protocol.js';
 import { entranceState, drawEntranceFx, flickers } from './entrance.js';
 import { bakeArea } from './art/bake.js';
 import { rippleSpots } from './art/ground.js';
+import { rippleColour } from './art/beach.js';
 import { fountainFrame } from './art/props.js';
 import { P } from './art/palette.js';
 import { badge, bobY, BADGE } from './art/icons.js';
@@ -91,9 +92,9 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
   }
 
   const frame = Math.floor(now / 320) % 3;                                    // the water's three frames
-  sctx.fillStyle = P.a3;
-  for (const [x, y, tx, ty] of baked.water) {
+  for (const [x, y, tx, ty, ch] of baked.water) {
     if (x - cam.x < -TILE || x - cam.x > vw || y - cam.y < -TILE || y - cam.y > vh) continue;
+    sctx.fillStyle = ch ? rippleColour(ch) : P.a3;
     for (const [dx, dy, w] of rippleSpots(tx, ty, frame)) sctx.fillRect(x + dx - cam.x, y + dy - cam.y, w, 1);
   }
   if (baked.fountain) for (const [c, dx, dy, w, h] of fountainFrame(frame)) { sctx.fillStyle = c; sctx.fillRect(baked.fountain.x + dx - cam.x, baked.fountain.y + dy - cam.y, w, h); }
