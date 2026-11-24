@@ -172,9 +172,7 @@ async function enter(code, { transport = mode, arrival = null, solo = false } = 
   canasta = visit ? visit.canasta : (canasta || createCanasta());       // dev only: a basket that lives for this page
   if (!visit && !devFarm) devFarm = farmMemoryFor('dev');
   window.cityDebug = () => ({ town, net, canasta });                    // handy in the console when testing with two tabs
-  town = startTown({ canvas: $('view'), stage: $('stage'), pad: touch ? { stick: $('stick'), a: $('pad-a'), b: $('pad-b') } : null, sprites, font, net, me, entrance: arrival, stars: counter, canasta, farmMemory: visit ? visit.farm : devFarm, tools: () => (shopSource && shopSource.shop ? shopSource.shop.tools : []), onStore: () => shopUi && shopUi.openStore(), missions: missionsApi, onFarm: paintFarmPrompt, onFarmDone: farmPop, onHud: (info) => { hud && hud.update(info); cueResults(info); }, onHdMode: () => paintFx(), onShow: (on, running) => { const b = $('show-back'); b.hidden = !running; b.textContent = on ? 'Volver al pueblo' : 'Ver show'; b.setAttribute('aria-pressed', String(on)); }, onShop: () => shopUi && shopUi.openShop(), insets: stageInsets });
-  if (!town.hd.locked) town.hd.set(hdPref);
-  paintFx();
+  town = startTown({ canvas: $('view'), stage: $('stage'), pad: touch ? { stick: $('stick'), a: $('pad-a'), b: $('pad-b') } : null, sprites, font, net, me, entrance: arrival, stars: counter, canasta, farmMemory: visit ? visit.farm : devFarm, tools: () => (shopSource && shopSource.shop ? shopSource.shop.tools : []), onStore: () => shopUi && shopUi.openStore(), missions: missionsApi, onFarm: paintFarmPrompt, onFarmDone: farmPop, onHud: (info) => { hud && hud.update(info); cueResults(info); }, onShow: (on, running) => { const b = $('show-back'); b.hidden = !running; b.textContent = on ? 'Volver al pueblo' : 'Ver show'; b.setAttribute('aria-pressed', String(on)); }, onShop: () => shopUi && shopUi.openShop(), insets: stageInsets });
   paintArcade();
   devArcade();
   setStatus('connected');
@@ -251,15 +249,6 @@ function devArcade() {
   if (q.get('dev') !== '1' || !town) return;
   if (q.has('wear') && sprites.catalogue[q.get('wear')]) { town.wear(q.get('wear')); paintArcade(); }
   if (q.has('arcade')) { const a = openArcade(q.has('seed') ? { seed: Number(q.get('seed')) } : {}); if (a) a.dev.go(q.get('arcade'), Number(q.get('at')) || 0, q.get('bot') !== '0', q.get('game') === 'skate' ? 'skate' : 'train', q.get('shot') || (q.get('jump') === '1' ? 'jump' : '')); }
-}
-
-/** The "Efectos" switch (the HD-2D view): the choice is remembered in this browser; ?flat=1 locks it off. */
-let hdPref = store.get('city.hd2d') !== '0';
-function paintFx() {                                            // shows the real state (the town may have fallen back to flat by itself)
-  const btn = $('fx-toggle');
-  if (!town) return;
-  btn.disabled = town.hd.locked;
-  btn.setAttribute('aria-pressed', String(town.hd.on));
 }
 
 // ---- the farm: what this pet did today (kept in this browser, per pet) and the small prompt and pop over the stage ----------------------------
@@ -471,7 +460,6 @@ async function boot() {
   setupSound();
   $('show-back').addEventListener('click', () => { if (town) town.events.toggle(); });
   $('arcade-open').addEventListener('click', () => { sound.unlock(); openArcade(); });
-  $('fx-toggle').addEventListener('click', () => { if (!town || town.hd.locked) return; hdPref = !town.hd.on; store.set('city.hd2d', hdPref ? '1' : '0'); town.hd.set(hdPref, true); paintFx(); });
   shopUi = createShopUi($, {
     sprites, source: () => shopSource,
     onOpenChange: (open) => { $('play').classList.toggle('modal', open); if (town) town.setModal(open); },

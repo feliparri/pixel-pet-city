@@ -28,17 +28,22 @@ const town = { fps: 24.4, worst: 120, spans: { logic: 1.2, draw: 30.5 } };
 const view = { w: 1266, h: 585, dpr: 3 };
 
 test('the box shows the HD-2D level and where a frame goes', () => {
-  const lines = perfLines({ town, view, hd: { mode: 'hd', level: 2, res: 0.65, parts: { ground: 8, items: 6, fx: 15, overlay: 1.5 }, autoFlat: false } });
+  const lines = perfLines({ town, view, hd: { mode: 'hd', level: 2, res: 0.65, parts: { ground: 8, items: 6, fx: 15, overlay: 1.5 } } });
   assert.equal(lines[0], 'HD-2D nivel 2 (res 0.65)');
   assert.ok(lines.some((l) => l.includes('efectos 15.0')));
   assert.ok(lines.some((l) => l.includes('lienzo 1266x585')));
 });
 
-test('after the automatic fallback the box says so and keeps the numbers from the fall', () => {
-  const lines = perfLines({ town, view, hd: { mode: 'flat', level: 4, res: 0.5, parts: { ground: 1, items: 1, fx: 1, overlay: 1 }, autoFlat: true, atFall: { level: 4, fps: 21.3 } } });
-  assert.equal(lines[0], 'plana (caída automática)');
-  assert.ok(lines.includes('al caer: nivel 4, 21.3 fps'));
+test('the flat box has no HD-2D numbers', () => {
+  const lines = perfLines({ town, view, hd: { mode: 'flat', level: 4, res: 0.5, parts: { ground: 1, items: 1, fx: 1, overlay: 1 } } });
+  assert.equal(lines[0], 'plana');
   assert.ok(!lines.some((l) => l.startsWith('suelo')));
+});
+
+test('skipped HD-2D frames show as a count and the last message', () => {
+  const hd = { mode: 'hd', level: 2, res: 1, parts: {}, errors: { count: 3, last: "Cannot read properties of undefined (reading 'width')" } };
+  assert.ok(perfLines({ town, view, hd }).includes("errores 3: Cannot read properties of undefined (reading 'width')"));
+  assert.ok(!perfLines({ town, view, hd: { ...hd, errors: { count: 0, last: '' } } }).some((l) => l.startsWith('errores')));
 });
 
 test('skip only takes known parts, and only together with perf=1', async () => {

@@ -278,27 +278,28 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
 
   return {
     resize, draw, pointToTile, activate, setInset(i) { inset = { top: i.top || 0, bottom: i.bottom || 0 }; },
-    /** The player turned it back on after the automatic fallback: keep the cheapest level and do not fall back again. */
-    pin() { gov.allowFlat = false; },
     /** For the console: { level, res, ms (drawing a frame), fps (frames per second as the screen got them), w, h }. */
     stats: () => ({ level: gov.level, res: gov.settings.res, ms: +stat.ms.toFixed(1), fps: +(1000 / stat.dt).toFixed(1), w: view.w, h: view.h, build: stat.build, parts: { ...stat.parts }, gl: glr ? { on: glr.ok, ...glr.stats() } : null }),
     get view() { return view; }, get cam() { return cam; },
   };
 }
 
+const MAX_BAD_FRAMES = 120;                                                         // consecutive HD-2D frames that may throw before the flat view takes over
+
 /**
- * The town's renderer: HD-2D outdoors, the flat renderer in interiors or when HD-2D is off (setHd(false), or `flat`, which also locks it
- * off). Same interface as createRenderer, plus hd (is it on), setHd(on) and flat.
+ * The town's renderer: HD-2D outdoors, the flat renderer in interiors or when `flat` (?flat=1) locks HD-2D off. Same interface as
+ * createRenderer, plus hd (is HD-2D in use) and flat. A frame that throws is skipped and counted (stats().errors); only a long run of them
+ * falls back to flat.
  */
-export function createTownRenderer({ canvas, sprites, font, minH = MIN_VIEW_H, minW, flat = false, skip, gl = false, onNotice = () => {}, onMode = () => {} }) {
+export function createTownRenderer({ canvas, sprites, font, minH = MIN_VIEW_H, minW, flat = false, skip, gl = false, onNotice = () => {} }) {
   const flatR = createRenderer({ canvas, sprites, font, minH, minW });
-  let hdOn = !flat, kind = null, box = null, failed = false, autoFlat = false, told = false, atFall = null;      // atFall: the HD-2D numbers when it fell back (for ?perf=1)
+  let kind = null, box = null, failed = false, told = false;
+  const errors = { count: 0, last: '', seen: new Set(), run: 0 };                  // run: consecutive frames that threw
   const hdR = createHdRenderer({ canvas, sprites, font, skip, gl, compact: minH < VIEW_H, onQuality(ev) {
     if (ev.kind === 'down' && !told) { told = true; onNotice('Bajamos un poco los efectos para que vaya fluido'); }
-    else if (ev.kind === 'flat') { atFall = hdR.stats(); failed = true; autoFlat = true; onNotice('Pasamos a la vista plana para que vaya fluido. Puedes volver a probar con «Efectos»'); onMode(); }
   } });
 
-  const use = (state) => (hdOn && !failed && getArea(state.area || 'town').outdoor ? 'hd' : 'flat');
+  const use = (state) => (!flat && !failed && getArea(state.area || 'town').outdoor ? 'hd' : 'flat');
   function switchTo(k) {
     kind = k;
     if (!box) return;
@@ -314,23 +315,22 @@ export function createTownRenderer({ canvas, sprites, font, minH = MIN_VIEW_H, m
       const k = use(state);
       if (k !== kind) switchTo(k);
       if (k === 'hd') {
-        try { hdR.draw(state, now); return; } catch (e) { console.error('HD-2D failed, using the flat view', e); failed = true; switchTo('flat'); }
+        try { hdR.draw(state, now); errors.run = 0; return; } catch (e) {
+          const msg = String((e && e.message) || e);
+          errors.count++; errors.last = msg; errors.run++;
+          if (!errors.seen.has(msg) && errors.seen.size < 20) { errors.seen.add(msg); console.error('HD-2D frame skipped', e); }
+          if (errors.run >= MAX_BAD_FRAMES) { failed = true; switchTo('flat'); console.error('HD-2D failed on every frame, using the flat view'); }      // last resort against a blank screen
+          else return;                                                              // skip this frame, stay in HD-2D
+        }
       }
       try { flatR.draw(state, now); } catch (e) { flatR.invalidate(); throw e; }      // a half-drawn frame leaves the canvas state (transform, clip, saves) unbalanced: lay it out afresh next frame
     },
     /** css px of the view the bar (top) and the emotes row (bottom) float over: both renderers keep the pet clear of them at the map's edges. */
     setInset(i) { hdR.setInset(i); flatR.setInset(i); },
     pointToTile: (x, y) => (kind === 'hd' ? hdR.pointToTile(x, y) : flatR.pointToTile(x, y)),
-    get hd() { return hdOn && !failed; },
-    stats: () => ({ mode: kind, ...hdR.stats(), autoFlat, atFall, skip: [...(skip || [])] }),
+    get hd() { return !flat && !failed; },
+    stats: () => ({ mode: kind, ...hdR.stats(), errors: { count: errors.count, last: errors.last }, skip: [...(skip || [])] }),
     get flat() { return flat; },
-    /** `manual`: the player pressed the switch. After an automatic fallback, turning it on again is respected: the cheapest level, no second fallback. */
-    setHd(on, manual = false) {
-      if (flat) return;
-      hdOn = !!on;
-      if (on && manual && autoFlat) hdR.pin();
-      failed = false;
-    },
     get scale() { return flatR.scale; },
   };
 }

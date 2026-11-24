@@ -90,7 +90,6 @@ a.btn { display: inline-block; text-decoration: none; }
 .pad { position: absolute; z-index: 3; bottom: max(.5rem, env(safe-area-inset-bottom)); align-items: center; justify-content: center; gap: 1rem; padding: .5rem; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: none; }
 .round { pointer-events: none; font: inherit; color: var(--text); background: rgba(58,68,102,.6); border: 2px solid rgba(244,246,250,.35); }
 #pad-right { right: max(.6rem, env(safe-area-inset-right)); }
-.fx-toggle[aria-pressed="true"] { background: var(--gold); color: var(--bg); border-color: #b89420; }
 .round.on { background: rgba(248,208,64,.7); color: var(--bg); }
 .stick-zone { display: none; position: absolute; z-index: 3; left: 0; top: 35%; bottom: 0; width: 42%; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .stick-base { position: absolute; width: 7.5rem; height: 7.5rem; margin: -3.75rem 0 0 -3.75rem; border-radius: 50%; background: rgba(58,68,102,.35); border: 2px solid rgba(244,246,250,.35); pointer-events: none; visibility: hidden; }

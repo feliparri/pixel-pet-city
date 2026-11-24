@@ -77,7 +77,7 @@ export function createGiftWorld({ room, storage = null, art = { giftArt, burstFr
       const fr = art.burstFrames();
       for (const d of items) {
         if (d.burst) {
-          const f = Math.min(BURST_FRAMES - 1, Math.floor((t - d.burst.t0) / BURST_FRAME_MS));
+          const f = Math.max(0, Math.min(BURST_FRAMES - 1, Math.floor((t - d.burst.t0) / BURST_FRAME_MS)));      // never below 0: the frame's clock (rAF) can read a hair before the click's (performance.now)
           d.id = `${d.burst.id}~${f}`; d.sprite = d.lit = fr[f]; d.lift = 4 + f * 3;
         } else if (!d.santa) {
           const f = Math.floor(t / TWINKLE_MS + d.phase * 4) % 2;

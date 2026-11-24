@@ -312,3 +312,11 @@ test('the actions in serve.ts are the handlers\' routes, trip-gift among them', 
   for (const fn of acts) assert.notEqual((await handle(fn, { method: 'POST', headers: {}, body: new Uint8Array() }, { db: {}, nowS: () => 0 })).body.error, 'unknown_function', fn);
   assert.equal((await handle('trip-gifts', { method: 'POST', headers: {}, body: new Uint8Array() }, {})).status, 404);
 });
+
+test('a burst never reads a frame before the first, even when the frame clock is behind the click', () => {
+  const ms = at('2026-12-10'), xmas = new Set(['christmas']), w = createGiftWorld({ room: 'FOCA-LUNA-42', art: fakeArt });
+  const first = w.update(ms, xmas, 'trip', 0)[0];
+  w.open(first.gift.id, 5000);
+  const bst = w.update(ms, xmas, 'trip', 4990).find((d) => d.burst);
+  assert.equal(bst.sprite.id, 'b0');
+});

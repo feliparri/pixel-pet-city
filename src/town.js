@@ -57,7 +57,7 @@ function spawnFor(id) {
  * done }, what the server paid today), claim(m) (hands a mission in: the server pays real gold, src/trip.js claimMission), giftOwner() (who opens the seasonal gifts: the trip's ref),
  * gift(id) (opens a gift: the server pays 10 to 30 gold (20 to 30 for one of Santa's), src/trip.js claimGift) }; onFarm({ action, prompt }) says which action is available (or null) when it changes, onFarmDone(result) reports an action's outcome (the pop) and onFarmAction(event) every action done (missions).
  * Returns { onNetEvent, emote, playExit, games: { play, join, seek, leave, dismiss }, farm: { act }, destroy }. */
-export function startTown({ canvas, stage, pad = null, sprites, font, net, me, entrance = null, stars = { add() {} }, canasta = createCanasta(), farmMemory = createFarmMemory(), tools = () => [], onStore = () => {}, missions = null, onHud = () => {}, onHdMode = () => {}, onShow = () => {}, onShop = () => {}, insets = () => ({ top: 0, bottom: 0 }), onFarm = () => {}, onFarmDone = () => {}, onFarmAction = () => {} }) {
+export function startTown({ canvas, stage, pad = null, sprites, font, net, me, entrance = null, stars = { add() {} }, canasta = createCanasta(), farmMemory = createFarmMemory(), tools = () => [], onStore = () => {}, missions = null, onHud = () => {}, onShow = () => {}, onShop = () => {}, insets = () => ({ top: 0, bottom: 0 }), onFarm = () => {}, onFarmDone = () => {}, onFarmAction = () => {} }) {
   const [sx, sy] = spawnFor(net.id);
   const self = { id: net.id, name: me.name, look: me.look, stats: me.stats || null, act: 'idle', walker: new Walker(sx, sy), emote: null, jumpAt: null, area: 'town' };
   if (entrance) self.fx = { id: entrance, phase: 'arrive', t0: performance.now(), resolve: null };
@@ -65,7 +65,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   const state = { me: self, others: [], marker: null, area: 'town', amb: ambientAt(hourNow(location.search)), fade: 0 };
   const life = createLife(net.code || net.id);                       // the same scene for a room, from its code; nothing of it goes over the net
   const farmLife = createFarmLife(net.code || net.id);               // and the farm's: the animals walk where the room's clock says
-  const renderer = createTownRenderer({ canvas, sprites, font, minH: pad ? MIN_VIEW_H : VIEW_H, minW: pad ? MIN_VIEW_W : VIEW_W, flat: new URLSearchParams(location.search).get('flat') === '1', skip: perfSkip(location.search), gl: glWanted(location.search), onNotice: (text) => games.notify(text), onMode: onHdMode });   // a phone: 1.25 times the tiles it showed (and a whole-number pixel size); a desktop: as many tiles as before
+  const renderer = createTownRenderer({ canvas, sprites, font, minH: pad ? MIN_VIEW_H : VIEW_H, minW: pad ? MIN_VIEW_W : VIEW_W, flat: new URLSearchParams(location.search).get('flat') === '1', skip: perfSkip(location.search), gl: glWanted(location.search), onNotice: (text) => games.notify(text) });   // a phone: 1.25 times the tiles it showed (and a whole-number pixel size); a desktop: as many tiles as before
   const npcs = createNpcs({ seed: net.code || net.id, sprites });           // the villagers: their place and lines come from (room, server time) alone, nothing of them goes over the net
   const search = new URLSearchParams(location.search);
   const meter = search.get('perf') === '1' ? createMeter() : null;      // ?perf=1: a box with what each frame costs on this device (src/perf.js)
@@ -522,7 +522,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     /** The scheduled sky show: "Volver al pueblo" winds it down on this screen only and "Ver show" brings it back. */
     events: { cut: () => events.cut(), resume: () => events.resume(), toggle: () => events.toggle() },
     /** The HD-2D view: is it on, switch it (the page remembers the choice), and is it locked off (?flat=1). */
-    hd: { get on() { return renderer.hd; }, set: (on, manual) => renderer.setHd(on, manual), stats: () => renderer.stats(), get locked() { return renderer.flat; } },
+    hd: { get on() { return renderer.hd; }, stats: () => renderer.stats(), get locked() { return renderer.flat; } },
     /** The pets of this room for the radar (this pet first): [{ n, sp, st, s, a }]. */
     radarPets: () => radarPets(self, net.peers()),
     /** Plays the exit of an entrance id and resolves when the pet is gone (the caller then leaves the room). */

@@ -287,6 +287,7 @@ export function decorItems(world, cam, n, view, list) {
   let lights = byList.get(list);
   if (!lights) byList.set(list, lights = list.map((d) => lightAt(world.lights, d.x, d.y)));
   list.forEach((d, i) => {
+    if (!d.sprite) return;                                                                                     // a decoration with no art this frame is skipped, never a crash
     const p = project(cam, d.x, d.y);
     if (!p) return;
     const s = d.sprite, w = s.width * p.scale, h = s.height * p.scale, x = p.x - w / 2, y = p.y - h - d.lift * p.scale;

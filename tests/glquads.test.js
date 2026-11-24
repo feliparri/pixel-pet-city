@@ -139,7 +139,7 @@ test('a volatile canvas (its pixels change between draws) is drawn on the real c
 
 test('perfLines names WebGL in the mode line when it is on', () => {
   const town = { fps: 60, worst: 20, spans: { logic: 1, draw: 2 } }, view = { w: 640, h: 242, dpr: 1 };
-  const hd = { mode: 'hd', level: 4, res: 0.5, parts: { ground: 1, items: 2, fx: 3, overlay: 0.5 }, autoFlat: false };
+  const hd = { mode: 'hd', level: 4, res: 0.5, parts: { ground: 1, items: 2, fx: 3, overlay: 0.5 } };
   assert.equal(perfLines({ town, view, hd })[0], 'HD-2D nivel 4 (res 0.5)');
   const on = perfLines({ town, view, hd: { ...hd, gl: { on: true, quads: 390, calls: 120, uploads: 0 } } });
   assert.equal(on[0], 'HD-2D nivel 4 (res 0.5) WebGL');

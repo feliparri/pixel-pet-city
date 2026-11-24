@@ -33,7 +33,7 @@ const f1 = (n) => (Number.isFinite(n) ? n.toFixed(1) : '-');
 /** The lines of the box: the mode, the frame rate, the cost of the town's logic and of each part of the drawing. */
 export function perfLines({ town, hd, view }) {
   const lines = [];
-  const mode = hd.mode === 'hd' ? `HD-2D nivel ${hd.level} (res ${hd.res})${hd.gl && hd.gl.on ? ' WebGL' : ''}` : hd.autoFlat ? 'plana (caída automática)' : 'plana';
+  const mode = hd.mode === 'hd' ? `HD-2D nivel ${hd.level} (res ${hd.res})${hd.gl && hd.gl.on ? ' WebGL' : ''}` : 'plana';
   lines.push(mode);
   lines.push(`${f1(town.fps)} fps  peor ${Math.round(town.worst)} ms`);
   lines.push(`lógica ${f1(town.spans.logic)}  dibujo ${f1(town.spans.draw)} ms`);
@@ -44,7 +44,7 @@ export function perfLines({ town, hd, view }) {
     if (hd.gl && hd.gl.on) lines.push(`WebGL ${hd.gl.quads} quads  ${hd.gl.calls} llamadas  ${hd.gl.uploads} texturas`);
   }
   if (hd.skip && hd.skip.length) lines.push(`sin: ${hd.skip.join(', ')}`);
-  if (hd.autoFlat && hd.atFall) lines.push(`al caer: nivel ${hd.atFall.level}, ${f1(hd.atFall.fps)} fps`);
+  if (hd.errors && hd.errors.count) lines.push(`errores ${hd.errors.count}: ${String(hd.errors.last).slice(0, 60)}`);
   lines.push(`lienzo ${view.w}x${view.h}  dpr ${view.dpr}`);
   return lines;
 }
