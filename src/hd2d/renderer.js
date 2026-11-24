@@ -36,7 +36,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
   const ctx = canvas.getContext('2d');
   let glr = null;                                                                    // ?gl=1: the ground and the sprites go through WebGL (gl.js); null = plain canvas 2D, also when WebGL is not there
   if (gl) { try { glr = createGlLayer(); } catch { glr = null; } }
-  const ref = compact ? 170 : 230, out = compact ? PHONE_OUT : 1;
+  const ref = compact ? 148 : 230, out = compact ? PHONE_OUT : 1;
   const painter = createPetPainter(sprites);
   const things = createThings();
   let darkCanvas = null;
