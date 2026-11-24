@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isLounger, lying, loungeAt, LOUNGER, LIE_SAY, LIE_LIFT } from '../src/lounge.js';
-import { SLEEP_LINE } from '../src/npcs.js';
+import { isLounger, lying, loungeAt, LOUNGER, LIE_LIFT } from '../src/lounge.js';
 import { AREAS, TILES, isWalkable, isLand, tileAt } from '../src/map.js';
 import { Walker } from '../src/walker.js';
 import { findPath } from '../src/path.js';
@@ -71,12 +70,11 @@ test('the tall palms and the big umbrellas: palms 1.6 to 2 times the old height 
   assert.ok(bake.includes(`y: y + 16 - ${ph}`) && bake.includes(`y: y + 16 - ${uh}`), 'the props stand on their tile with the new heights');
 });
 
-test('a pet on a lounger uses the sleeping drawing of the game: the same Zzz line as a sleeping villager, the eyes shut, resting on the seat, in both renderers', () => {
-  assert.equal(LIE_SAY, SLEEP_LINE);
+test('a pet on a lounger is drawn as the board draws a sleeping pet (ported from the device), in both renderers', () => {
   assert.ok(LIE_LIFT > 0 && LIE_LIFT <= 6);
   for (const f of ['../src/hd2d/pets.js', '../src/render.js']) {
     const src = readFileSync(new URL(f, import.meta.url), 'utf8');
-    assert.ok(src.includes('LIE_SAY') && src.includes('LIE_LIFT') && src.includes("lie ? 'blink'"), f);
+    assert.ok(src.includes('lieScale') && src.includes('zzzAt') && src.includes('LIE_LIFT') && src.includes("lie ? 'blink'"), f);
     assert.equal(src.includes('rotate(flip'), false, 'no turned sprite any more');
   }
 });

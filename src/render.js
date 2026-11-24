@@ -27,7 +27,8 @@ import { paintSky, drawWeatherTop } from './weather-fx.js';
 import { waterOf, SUBMERGE } from './sea.js';
 import { waveStrokes } from './surf.js';
 import { drawWake, drawBoard } from './sea-draw.js';
-import { lying, LIE_SAY, LIE_LIFT } from './lounge.js';
+import { lying, LIE_LIFT } from './lounge.js';
+import { lieScale, zzzAt, zzzSprite } from './art/sleep.js';
 
 export const VIEW_W = 224;              // the portrait reference view; a box taller than wide is fitted to it (and the dev previews use it)
 export const VIEW_H = 288;
@@ -169,11 +170,12 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
           const flap = (e.walker.moving || lift > 0) && Math.floor(now / 140) % 2 === 1;
           small(px, by - lift, () => {
             if (ride || paddle) { drawBoard(sctx, 0, -1, 1, { squash: 0.5, night: amb.night }); sctx.translate(0, -2); if (paddle) sctx.scale(1, 0.82); }
-            if (lie) sctx.translate(0, -LIE_LIFT);      // on a lounger: resting on the seat, in the sleeping drawing
+            if (lie) { const q = lieScale(now); sctx.translate(0, -LIE_LIFT); sctx.scale(q.sx, q.sy); }      // on a lounger: lying flat on the seat, as the board draws a sleeping pet
             if (swim) { const sub = wiped ? { sink: 9, cut: 12 } : SUBMERGE; sctx.beginPath(); sctx.rect(-CELL, -2 * CELL, 2 * CELL, 2 * CELL - sub.cut + 1 + sub.sink - 5); sctx.clip(); sctx.translate(0, sub.sink - 4 + Math.round(Math.sin(now / (wiped ? 110 : 320) + e.id.charCodeAt(0)) * (wiped ? 2 : 1))); }      // only what is above the water
             drawPet(sctx, e.sprites || sprites, e.look, -CELL / 2, -CELL + 2 - hop - air, { frame: lift > 0 ? 'happy' : lie ? 'blink' : headFrame(e, now, e.id), flip: e.walker.d === 'left', flap, now });
           });
         }
+        if (lie) small(px, by - LIE_LIFT, () => { for (const z of zzzAt(now, CELL)) sctx.drawImage(zzzSprite(), 0, 0, 12, 14, z.x, z.y, 12 * z.k, 14 * z.k); });      // the two Zzz
         if (wiped) small(px, by, () => drawBoard(sctx, 15, 1, 1, { squash: 0.5, night: amb.night, tilt: Math.sin(now / 200) }));
         if (water) small(px, by - (swim ? 1 : 0), () => drawWake(sctx, 0, 0, 1, { depth: water, moving: ride || e.walker.moving, d: ride ? 'right' : e.walker.d, paddle, squash: 0.5, now, night: amb.night, seed: e.id.charCodeAt(0) }));
         labels.push({ text: e.name, x: px - Math.floor(textWidth(font, e.name) / 2), y: by + 2 - lift, colour: e === me ? '#f8d040' : e.npc ? '#a8e6cf' : '#f4f6fa' });
@@ -181,7 +183,7 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
       if (fx) small(px, by - lift, () => drawEntranceFx(sctx, e.fx.id, fx, 0, 0, CELL, true));
     } });
     if (e.emote && now < e.emote.until && !lift && !(fx && fx.hidden)) bubbles.push({ x: bx, y: by - (CELL + hop + air) * pr, e: e.emote.e });      // above the head: the pet's height is in its own px
-    else if ((e.say || lie) && !lift) bubbles.push({ x: bx, y: by - (CELL + hop + (lie ? LIE_LIFT : 0)) * pr, text: e.say || LIE_SAY });                    // a villager's line
+    else if (e.say && !lift) bubbles.push({ x: bx, y: by - (CELL + hop) * pr, text: e.say });                    // a villager's line
   }
   if (talk) for (const t of talk) bubbles.push({ x: Math.round(t.x - cam.x), y: Math.round(t.y - cam.y), text: t.text });      // a shopkeeper's line: (x, y) in map px, just above its head
   if (chicken && areaName === 'town') {                                      // the chicken of Pillar la gallina
