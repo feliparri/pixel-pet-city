@@ -9,32 +9,29 @@ import { drawAnimal, COW_SIZE, SHEEP_SIZE } from '../art/farm.js';
 import { project, standAt, snapScale } from './camera.js';
 import { lightAt } from './light.js';
 import { grade } from './scene.js';
+import { createFrameCache, createShadows, drawShadow } from './framecache.js';
 
+const THING_RINGS = [[1, 0.14], [1 / 1.3, 0.2], [0.7 / 1.3, 0.24]];   // the soft shadow: three discs, the widest faintest
 const SIZE = 64, AX = 32, AY = 52;                                   // the scratch canvas: a thing's feet are at (AX, AY)
 
 export function createThings() {
-  const tmp = Object.assign(document.createElement('canvas'), { width: SIZE, height: SIZE }), tctx = tmp.getContext('2d');
+  const canvas = (w, h) => Object.assign(document.createElement('canvas'), { width: w, height: h });
+  const frames = createFrameCache({ canvas, grade }), shadowOf = createShadows(canvas);
 
   /**
-   * An upright thing standing at world point (wx, wy): `paint(ctx, ax, ay)` draws it with its feet at (ax, ay). `shadow` (a radius in game
-   * px, or 0) is the soft ellipse it leaves on the ground.
+   * An upright thing standing at world point (wx, wy): `paint(ctx, ax, ay)` draws it with its feet at (ax, ay). `key` names its pose (everything
+   * that changes the pixels), so a frame is painted and graded once and reused. `shadow` (a radius in game px, or 0) is the soft ellipse it leaves.
    */
-  function stand(ctx3, wx, wy, paint, shadow = 0) {
+  function stand(ctx3, wx, wy, key, paint, shadow = 0) {
     const { cam, n, world, view } = ctx3;
     const g = project(cam, wx, wy);
     if (!g) return null;
     const s = snapScale(g.scale), cx = Math.round(g.x), cy = Math.round(g.y);
     if (cx < -SIZE * s || cx > view.w + SIZE * s || cy < 0 || cy > view.h + AY * s) return null;
     return { depth: g.depth, order: 0, draw: (c) => {
-      if (shadow) {
-        c.save(); c.translate(cx, cy - s); c.scale(1, Math.max(0.3, cam.sin) * 0.5);
-        for (const [r, a] of [[1.3, 0.14], [1, 0.2], [0.7, 0.24]]) { c.fillStyle = `rgba(8,10,30,${a})`; c.beginPath(); c.arc(0, 0, shadow * r * s, 0, 6.2832); c.fill(); }
-        c.restore();
-      }
-      tctx.clearRect(0, 0, SIZE, SIZE);
-      paint(tctx, AX, AY);
-      if (n > 0.02) grade(tctx, tmp, n, lightAt(world.lights, wx, wy));
-      c.drawImage(tmp, 0, 0, SIZE, SIZE, cx - AX * s, cy - AY * s, SIZE * s, SIZE * s);
+      if (shadow) drawShadow(c, shadowOf('thing', THING_RINGS, shadow * 1.3 * s), cx, cy - s, Math.max(0.3, cam.sin) * 0.5);
+      const img = frames.graded(key, SIZE, SIZE, (t) => paint(t, AX, AY), n, lightAt(world.lights, wx, wy));
+      c.drawImage(img, 0, 0, SIZE, SIZE, cx - AX * s, cy - AY * s, SIZE * s, SIZE * s);
     } };
   }
 
@@ -45,13 +42,13 @@ export function createThings() {
     const { chicken, ball, life } = state;
     if (chicken) {
       const hop = chicken.frame === 1 ? (Math.floor(now / 110) % 2) * 2 : 0;
-      add(stand(ctx3, chicken.x * TILE + TILE / 2, chicken.y * TILE + TILE, (c, ax, ay) => drawChicken(c, ax - CHICKEN_SIZE / 2, ay - CHICKEN_SIZE - hop, chicken.frame, chicken.flip), 5));
+      add(stand(ctx3, chicken.x * TILE + TILE / 2, chicken.y * TILE + TILE, `chicken|${chicken.frame}|${chicken.flip ? 1 : 0}|${hop}`, (c, ax, ay) => drawChicken(c, ax - CHICKEN_SIZE / 2, ay - CHICKEN_SIZE - hop, chicken.frame, chicken.flip), 5));
     }
-    if (ball) add(stand(ctx3, ball.x * TILE, ball.y * TILE + 4, (c, ax, ay) => drawBall(c, ax, ay - 4)));
+    if (ball) add(stand(ctx3, ball.x * TILE, ball.y * TILE + 4, 'ball', (c, ax, ay) => drawBall(c, ax, ay - 4)));
     if (life) {
-      for (const b of life.birds) add(stand(ctx3, b.x, b.y, (c, ax, ay) => drawBird(c, ax, ay, b.kind, b.frame, b.flip, b.air)));
-      if (life.duck) add(stand(ctx3, life.duck.x, life.duck.y + 4, (c, ax, ay) => drawDuck(c, ax, ay - 4, life.duck.frame, life.duck.flip)));
-      for (const a of life.animals || []) add(stand(ctx3, a.x, a.y, (c, ax, ay) => drawAnimal(c, a, ax, ay), (a.kind === 'cow' ? COW_SIZE : SHEEP_SIZE).w / 2 - 2));
+      for (const b of life.birds) add(stand(ctx3, b.x, b.y, `bird|${b.kind}|${b.frame}|${b.flip ? 1 : 0}|${b.air}`, (c, ax, ay) => drawBird(c, ax, ay, b.kind, b.frame, b.flip, b.air)));
+      if (life.duck) add(stand(ctx3, life.duck.x, life.duck.y + 4, `duck|${life.duck.frame}|${life.duck.flip ? 1 : 0}`, (c, ax, ay) => drawDuck(c, ax, ay - 4, life.duck.frame, life.duck.flip)));
+      for (const a of life.animals || []) add(stand(ctx3, a.x, a.y, `animal|${a.kind}|${a.frame}|${a.flip ? 1 : 0}`, (c, ax, ay) => drawAnimal(c, a, ax, ay), (a.kind === 'cow' ? COW_SIZE : SHEEP_SIZE).w / 2 - 2));
     }
     return out;
   }

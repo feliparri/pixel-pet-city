@@ -1,33 +1,54 @@
 // A pet as an upright item of the HD-2D view: its sprite (graded for the night and for the lamps that reach it), a flat ground shadow that
 // stays on the ground when the pet jumps, and what goes in screen space afterwards (its name and its emote bubble). Used by the town
 // and by the demo page. An entity is { id, name, look, walker, emote?, jumpAt?, fx?, gone? } as in render.js.
-import { drawPet, petLayout, CELL } from '../sprites.js';
+import { drawPet, petLayout, partAt, CELL } from '../sprites.js';
 import { jumpLift } from '../jump.js';
 import { entranceState, drawEntranceFx, flickers } from '../entrance.js';
 import { headFrame } from '../render.js';
+import { STAGES } from '../protocol.js';
 import { TILE } from '../map.js';
 import { project, petScaleOf } from './camera.js';
 import { lightAt } from './light.js';
 import { grade } from './scene.js';
+import { createFrameCache, createShadows, drawShadow } from './framecache.js';
+
+const PET_RINGS = [[1, 0.16], [8.5 / 11, 0.2], [6 / 11, 0.24]];            // the soft ground shadow: three discs of 11, 8.5 and 6 px
 
 export function createPetPainter(sprites) {
-  // One scratch canvas per size (a pet is cleared, drawn, graded and copied in one go, so pets of one size share it): a canvas is never resized once made, since
-  // resizing clears it and reallocates. A pet's layout comes from what it wears, so the common bare or lightly dressed pet stays on the small 48 x 48 one.
-  const canvases = new Map(), layouts = new WeakMap();
-  const canvasFor = (w, h) => {
+  // A pet's painted frames are cached by look and pose (see framecache.js), so a pet is only repainted when its pose changes. A pet's layout comes from what
+  // it wears, so the common bare or lightly dressed pet stays on the small 48 x 48 one.
+  const canvas = (w, h) => Object.assign(document.createElement('canvas'), { width: w, height: h });
+  const frames = createFrameCache({ canvas, grade }), shadowOf = createShadows(canvas);
+  const scratches = new Map();                                                                  // one canvas per size for the show's tint
+  const scratch = (w, h) => {
     const k = `${w}x${h}`;
-    let c = canvases.get(k);
-    if (!c) { const tmp = document.createElement('canvas'); tmp.width = w; tmp.height = h; c = { tmp, tctx: tmp.getContext('2d') }; canvases.set(k, c); }
+    let c = scratches.get(k);
+    if (!c) { const t = canvas(w, h); scratches.set(k, c = { t, tctx: t.getContext('2d') }); }
     return c;
   };
+  const layouts = new WeakMap(), setIds = new WeakMap();
+  let sets = 0;
   const layoutFor = (sp, look) => {
     let byLook = layouts.get(sp.data);
-    if (!byLook) layouts.set(sp.data, byLook = new Map());
+    if (!byLook) { layouts.set(sp.data, byLook = new Map()); setIds.set(sp.data, sets++); }
     const k = `${look.species}${look.stage}${look.items.join()}`;
     let lay = byLook.get(k);
-    if (!lay) byLook.set(k, lay = petLayout(sp.data, look));
+    if (!lay) byLook.set(k, lay = { ...petLayout(sp.data, look), id: `${setIds.get(sp.data)}|${k}`, anim: animated(sp.data, look) });
     return lay;
   };
+  /** The animated accessories a look wears as [item, placed parts]: the crown and the helmet change art over time, so their frame is part of a pet's key. */
+  const animated = (data, look) => {
+    const out = [], key = `${look.species}-${STAGES[look.stage]}`;
+    for (const id of look.items) {
+      const item = id && data.items[id];
+      if (!item || !item.anim) continue;
+      const worn = item.worn[key];
+      out.push([item, worn ? [...worn.rest, ...(worn.flap || [])].map((w) => w[0]) : []]);
+    }
+    return out;
+  };
+  /** What an animated accessory shows at time `now`, as a key part (empty when the look wears none). */
+  const animKey = (lay, now) => lay.anim.length ? lay.anim.map(([item, parts]) => parts.map((p) => partAt(item, p, now)).join()).join(';') : '';
 
   /** The depth-sortable item for an entity, or null when it is off screen / gone. `ctx.me` marks the local pet (its name is gold). */
   function item(e, { cam, n, now, world, me, view, wash = null }) {
@@ -50,20 +71,22 @@ export function createPetPainter(sprites) {
       const effects = (front, x, y) => { c.save(); c.translate(cx, cy); c.scale(s, s); drawEntranceFx(c, e.fx.id, fx, x, y, CELL, front); c.restore(); };
       if (fx) effects(false, 0, 0);
       if (!fx || !fx.hidden) {
-        if (lift < (cy / s) * 0.6) {                                                             // the shadow: it grows as the pet lands, and stays down in a jump
-          c.save(); c.translate(cx, cy - s); c.scale(1, Math.max(0.3, cam.sin) * 0.5);
-          for (const [r, a] of [[11, 0.16], [8.5, 0.2], [6, 0.24]]) { c.fillStyle = `rgba(8,10,30,${a * (1 - air * 0.04)})`; c.beginPath(); c.arc(0, 0, r * s, 0, 6.2832); c.fill(); }
-          c.restore();
-        }
+        if (lift < (cy / s) * 0.6) drawShadow(c, shadowOf('pet', PET_RINGS, 11 * s), cx, cy - s, Math.max(0.3, cam.sin) * 0.5, 1 - air * 0.04);   // it grows as the pet lands, and stays down in a jump
         if (!(fx && flickers(e.fx.id, e.fx.phase, now - e.fx.t0))) {
           const flap = (e.walker.moving || lift > 0) && Math.floor(now / 140) % 2 === 1;
-          const L = layoutFor(e.sprites || sprites, e.look), { tmp, tctx } = canvasFor(L.w, L.h);
-          tctx.clearRect(0, 0, L.w, L.h);
-          drawPet(tctx, e.sprites || sprites, e.look, L.origin.x, L.origin.y - hop, { frame: lift > 0 ? 'happy' : headFrame(e, now, e.id), flip: e.walker.d === 'left', flap, now });
-          if (n > 0.02) grade(tctx, tmp, n, lightAt(world.lights, wx, wy));                      // night: the veil, and the warm wash where a lamp reaches
+          const L = layoutFor(e.sprites || sprites, e.look), frame = lift > 0 ? 'happy' : headFrame(e, now, e.id), flip = e.walker.d === 'left';
+          const key = `${L.id}|${frame}|${flip ? 1 : 0}|${flap ? 1 : 0}|${hop}|${animKey(L, now)}`;
+          const paint = (t) => drawPet(t, e.sprites || sprites, e.look, L.origin.x, L.origin.y - hop, { frame, flip, flap, now });
+          const img = frames.graded(key, L.w, L.h, paint, n, lightAt(world.lights, wx, wy));   // night: the veil, and the warm wash where a lamp reaches
           const tint = wash ? wash(wx) : null;                                                    // a burst of the sky show washes its colour over the pet
-          if (tint) { tctx.globalCompositeOperation = 'source-atop'; tctx.fillStyle = `rgba(${tint.r | 0},${tint.g | 0},${tint.b | 0},${tint.a})`; tctx.fillRect(0, 0, L.w, L.h); tctx.globalCompositeOperation = 'source-over'; }
-          c.drawImage(tmp, 0, 0, L.w, L.h, cx - L.feetX * s + sway * s, cy - (L.feetY + air + lift) * s, L.w * s, L.h * s);
+          let src = img;
+          if (tint) {                                                                             // (only during a show: it varies by the frame, so it is not cached)
+            const { t, tctx } = scratch(L.w, L.h);
+            tctx.globalCompositeOperation = 'source-over'; tctx.clearRect(0, 0, L.w, L.h); tctx.drawImage(img, 0, 0);
+            tctx.globalCompositeOperation = 'source-atop'; tctx.fillStyle = `rgba(${tint.r | 0},${tint.g | 0},${tint.b | 0},${tint.a})`; tctx.fillRect(0, 0, L.w, L.h);
+            src = t;
+          }
+          c.drawImage(src, 0, 0, L.w, L.h, cx - L.feetX * s + sway * s, cy - (L.feetY + air + lift) * s, L.w * s, L.h * s);
         }
         ov.labels.push({ text: e.name, x: cx + sway * s, y: cy + (2 - lift) * s, colour: e === me ? '#f8d040' : e.npc ? '#a8e6cf' : '#f4f6fa' });
       }
