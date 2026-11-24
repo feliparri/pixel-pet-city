@@ -43,8 +43,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
   let groundKey = '', waterFrame = -1;
   let inset = { top: 0, bottom: 0 };                                                // css px the bar (top) and the emotes row (bottom) cover: the pet is kept clear of them
   let showFx = null, kShow = 0, stars = null, starsSeed = null;
-  const gov = createGovernor({ start: savedLevel() });
-  if (skip.size) gov.allowFlat = false;                                            // a measurement keeps HD-2D on whatever it costs
+  const gov = createGovernor({ start: savedLevel(), allowFlat: false });            // slow frames only lower the quality: the view never falls back to flat by itself (owner 2026-11-24); a crash still does
   const stat = { ms: 0, dt: 33, build: 0, parts: { ground: 0, items: 0, fx: 0, overlay: 0 } };                                         // moving averages: the cost of drawing a frame, and the time between frames
 
   function resize(b) {
