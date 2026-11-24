@@ -25,6 +25,7 @@ import { createFarmMemory } from './farm-world.js';
 import { produceCanvas } from './art/produce.js';
 import { sound } from './sound.js';
 import { startArcade } from './arcade/arcade.js';
+import { SHOWS } from './show/timeline.js';
 
 const $ = (id) => document.getElementById(id);
 const touch = isTouchDevice(window);                          // a phone or tablet: the town shows its on-screen controls
@@ -459,6 +460,13 @@ async function boot() {
   setupPops();
   setupSound();
   $('show-back').addEventListener('click', () => { if (town) town.events.toggle(); });
+  if (new URLSearchParams(location.search).get('dev') === '1') {      // development only: start each kind of show 3 s after the press, in turn
+    const kinds = ['fireworks', 'meteors', 'drones', 'halloween', 'christmas'], btn = $('show-test');
+    let next = 0;
+    const paint = () => { btn.textContent = `Probar show: ${SHOWS[kinds[next]].label}`; };
+    btn.hidden = false; paint();
+    btn.addEventListener('click', () => { if (town && town.events.injectDev(kinds[next], 3)) { next = (next + 1) % kinds.length; paint(); } });
+  }
   $('arcade-open').addEventListener('click', () => { sound.unlock(); openArcade(); });
   shopUi = createShopUi($, {
     sprites, source: () => shopSource,

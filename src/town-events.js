@@ -54,10 +54,10 @@ export function parseDevEvent(search, nowMs) {
  */
 export function createTownEvents({ api, nowMs = () => Date.now(), devEvents = null, notify = () => {}, onShow = () => {}, setTimer = setTimeout, clearTimer = clearTimeout }) {
   let events = devEvents || [], seasons = [], offset = 0, timer = null, alive = true, active = false, running = false;
-  const cuts = {}, warned = new Set(), invited = new Set();
+  const local = [], cuts = {}, warned = new Set(), invited = new Set();
   const serverNow = () => nowMs() + offset;
   /** The scheduled shows plus the automatic ones of the Christmas season (none while a dev shortcut is in use). */
-  const allEvents = (sn) => (devEvents ? events : events.concat(autoEvents(sn, seasons)));
+  const allEvents = (sn) => (devEvents ? events : events.concat(autoEvents(sn, seasons))).concat(local);
 
   async function poll() {
     if (!alive || devEvents) return;
@@ -112,6 +112,14 @@ export function createTownEvents({ api, nowMs = () => Date.now(), devEvents = nu
     },
     /** The event-mode button: leaves the show when in it, enters it when away. Returns true when the mode changed. */
     toggle() { return this.cut() || this.resume(); },
+    /** Development only (the caller checks ?dev=1): a local show of `kind` that starts in `secs` seconds on this screen; it replaces the previous one. */
+    injectDev(kind, secs = 3, seed = 7) {
+      if (!Object.hasOwn(SHOWS, kind)) return false;
+      const start = serverNow() + secs * 1000;
+      local.length = 0;
+      local.push({ id: `dev-inject-${start}`, kind, seed, start_at: new Date(start).toISOString(), start_ms: start, duration_ms: SHOWS[kind].dur * 1000 });
+      return true;
+    },
     get events() { return allEvents(serverNow()); },
     get seasons() { return seasons; },
   };

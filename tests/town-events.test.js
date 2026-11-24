@@ -199,3 +199,18 @@ test('the event-mode button: leave the show, come back to it while it still runs
   assert.equal(ctl.toggle(), false);
   ctl.stop();
 });
+
+test('injectDev starts a local show of the kind after the delay, replacing the previous one', () => {
+  let now = 1_000_000;
+  const ctl = createTownEvents({ api: { list: async () => ({ ok: false }) }, nowMs: () => now, setTimer: () => 1, clearTimer: () => {} });
+  assert.equal(ctl.injectDev('nope'), false);
+  assert.equal(ctl.tick(), null);
+  assert.equal(ctl.injectDev('meteors', 3), true);
+  assert.equal(ctl.tick(), null, 'not yet');
+  now += 3500;
+  const s = ctl.tick();
+  assert.equal(s.kind, 'meteors');
+  assert.ok(s.ts > 0 && s.ts < 1);
+  assert.equal(ctl.injectDev('drones', 3), true);
+  assert.deepEqual(ctl.events.filter((e) => e.id.startsWith('dev-inject')).map((e) => e.kind), ['drones']);
+});
