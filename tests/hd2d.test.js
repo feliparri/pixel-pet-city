@@ -80,7 +80,7 @@ test('sorting by depth matches the map order: a pet further north is drawn first
 
 test('cameraFor frames the view: the focus is below the middle when tilted, centred when flat, and the zoom scales with the view', () => {
   const flat = cameraFor(1280, 720, 400, 320, 0), tilted = cameraFor(1280, 720, 400, 320, 1);
-  assert.equal(flat.pitch, 90); assert.equal(tilted.pitch, 40);
+  assert.equal(flat.pitch, 90); assert.equal(tilted.pitch, 49);
   near(flat.cy, 360); assert.ok(tilted.cy > 360);
   const small = cameraFor(640, 360, 400, 320, 1);
   near(small.focal * 2, tilted.focal);

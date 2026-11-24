@@ -106,7 +106,7 @@ export const MAX_REACH = 680;      // the furthest north (world px beyond the fo
  * reaches past MAX_REACH, so a portrait view does not stretch towards the horizon), the focus point a little below the middle.
  * `out` (1 or more) zooms out: the view frames `out` times more of the world each way (the reach limit grows with it). `tilt` 0..1 blends the flat view (0) into the tilted one (1). `ref` is how many world px tall the view frames at the focus (smaller = bigger pets).
  */
-export function cameraFor(viewW, viewH, focusX, focusY, tilt = 1, { pitch = 40, dist = 330, ref = 230, out = 1 } = {}) {
+export function cameraFor(viewW, viewH, focusX, focusY, tilt = 1, { pitch = 49, dist = 330, ref = 230, out = 1 } = {}) {
   const p = 90 + (pitch - 90) * tilt;
   let zoom = Math.max(Math.min(viewW / 340, viewH / ref), viewH / 460) / out;
   for (let i = 0; i < 16; i++) {
