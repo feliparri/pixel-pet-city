@@ -6,6 +6,8 @@ import { bigText } from '../arcade/hud.js';
 import { FISHING } from './rules.js';
 import { sceneLayout, landingPoint, castArc, castD01, floatAt, barPieces, promptFor } from './layout.js';
 import { fishCanvas, FISH_W, FISH_H } from './fish-art.js';
+import { paintSky, drawRain, drawFlash } from '../weather-fx.js';
+import { flashAt } from '../weather.js';
 
 const SKY = { day: ['#69b9ea', '#8accf0', '#abdcf5', '#c9ecf9'], night: ['#0b0e2a', '#141a41', '#1d2554', '#2a3270'], dusk: ['#2a3a78', '#4a5898', '#7a78b0', '#b690a8'] };
 const WATER = { day: ['#3f93d0', '#2f7fbf', '#2670ad', '#1d6099'], night: ['#1a2a5c', '#16254f', '#111e44', '#0d1838'], xmas: ['#5aaed0', '#4a9ec6', '#3b8cb6', '#2f7ba3'] };
@@ -159,7 +161,13 @@ export function drawFishing(g, s, o) {
   if (s.phase === 'escaped' && s.reason === 'snapped') { const x = flt.x; rect(g, '#e8eef5', x - 2, flt.y - 8 - Math.min(10, (o.resultT || 0) / 60), 1, 6); }
   if (s.phase === 'charging') drawGauge(g, L, s.power, font, clock);
   if (s.phase === 'reeling') drawBar(g, L, { ...s.reel, fishId: s.fish.id }, clock);
-  if (c.christmas) for (let i = 0; i < 26; i++) {                                    // snow falling over the scene
+  const wx = c.weather || null;                                                     // the town's weather when the cast started (src/weather.js); a preview without one keeps Christmas snow
+  if (wx) {
+    paintSky(g, w, h, wx.cloud, wx.fog, c.night ? 1 : 0);
+    if (wx.rain > 0.02) drawRain(g, w, h, clock, c.night ? 1 : 0, wx.rain, 1, wx.storm, L.water / h);
+    if (wx.storm > 0.25) drawFlash(g, w, h, flashAt(Date.now() + (wx.skew || 0), wx.storm));
+  }
+  if (wx ? wx.snow > 0.02 : c.christmas) for (let i = 0; i < 26; i++) {              // snow falling over the scene
     const x = (hash(i + 400) * w + Math.sin(clock / 900 + i) * 4 + w) % w, y = (hash(i + 500) * h + clock * (0.012 + hash(i) * 0.012)) % h;
     rect(g, '#ffffff', x, y, 1, 1);
   }

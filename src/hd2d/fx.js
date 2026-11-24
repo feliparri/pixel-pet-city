@@ -1,6 +1,7 @@
 // The HD-2D lite post effects, all plain Canvas 2D (no ctx.filter, which Safari lacks): a bloom from a raised to the fourth power (bright-only) low-res copy
 // blurred by scaling down and up with smoothing (only at night), a tilt-shift (a blurred half-size copy drawn only over the top and bottom bands)
 // and one cached overlay with the haze and the vignette. Every full-screen pass costs real time on a phone, so there are as few as possible.
+import { paintSky, QUANT } from '../weather-fx.js';
 const make = (w, h) => Object.assign(document.createElement('canvas'), { width: Math.max(1, w | 0), height: Math.max(1, h | 0) });
 
 /** Blurs `src` into `dst` (any sizes) by drawing it through the smaller canvases `mids` in turn and then up to `dst`, all smoothed. */
@@ -32,7 +33,7 @@ export function createFx(w, h) {
   const q = make(w / 4, h / 4), q2 = make(w / 4, h / 4), q3 = make(w / 4, h / 4), e = make(w / 8, h / 8), e2 = make(w / 16, h / 16), bloomBuf = make(w / 4, h / 4);
   const half = make(w / 2, h / 2), quarter = make(w / 4, h / 4);
   const mask = make(w / 2, h / 2), overlay = make(w, h), haze = [make(1, h), make(1, h)];     // haze[0] day, haze[1] night: a vertical gradient (the distance fog)
-  let overlayStep = -1;
+  let overlayKey = -1;
   haze.forEach((hz, i) => {
     const c = hz.getContext('2d'), g = c.createLinearGradient(0, 0, 0, h), rgb = i ? '12,18,48' : '190,220,255';
     for (const [t, a] of [[0, i ? 0.55 : 0.4], [0.18, i ? 0.32 : 0.2], [0.4, 0]]) g.addColorStop(t, `rgba(${rgb},${a})`);
@@ -43,18 +44,19 @@ export function createFx(w, h) {
     for (const [t, a] of [[0, 1], [0.16, 0.85], [0.34, 0.12], [BAND_TOP, 0], [BAND_BOTTOM, 0], [0.74, 0.18], [0.88, 0.85], [1, 1]]) g.addColorStop(t, `rgba(0,0,0,${a})`);
     c.fillStyle = g; c.fillRect(0, 0, mask.width, mask.height);
   }
-  /** The haze (day and night mixed by the night amount) and the vignette (its strength with the night) flattened into the one overlay canvas. */
-  function paintOverlay(step) {
+  /** The haze (day and night mixed by the night amount), the weather's cloud dimming and fog (quantised: `cs`, `fs` in 1/QUANT) and the vignette (its strength with the night) flattened into the one overlay canvas. */
+  function paintOverlay(step, cs, fs, key) {
     const n = step / OVERLAY_STEPS, c = overlay.getContext('2d');
     c.clearRect(0, 0, w, h); c.imageSmoothingEnabled = true;
     c.globalAlpha = 1 - n; c.drawImage(haze[0], 0, 0, w, h);
     c.globalAlpha = n; c.drawImage(haze[1], 0, 0, w, h);
+    c.globalAlpha = 1; if (cs || fs) paintSky(c, w, h, cs / QUANT, fs / QUANT, n);
     c.globalAlpha = 0.55 + 0.4 * n; paintVignette(c, w, h);
-    c.globalAlpha = 1; overlayStep = step;
+    c.globalAlpha = 1; overlayKey = key;
   }
   return {
-    /** Paints the effects over `ctx` (which already holds the scene). amount 0..1 fades them; night 0..1 sets the overlay and the bloom (bloom: only above night 0.3). */
-    apply(ctx, amount, night, { bloom = true, tiltshift = true } = {}) {
+    /** Paints the effects over `ctx` (which already holds the scene). amount 0..1 fades them; night 0..1 sets the overlay and the bloom (bloom: only above night 0.3); cloud, fog 0..1 (the weather) go into the cached overlay. */
+    apply(ctx, amount, night, { bloom = true, tiltshift = true, cloud = 0, fog = 0 } = {}) {
       if (amount <= 0) return;
       const src = ctx.canvas, W = ctx.canvas.width, H = ctx.canvas.height;
       if (tiltshift) {                                                   // tilt-shift: blur at half size, mask it there, then draw only the two bands
@@ -71,8 +73,8 @@ export function createFx(w, h) {
         ctx.drawImage(half, 0, bt, half.width, half.height - bt, 0, (bt / half.height) * H, W, H - (bt / half.height) * H);
       }
       ctx.imageSmoothingEnabled = true;
-      const step = Math.round(night * OVERLAY_STEPS);
-      if (step !== overlayStep) paintOverlay(step);
+      const step = Math.round(night * OVERLAY_STEPS), cs = Math.round(Math.min(1, cloud) * QUANT), fs = Math.round(Math.min(1, fog) * QUANT), key = step + (OVERLAY_STEPS + 1) * (cs + (QUANT + 1) * fs);
+      if (key !== overlayKey) paintOverlay(step, cs, fs, key);
       ctx.globalAlpha = amount; ctx.drawImage(overlay, 0, 0, W, H);       // haze and vignette in one draw
       ctx.globalAlpha = 1;
       if (bloom && night > BLOOM_FROM) {                                 // bloom (night only): bright pass = the low-res copy to the fourth power, blurred, added

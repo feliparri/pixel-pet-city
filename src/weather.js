@@ -59,6 +59,9 @@ export function levels(w) {
   return out;
 }
 
+/** The birds and the butterflies take shelter while it rains (or snows heavily): a life frame without them. Anything else in the frame (the duck, the animals, the fireflies) stays. */
+export const shelterLife = (frame, lv) => (frame && lv && (lv.rain > 0.3 || lv.snow > 0.6) ? { ...frame, birds: [], butterflies: [] } : frame);
+
 // ---- lightning ------------------------------------------------------------------------------------------------------------------------------
 export const STRIKE_WINDOW_MS = 7000;
 /** The strikes that start in [fromMs, toMs): [{ at (ms), delay (the thunder's wait in ms, 600..3200) }]. A 7 s window holds one strike (or none) with a chance that grows with the storm. */

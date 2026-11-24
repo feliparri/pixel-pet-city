@@ -21,10 +21,10 @@ export const flakesFor = (night) => Math.round(FLAKES * (0.5 + 0.5 * Math.min(1,
 
 /**
  * Draws the snow over a `w` x `h` view at clock `nowMs`. `unit` is the size of one art pixel on this canvas (a flake is 1 unit, the big ones 2); `night` 0..1.
- * Call it after the scene and its light, before the screen's own overlays.
+ * Call it after the scene and its light, before the screen's own overlays. `amount` 0..1 (the weather's snow level) thins the fall: 1 is all the flakes of `flakesFor`.
  */
-export function drawSnow(ctx, w, h, nowMs, night, unit = 1) {
-  const n = flakesFor(night), t = nowMs / 1000, tint = night > 0.5 ? '#dce8ff' : '#ffffff';
+export function drawSnow(ctx, w, h, nowMs, night, unit = 1, amount = 1) {
+  const n = Math.max(1, Math.round(flakesFor(night) * Math.min(1, Math.max(0.15, amount)))), t = nowMs / 1000, tint = night > 0.5 ? '#dce8ff' : '#ffffff';
   ctx.save();
   ctx.fillStyle = tint;
   for (let pass = 0; pass < 2; pass++) {

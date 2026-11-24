@@ -23,6 +23,7 @@ import { burstTint } from '../show/tint.js';
 import { createShowFx } from '../show/fx.js';
 import { smooth } from '../show/rand.js';
 import { drawSnow } from '../snow.js';
+import { drawWeatherTop } from '../weather-fx.js';
 
 const SHOW_FOCUS = { x: 24 * TILE, y: 21.5 * TILE };                     // the show's own frame: its bursts and drones are placed as seen from here
 const BADGE_LIFT = 60;                                                  // a place's badge floats this high over the ground point under it
@@ -45,6 +46,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
   let view = { w: 0, h: 0 }, cam = null, focus = null, last = null, ui = 2, hits = [];
   let groundKey = '', waterFrame = -1;
   let inset = { top: 0, bottom: 0 };                                                // css px the bar (top) and the emotes row (bottom) cover: the pet is kept clear of them
+  const fxOpts = { bloom: true, tiltshift: true, cloud: 0, fog: 0 };                // what fx.apply reads each frame (reused: no allocation)
   let showFx = null, kShow = 0, stars = null, starsSeed = null;
   const gov = createGovernor({ start: savedLevel(), allowFlat: false });            // slow frames only lower the quality: the view never falls back to flat by itself (owner 2026-11-24); a crash still does
   const stat = { ms: 0, dt: 33, build: 0, parts: { ground: 0, items: 0, fx: 0, overlay: 0 } };                                         // moving averages: the cost of drawing a frame, and the time between frames
@@ -171,7 +173,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
     if (decor.length) drawDecorGlows(ctx, world, cam, n, now, view, decor);
     if (gifts) drawDecorGlows(ctx, world, cam, n, now, view, gifts);
     if (state.ghosts && state.ghosts.length) drawGhosts(ctx, state.ghosts, cam, view);
-    if (state.snow && k < 0.05) drawSnow(ctx, view.w, view.h, now, amb.night, Math.max(1, Math.round(pixelUnit(view.h) / 2)));      // December snow (src/snow.js), stronger at night; not while the sky show has the camera
+    if (state.snow && k < 0.05) drawSnow(ctx, view.w, view.h, now, amb.night, Math.max(1, Math.round(pixelUnit(view.h) / 2)), state.snow === true ? 1 : state.snow);      // December snow (src/snow.js), stronger at night; not while the sky show has the camera
     if (sh) {
       drawRockets(ctx, scam, sky.fw, u, alpha); drawDrones(ctx, scam, sky.drones, u, alpha);
       ctx.save(); ctx.globalCompositeOperation = 'lighter';              // each burst lights the whole view with its colour (additive, widest across the ground)
@@ -191,7 +193,12 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
     if (k > 0.02) {                                                       // the show's own effects: a sharper sky, the bloom pushed up while a burst is on screen
       showFx = showFx || createShowFx(view.w, view.h);
       showFx.apply(ctx, 1, n, Math.min(1, flashes.reduce((a, f) => a + f.k, 0) * 0.3) * alpha, gov.settings);
-    } else if (!skip.has('efectos')) fx.apply(ctx, 1, n, gov.settings);
+    } else if (!skip.has('efectos')) {
+      const wx = state.weather;                                          // the weather's cloud and fog go into the cached overlay (src/weather-fx.js); the rain is drawn below
+      fxOpts.bloom = gov.settings.bloom; fxOpts.tiltshift = gov.settings.tiltshift; fxOpts.cloud = wx ? wx.cloud : 0; fxOpts.fog = wx ? wx.fog : 0;
+      fx.apply(ctx, 1, n, fxOpts);
+    }
+    if (state.weather && k < 0.05 && !skip.has('clima')) drawWeatherTop(ctx, view.w, view.h, now, Date.now() + (state.weather.skew || 0), amb.night, state.weather, Math.max(1, Math.round(pixelUnit(view.h) / 2)), Math.min(0.8, Math.max(0, hy) / view.h + 0.05));      // the rain with its splashes and the storm's flash, over the finished view
     const tFx = performance.now();
     if (!skip.has('textos')) drawOverlay(ov, now);
     hits = ov.hits;

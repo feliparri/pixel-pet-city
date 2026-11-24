@@ -31,6 +31,7 @@ import { dayOf } from './npc-world.js';
 import { activeSeasons, parseDevSeasons } from './seasons.js';
 import { pondAction } from './fishing/pond.js';
 import { snowing } from './snow.js';
+import { weatherNow, levels as weatherLevels, shelterLife } from './weather.js';
 import { ghostsAt } from './ghosts.js';
 import { createHold, villagerAtTap, talkSpot, faceToward } from './npc-hold.js';
 import { hearer, reactionTo, REPLY_WINDOW_MS, REPLY_DELAY_MS, REPLY_EMOTE_MS, REPLY_SAY_MS } from './npc-react.js';
@@ -74,8 +75,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   const stopBox = meter ? attachPerfBox(perfRead) : () => {}, stopLog = meter && search.get('log') === '1' ? startPerfLog(perfRead) : () => {};
   const stopPerf = () => { stopBox(); stopLog(); };
   const devSeasons = parseDevSeasons(location.search);      // development only: ?dev=1&season=halloween|christmas|none (or &halloween=1|0, &christmas=1|0) forces seasons on or off
-  let seasonSet = new Set(), seasonAt = -1e9, snowOn = false, snowAt = -1e9;
-  const devSnow = new URLSearchParams(location.search).get('dev') === '1' && new URLSearchParams(location.search).get('snow') === '1';      // development only: ?dev=1&snow=1 snows whatever the date
+  let seasonSet = new Set(), seasonAt = -1e9, wxLv = weatherLevels(null), wxAt = -1e9;      // wxLv: the weather's amounts (src/weather.js), read again once a second; ?dev=1&weather=<kind> (or the old &snow=1) pins it
   let devNpcT = search.get('dev') === '1' && Number.isFinite(Number(search.get('npct'))) && search.has('npct') ? Number(search.get('npct')) : null;      // development only: ?dev=1&npct=<ms> pins the villagers' clock
   let shopVisits = 0, shopNear = false, shopSayUntil = 0, modal = false, thankLine = null,   // modal: a panel is open (shop, backpack): the pet stands still
     storeVisits = 0, storeNear = false, clerkSayUntil = 0;
@@ -90,6 +90,12 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   let stickDirs = [], flip = 0;                                       // the stick's held directions: a diagonal alternates its two axes step by step
   let raf = 0, last = performance.now(), alive = true, suspended = false;      // suspended: the arcade is open over the town: nothing is drawn or read until it closes
 
+  /** The weather's amounts at the town's clock (and the clock's skew from this device's, for the lightning). */
+  function weatherNowLevels() {
+    const ms = devNpcT === null ? events.serverNow() : devNpcT, lv = weatherLevels(weatherNow(location.search, ms, snowing(seasonSet, ms)));
+    lv.skew = ms - Date.now();
+    return lv;
+  }
   const names = (pid) => (pid === self.id ? self.name : (others.get(pid) || {}).name || 'Mascota');
   const games = createGames({
     id: net.id, send: (m) => net.sendGame(m), present: () => new Set(net.peers().map((p) => p.id)), name: names, now: () => performance.now(), award: (n) => stars.add(n),
@@ -210,18 +216,22 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     if (devSeasons) seasonSet = devSeasons;
     else if (t - seasonAt > 1000) { seasonAt = t; seasonSet = activeSeasons(devNpcT === null ? events.serverNow() : devNpcT, events.seasons); }      // default windows, overridden by the server's list (src/seasons.js); once a second is plenty
     state.seasons = seasonSet;
-    if (t - snowAt > 1000) { snowAt = t; snowOn = devSnow || snowing(seasonSet, devNpcT === null ? events.serverNow() : devNpcT); }      // Christmas is on and it is December in Chile (src/snow.js), checked once a second
-    state.snow = snowOn && getArea(self.area).outdoor ? true : null;      // the town and the farm; both renderers draw it, stronger at night
+    if (t - wxAt > 1000) {                                        // the weather comes from the UTC clock and a fixed seed, so every player sees the same sky; Christmas (and December in Chile) turns rain into snow (src/snow.js)
+      wxAt = t; wxLv = weatherNowLevels();
+    }
+    const outdoors = getArea(self.area).outdoor;
+    state.weather = outdoors ? wxLv : null;                       // the town and the farm: both renderers draw the clouds, fog and rain
+    state.snow = outdoors && wxLv.snow > 0.02 ? wxLv.snow : null;      // and the snow, stronger at night
     npcs.dress(seasonSet);                                        // the villagers wear the Santa hat while Christmas is on (a swap only when the season set changes)
     state.gifts = self.area === 'town' ? giftWorld.update(devNpcT === null ? events.serverNow() : devNpcT, seasonSet, missions && missions.enabled() ? missions.giftOwner() : null, t) : null;      // the seasonal gifts lying about (3 every 2 hours while a season is on)
     if (self.area === 'town' && !w.busy && !self.fx && t - giftScanAt > 400) { giftScanAt = t; stepGift(w.tileX, w.tileY); }      // a gift that appears under, or next to, a pet standing still
     self.say = selfSay && t < selfSay.until ? selfSay.text : null;      // "+3 monedas" above the pet
     if (self.area === 'town') {                                   // ambient life: the birds look at every pet in the town
       stepLife(life, [{ x: w.tileX, y: w.tileY }, ...Array.from(others.values()).filter((o) => o.placed && o.area === 'town').map((o) => ({ x: o.walker.tileX, y: o.walker.tileY }))], t);
-      state.life = lifeFrame(life, t, state.amb);
+      state.life = shelterLife(lifeFrame(life, t, state.amb), wxLv);
     } else if (self.area === 'farm') {                            // the farm: the same birds, and the animals of the paddock
       stepLife(farmLife, [{ x: w.tileX, y: w.tileY }, ...inArea(others.values(), 'farm').map((o) => ({ x: o.walker.tileX, y: o.walker.tileY }))], t);
-      state.life = farmLifeFrame(farmLife, t, state.amb);
+      state.life = shelterLife(farmLifeFrame(farmLife, t, state.amb), wxLv);
     } else state.life = null;
     const gv = games.view();
     if (getArea(self.area).outdoor && !vision && !(gv.game && gv.game.play)) {         // the villagers live in the town and on the farm (the ones of this area are drawn); while a game is played they are not drawn at all
@@ -559,7 +569,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     },
     /** The farm's action available now (for the prompt's own button: a tap on it does it). */
     /** What the water is like now, for the fishing layer (the town is suspended while it is open): { night, christmas }. */
-    fishCtx: () => ({ night: ambientAt(hourNow(location.search)).night >= 0.5, christmas: (devSeasons || activeSeasons(devNpcT === null ? events.serverNow() : devNpcT, events.seasons)).has('christmas') }),
+    fishCtx: () => ({ night: ambientAt(hourNow(location.search)).night >= 0.5, christmas: (devSeasons || activeSeasons(devNpcT === null ? events.serverNow() : devNpcT, events.seasons)).has('christmas'), weather: weatherNowLevels() }),
     farm: { act: () => farmDo(), get action() { return farmAction; }, memory: farmMemory, basket: canasta },
     /** The rows of the "Misiones" panel for today ({ rows, earned, cap }), or null when the missions are off (no pet's trip, an old board). */
     missions: {
