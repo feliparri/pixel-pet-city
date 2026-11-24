@@ -23,7 +23,7 @@ export function createPetPainter(sprites) {
   const scratch = (w, h) => {
     const k = `${w}x${h}`;
     let c = scratches.get(k);
-    if (!c) { const t = canvas(w, h); scratches.set(k, c = { t, tctx: t.getContext('2d') }); }
+    if (!c) { const t = canvas(w, h); t._volatile = true; scratches.set(k, c = { t, tctx: t.getContext('2d') }); }
     return c;
   };
   const layouts = new WeakMap(), setIds = new WeakMap();

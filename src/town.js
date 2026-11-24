@@ -8,6 +8,7 @@ import { JUMP_MS } from './jump.js';
 import { EMOTE_MS, MIN_VIEW_H, MIN_VIEW_W, VIEW_H, VIEW_W } from './render.js';
 import { createTownRenderer } from './hd2d/renderer.js';
 import { guardFrame } from './frame-guard.js';
+import { glWanted } from './hd2d/glquads.js';
 import { createMeter, attachPerfBox, startPerfLog, perfSkip } from './perf.js';
 import { ambientAt, hourNow } from './daynight.js';
 import { entranceState } from './entrance.js';
@@ -64,7 +65,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   const state = { me: self, others: [], marker: null, area: 'town', amb: ambientAt(hourNow(location.search)), fade: 0 };
   const life = createLife(net.code || net.id);                       // the same scene for a room, from its code; nothing of it goes over the net
   const farmLife = createFarmLife(net.code || net.id);               // and the farm's: the animals walk where the room's clock says
-  const renderer = createTownRenderer({ canvas, sprites, font, minH: pad ? MIN_VIEW_H : VIEW_H, minW: pad ? MIN_VIEW_W : VIEW_W, flat: new URLSearchParams(location.search).get('flat') === '1', skip: perfSkip(location.search), onNotice: (text) => games.notify(text), onMode: onHdMode });   // a phone: 1.25 times the tiles it showed (and a whole-number pixel size); a desktop: as many tiles as before
+  const renderer = createTownRenderer({ canvas, sprites, font, minH: pad ? MIN_VIEW_H : VIEW_H, minW: pad ? MIN_VIEW_W : VIEW_W, flat: new URLSearchParams(location.search).get('flat') === '1', skip: perfSkip(location.search), gl: glWanted(location.search), onNotice: (text) => games.notify(text), onMode: onHdMode });   // a phone: 1.25 times the tiles it showed (and a whole-number pixel size); a desktop: as many tiles as before
   const npcs = createNpcs({ seed: net.code || net.id, sprites });           // the villagers: their place and lines come from (room, server time) alone, nothing of them goes over the net
   const search = new URLSearchParams(location.search);
   const meter = search.get('perf') === '1' ? createMeter() : null;      // ?perf=1: a box with what each frame costs on this device (src/perf.js)

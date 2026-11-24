@@ -9,6 +9,7 @@ import { cameraFor, PHONE_OUT, followFocus, followMargin, snapFocus, sortBackToF
 import { groundMult, approach } from './light.js';
 import { buildWorld, bakeGround, drawGround, standingItems, drawGlows, fountainItem, paintFarm, decorItems, drawDecorGlows, drawGhosts } from './scene.js';
 import { createFx } from './fx.js';
+import { createGlLayer } from './gl.js';
 import { createGovernor, encodeLevel, decodeLevel } from './quality.js';
 import { createPetPainter } from './pets.js';
 import { createThings } from './things.js';
@@ -31,8 +32,10 @@ const LEVEL_KEY = 'city.hd2d.level';
 const savedLevel = () => { try { return decodeLevel(localStorage.getItem(LEVEL_KEY)); } catch { return 0; } };
 const saveLevel = (v) => { try { localStorage.setItem(LEVEL_KEY, encodeLevel(v)); } catch { /* private mode */ } };
 
-export function createHdRenderer({ canvas, sprites, font, compact = false, onQuality = () => {}, skip = new Set() }) {      // skip: parts left out to measure their cost (?perf=1&skip=suelo,cosas,efectos,textos)
+export function createHdRenderer({ canvas, sprites, font, compact = false, onQuality = () => {}, skip = new Set(), gl = false }) {      // skip: parts left out to measure their cost (?perf=1&skip=suelo,cosas,efectos,textos)
   const ctx = canvas.getContext('2d');
+  let glr = null;                                                                    // ?gl=1: the ground and the sprites go through WebGL (gl.js); null = plain canvas 2D, also when WebGL is not there
+  if (gl) { try { glr = createGlLayer(); } catch { glr = null; } }
   const ref = compact ? 170 : 230, out = compact ? PHONE_OUT : 1;
   const painter = createPetPainter(sprites);
   const things = createThings();
@@ -121,15 +124,20 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
 
     if (state.area === 'farm' && paintFarm(world, state.farm)) groundKey = '';        // a plot's soil changed (watered, or a new day): bake the ground again
     const step = k > 0.001 && k < 0.999 ? 8 : 16, nq = Math.round(n * step) * (16 / step), key = `${nq}|${mult.map((c) => c >> 2)}`, wf = Math.floor(now / 320) % 3;
-    if (key !== groundKey) { bakeGround(world, nq / 16, mult, wf, ground); groundKey = key; waterFrame = wf; }
-    else if (wf !== waterFrame) { bakeGround(world, nq / 16, mult, wf, ground, world.waterRects); waterFrame = wf; }
+    if (key !== groundKey) { bakeGround(world, nq / 16, mult, wf, ground); groundKey = key; waterFrame = wf; if (glr) glr.dirty(ground); }
+    else if (wf !== waterFrame) { bakeGround(world, nq / 16, mult, wf, ground, world.waterRects); waterFrame = wf; if (glr) glr.dirty(ground); }
+    const useGl = !!glr && glr.ok;                                       // a lost WebGL context leaves the frame to canvas 2D
+    if (useGl) glr.startFrame();
 
     ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = k > 0.02 ? `rgb(${LAND})` : `rgb(${Math.round(30 - 20 * n)},${Math.round(48 - 34 * n)},${Math.round(44 - 20 * n)})`;
     ctx.fillRect(0, 0, view.w, view.h);
     if (hy > 0 && stars) drawSky(ctx, view, hy, now / 1000, stars, u, project(cam, focus.x, 0, 0)?.y, !(sky.hw?.moon || sky.xm?.star));
     if (sh) { drawMeteors(ctx, sky.meteors, view, hy, u, alpha); if (sky.hw) drawHalloween(ctx, sky.hw, view, hy, u, alpha); if (sky.xm) drawChristmas(ctx, sky.xm, view, hy, u, alpha); drawBursts(ctx, scam, sky.fw, u, alpha); }
-    if (!skip.has('suelo')) drawGround(ctx, ground, cam, view.w, view.h, gov.settings.rowStep);
+    if (!skip.has('suelo')) {
+      if (useGl) { drawGround(glr.begin(ctx).ctx, ground, cam, view.w, view.h, gov.settings.rowStep); glr.flush(); }
+      else drawGround(ctx, ground, cam, view.w, view.h, gov.settings.rowStep);
+    }
     const edge = project(cam, focus.x, 0, 0);                              // the north edge of the map fades into the dark land beyond it
     if (k > 0.02 && edge && hy > 0 && edge.y > hy) {
       const g = ctx.createLinearGradient(0, edge.y - 2, 0, edge.y + 44 * u * 0.5);
@@ -151,7 +159,13 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
     items.push(...things.items(state, ent, now));
     for (const e of [state.me, ...state.others]) { const it = painter.item(e, ent); if (it) items.push(it); }
     const ov = { labels: [], bubbles: [], hits: [] };
-    if (!skip.has('cosas')) for (const it of sortBackToFront(items)) it.draw(ctx, ov);
+    if (!skip.has('cosas')) {
+      if (useGl) {                                                          // the sprites are recorded as quads in depth order; an item that paints with fills or gradients is drawn on the 2D canvas in its place
+        const rec = glr.begin(ctx);
+        for (const it of sortBackToFront(items)) { it.draw(rec.ctx, ov); rec.endItem(); }
+        glr.flush();
+      } else for (const it of sortBackToFront(items)) it.draw(ctx, ov);
+    }
     things.air(ctx, state, cam, now, view);
     drawGlows(ctx, world, cam, n, now, view);
     if (decor.length) drawDecorGlows(ctx, world, cam, n, now, view, decor);
@@ -267,7 +281,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
     /** The player turned it back on after the automatic fallback: keep the cheapest level and do not fall back again. */
     pin() { gov.allowFlat = false; },
     /** For the console: { level, res, ms (drawing a frame), fps (frames per second as the screen got them), w, h }. */
-    stats: () => ({ level: gov.level, res: gov.settings.res, ms: +stat.ms.toFixed(1), fps: +(1000 / stat.dt).toFixed(1), w: view.w, h: view.h, build: stat.build, parts: { ...stat.parts } }),
+    stats: () => ({ level: gov.level, res: gov.settings.res, ms: +stat.ms.toFixed(1), fps: +(1000 / stat.dt).toFixed(1), w: view.w, h: view.h, build: stat.build, parts: { ...stat.parts }, gl: glr ? { on: glr.ok, ...glr.stats() } : null }),
     get view() { return view; }, get cam() { return cam; },
   };
 }
@@ -276,10 +290,10 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
  * The town's renderer: HD-2D outdoors, the flat renderer in interiors or when HD-2D is off (setHd(false), or `flat`, which also locks it
  * off). Same interface as createRenderer, plus hd (is it on), setHd(on) and flat.
  */
-export function createTownRenderer({ canvas, sprites, font, minH = MIN_VIEW_H, minW, flat = false, skip, onNotice = () => {}, onMode = () => {} }) {
+export function createTownRenderer({ canvas, sprites, font, minH = MIN_VIEW_H, minW, flat = false, skip, gl = false, onNotice = () => {}, onMode = () => {} }) {
   const flatR = createRenderer({ canvas, sprites, font, minH, minW });
   let hdOn = !flat, kind = null, box = null, failed = false, autoFlat = false, told = false, atFall = null;      // atFall: the HD-2D numbers when it fell back (for ?perf=1)
-  const hdR = createHdRenderer({ canvas, sprites, font, skip, compact: minH < VIEW_H, onQuality(ev) {
+  const hdR = createHdRenderer({ canvas, sprites, font, skip, gl, compact: minH < VIEW_H, onQuality(ev) {
     if (ev.kind === 'down' && !told) { told = true; onNotice('Bajamos un poco los efectos para que vaya fluido'); }
     else if (ev.kind === 'flat') { atFall = hdR.stats(); failed = true; autoFlat = true; onNotice('Pasamos a la vista plana para que vaya fluido. Puedes volver a probar con «Efectos»'); onMode(); }
   } });
