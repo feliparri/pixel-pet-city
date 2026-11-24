@@ -38,6 +38,7 @@ import { hearer, reactionTo, REPLY_WINDOW_MS, REPLY_DELAY_MS, REPLY_EMOTE_MS, RE
 import { createGiftWorld } from './gift-world.js';
 import { HINT_NO_TRIP, giftOutcome } from './gifts.js';
 import { sound } from './sound.js';
+import { createCityAudio } from './city-audio.js';
 import { missionFor, missionText, missionRows, statusOf, thanksFor, doneLine, CAPPED_LINE, NOT_READY, GOLD_POP, claimErrorText } from './missions.js';
 
 const FADE_MS = 240;                                  // the fade-in after a door
@@ -96,6 +97,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     lv.skew = ms - Date.now();
     return lv;
   }
+  const cityAudio = createCityAudio({ sound });                   // the town's music and ambient sound (src/city-audio.js); it waits for the first gesture and respects the sound switch
   const names = (pid) => (pid === self.id ? self.name : (others.get(pid) || {}).name || 'Mascota');
   const games = createGames({
     id: net.id, send: (m) => net.sendGame(m), present: () => new Set(net.peers().map((p) => p.id)), name: names, now: () => performance.now(), award: (n) => stars.add(n),
@@ -222,6 +224,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     const outdoors = getArea(self.area).outdoor;
     state.weather = outdoors ? wxLv : null;                       // the town and the farm: both renderers draw the clouds, fog and rain
     state.snow = outdoors && wxLv.snow > 0.02 ? wxLv.snow : null;      // and the snow, stronger at night
+    cityAudio.step(dt, { area: self.area, outdoor: outdoors, night: state.amb.night, weather: wxLv, x: w.tileX, y: w.tileY, utcMs: Date.now() + (wxLv.skew || 0) });
     npcs.dress(seasonSet);                                        // the villagers wear the Santa hat while Christmas is on (a swap only when the season set changes)
     state.gifts = self.area === 'town' ? giftWorld.update(devNpcT === null ? events.serverNow() : devNpcT, seasonSet, missions && missions.enabled() ? missions.giftOwner() : null, t) : null;      // the seasonal gifts lying about (3 every 2 hours while a season is on)
     if (self.area === 'town' && !w.busy && !self.fx && t - giftScanAt > 400) { giftScanAt = t; stepGift(w.tileX, w.tileY); }      // a gift that appears under, or next to, a pet standing still
@@ -527,7 +530,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
   window.addEventListener('blur', () => { held.length = 0; shift = false; padRun = false; stickRun = false; stickDirs = []; });
-  const onVisibility = () => net.resync();                    // timers sleep in a hidden tab: say where we are going in and coming out
+  const onVisibility = () => { if (document.hidden) cityAudio.silence(); net.resync(); };                    // timers sleep in a hidden tab: say where we are going in and coming out
   document.addEventListener('visibilitychange', onVisibility);
 
   return {
@@ -584,7 +587,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     /** The pet's look now (what it wears, a bought item included): the page shows "Jugar" when it wears the VR goggles. */
     look: () => self.look,
     /** The arcade opens over the town (true) or closes (false): the town stops drawing and listening, and the pet stands still. */
-    suspend(on) { suspended = on; if (on) { held.length = 0; shift = false; padRun = false; stickRun = false; stickDirs = []; self.walker.queue = []; if (touchpad) touchpad.reset(); } },
+    suspend(on) { suspended = on; if (on) { cityAudio.silence(); held.length = 0; shift = false; padRun = false; stickRun = false; stickDirs = []; self.walker.queue = []; if (touchpad) touchpad.reset(); } },
     setModal(on) { modal = on; if (on) { held.length = 0; self.walker.queue = []; if (touchpad) touchpad.reset(); } },
     /** The pet shows an item it just bought (this screen only: the look the others see does not change), and the shopkeeper says thanks. */
     wear(key) {
@@ -598,6 +601,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     },
     destroy() {
       alive = false;
+      cityAudio.silence();
       stopPerf();
       events.stop(); onShow(false);
       if (self.fx && self.fx.resolve) self.fx.resolve();

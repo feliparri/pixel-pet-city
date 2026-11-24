@@ -13,6 +13,7 @@ export const W = { REST: 0, SQ50: 1, SQ25: 2, SQ12: 3, TRI: 4, NOISE: 5 };
 /** The peak of a full-volume note at each level: 0 off, 1 Bajo, 2 Medio, 3 Alto (sfx.c PEAK). */
 export const PEAK = [0, 2600, 5800, 11500];
 export const DEFAULT_LEVEL = 2;
+export const AMBIENT_MAX = 4;                   // ambient one-shots sounding at once (a bird over a thunder over a call), no more
 const ATTACK_SAMPLES = 48;                        // 3 ms
 const LFSR_SEED = 0x4A3B;
 
@@ -169,10 +170,81 @@ export function createSound({ ctxFactory = () => null, storage = null } = {}) {
     voice = src; voiceEnd = c.currentTime + samples.length / SFX_RATE; voicePriority = priority;
     return true;
   }
+  // The ambient channel (the town's sound of place and weather): beside the one voice, with its own gain, so a bird, a thunder or the rain never cuts the music nor an effect.
+  // It never starts before the first gesture (it needs a context that is running) and is silent while muted. Samples are Int16 at SFX_RATE, as the voice's.
+  const beds = new Map(), bedSamples = new Map();
+  let oneShots = 0;
+  const running = () => !!ctx && ctx.state === 'running';
+  const bufferOf = (samples) => {
+    const buf = ctx.createBuffer(1, samples.length, SFX_RATE), ch = buf.getChannelData(0);
+    for (let i = 0; i < samples.length; i++) ch[i] = samples[i] / 32768;
+    return buf;
+  };
+  function ambient(samples, gain = 0.5) {
+    if (!running() || mute.get() || !samples || !samples.length || oneShots >= AMBIENT_MAX) return false;
+    try {
+      const src = ctx.createBufferSource();
+      src.buffer = bufferOf(samples);
+      if (ctx.createGain) { const g = ctx.createGain(); g.gain.value = gain; src.connect(g); g.connect(ctx.destination); } else src.connect(ctx.destination);
+      oneShots++;
+      src.onended = () => { oneShots = Math.max(0, oneShots - 1); };
+      src.start();
+      return true;
+    } catch { return false; }
+  }
+  const fadeTo = (g, v, tc) => {                                // a smooth move of an AudioParam (time constant `tc` s); a stand-in without setTargetAtTime jumps
+    if (g.setTargetAtTime) { g.cancelScheduledValues(ctx.currentTime); g.setValueAtTime(g.value, ctx.currentTime); g.setTargetAtTime(v, ctx.currentTime, tc); } else g.value = v;
+  };
+  function dropBed(name, fadeS) {
+    const b = beds.get(name);
+    if (!b) return;
+    beds.delete(name);
+    const end = (t) => { for (const l of b.layers) { try { l.src.stop(t); if (l.osc) l.osc.stop(t); } catch { /* ended */ } } };
+    try {
+      if (fadeS > 0 && b.gain.gain.setTargetAtTime) { fadeTo(b.gain.gain, 0, fadeS / 4); end(ctx.currentTime + fadeS + 0.1); } else end(0);
+    } catch { /* ended */ }
+  }
+  /**
+   * A looping bed (rain, water): `make()` gives its samples once, either one Int16Array or a list of them (layers of different lengths: each loops on its own source, so the sum
+   * only repeats after the common multiple of their lengths, which no ear can follow). Each layer's volume drifts slowly (a very low oscillator on its gain, when the context has
+   * one) so even a short loop is never the same twice. `level` 0..1 is the bed's volume: it moves with a smooth fade (never a jump), 0 ends the bed. False when it is not sounding.
+   */
+  function bed(name, make, level) {
+    if (!(level > 0.005) || !running() || mute.get() || !ctx.createGain) { dropBed(name, 1.2); return false; }
+    try {
+      let b = beds.get(name);
+      if (!b) {
+        let s = bedSamples.get(name);
+        if (!s) bedSamples.set(name, s = [].concat(make()));
+        const gain = ctx.createGain(), layers = [];
+        gain.gain.value = 0; gain.connect(ctx.destination);
+        for (const samples of s) {
+          const src = ctx.createBufferSource(), lg = ctx.createGain();
+          src.buffer = bufferOf(samples); src.loop = true; lg.gain.value = 1;
+          src.connect(lg); lg.connect(gain);
+          let osc = null;
+          if (ctx.createOscillator) {
+            osc = ctx.createOscillator(); const depth = ctx.createGain();
+            osc.frequency.value = 0.05 + Math.random() * 0.1; depth.gain.value = 0.18;
+            osc.connect(depth); depth.connect(lg.gain); osc.start();
+          }
+          src.start(0, Math.random() * (samples.length / SFX_RATE));          // each start at its own point in the loop
+          layers.push({ src, osc });
+        }
+        beds.set(name, b = { gain, layers, level: -1 });
+      }
+      if (Math.abs(b.level - level) > 0.01) { b.level = level; fadeTo(b.gain.gain, Math.min(1, level), 0.5); }
+      return true;
+    } catch { return false; }
+  }
+  function stopBeds() { for (const n of [...beds.keys()]) dropBed(n, 0); }
   return {
     unlock,
+    /** Is the audio context running (a gesture has unlocked it)? The town's ambience waits for it, so it never creates a context on its own. */
+    running,
+    ambient, bed, stopBeds,
     isMuted: () => mute.get(),
-    setMuted(on) { mute.set(on); if (mute.get() && voice) { try { voice.stop(); } catch { /* ended */ } voice = null; } listeners.forEach((f) => f(mute.get())); },
+    setMuted(on) { mute.set(on); if (mute.get()) { stopBeds(); if (voice) { try { voice.stop(); } catch { /* ended */ } voice = null; } } listeners.forEach((f) => f(mute.get())); },
     toggle() { this.setMuted(!mute.get()); return mute.get(); },
     onChange(f) { listeners.add(f); return () => listeners.delete(f); },
     /** Plays a built-in cue by name; false when muted, unknown, or dropped. */
