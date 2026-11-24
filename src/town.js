@@ -39,6 +39,7 @@ import { createGiftWorld } from './gift-world.js';
 import { HINT_NO_TRIP, giftOutcome } from './gifts.js';
 import { sound } from './sound.js';
 import { createCityAudio } from './city-audio.js';
+import { createPetSounds } from './pet-sounds.js';
 import { missionFor, missionText, missionRows, statusOf, thanksFor, doneLine, CAPPED_LINE, NOT_READY, GOLD_POP, claimErrorText } from './missions.js';
 
 const FADE_MS = 240;                                  // the fade-in after a door
@@ -98,6 +99,8 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     return lv;
   }
   const cityAudio = createCityAudio({ sound });                   // the town's music and ambient sound (src/city-audio.js); it waits for the first gesture and respects the sound switch
+  const pets = createPetSounds({ sound });                        // footsteps, hops and soft interaction cues (src/pet-sounds.js): the ambient channel, so the music is never cut
+  let landAt = 0;                                                  // when the own pet's hop lands (its landing sound)
   const names = (pid) => (pid === self.id ? self.name : (others.get(pid) || {}).name || 'Mascota');
   const games = createGames({
     id: net.id, send: (m) => net.sendGame(m), present: () => new Set(net.peers().map((p) => p.id)), name: names, now: () => performance.now(), award: (n) => stars.add(n),
@@ -112,13 +115,15 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   const giftWorld = createGiftWorld({ room: net.code || net.id, storage: (() => { try { return localStorage; } catch { return null; } })() });      // the seasonal gifts of the room (src/gift-world.js)
   let giftBusy = new Set(), giftHinted = false, giftCapDay = null, giftRetry = new Map(), giftScanAt = -Infinity, selfSay = null;      // giftBusy: ids being opened; giftHinted: the "travel with your pet" hint was shown; giftCapDay: the town day the server said the cap was reached; giftRetry: id -> when to try again
   let racing = false, slowUntil = 0, lastTile = null;          // the obstacle race: a pet that steps onto an obstacle walks slower for RACE.slowMs
-  self.walker.onStep = (x, y, d) => { net.sendPos(x, y, d, self.area); stepGift(x, y); };      // a step onto or next to a seasonal gift opens it
+  self.walker.onStep = (x, y, d) => { net.sendPos(x, y, d, self.area); if (!self.fx && !suspended) pets.step(self.area, x, y, self.walker.run, wxLv); stepGift(x, y); };      // a step onto or next to a seasonal gift opens it
   net.sendPos(sx, sy, 'down', 'town');
 
   const addPeer = (p) => {
     const w = new Walker(p.x ?? 0, p.y ?? 0, p.d || 'down');
     w.hurry = true;
-    others.set(p.id, { id: p.id, name: p.name, look: p.look, walker: w, emote: null, jumpAt: null, placed: p.x != null, area: p.area || 'town' });
+    const o = { id: p.id, name: p.name, look: p.look, walker: w, emote: null, jumpAt: null, placed: p.x != null, area: p.area || 'town' };
+    w.onStep = (x, y) => { if (o.placed && o.area === self.area && !suspended) pets.peerStep(o.id, Math.hypot(x - self.walker.tileX, y - self.walker.tileY), o.area, x, y, wxLv); };      // another pet's step: heard only when near
+    others.set(p.id, o);
   };
   for (const p of net.peers()) addPeer(p);
 
@@ -137,7 +142,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       if (o) o.emote = { e: ev.e, until: performance.now() + EMOTE_MS };
     } else if (ev.type === 'jump') {
       const o = others.get(ev.id);
-      if (o) o.jumpAt = performance.now();
+      if (o) { o.jumpAt = performance.now(); if (o.area === self.area && !suspended) pets.peerJump(Math.hypot(o.walker.tileX - self.walker.tileX, o.walker.tileY - self.walker.tileY)); }
     }
   }
 
@@ -205,8 +210,9 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     w.update(dt);
     if (!w.busy && !self.fx) {                                    // arrived on a door: go through it
       const door = doorAt(w.tileX, w.tileY, self.area);
-      if (door && !mv.closed) { self.area = door.to.area; w.snap(door.to.x, door.to.y, door.to.d); net.sendPos(door.to.x, door.to.y, door.to.d, self.area); state.marker = null; fadeT0 = t; }
+      if (door && !mv.closed) { pets.cue('door'); self.area = door.to.area; w.snap(door.to.x, door.to.y, door.to.d); net.sendPos(door.to.x, door.to.y, door.to.d, self.area); state.marker = null; fadeT0 = t; }
     }
+    if (landAt && t >= landAt) { landAt = 0; pets.cue('land'); }                    // the hop is over: the landing
     if (t - ambAt > 2000) { ambAt = t; state.amb = ambientAt(hourNow(location.search)); }
     state.area = self.area;
     state.fade = 1 - (t - fadeT0) / FADE_MS;
@@ -397,7 +403,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     replies++;
     reply = { id: target.id, text: r.line, emote: r.emote, from: now + REPLY_DELAY_MS, until: now + REPLY_DELAY_MS + (r.emote ? REPLY_EMOTE_MS : 0) + REPLY_SAY_MS };
   }
-  const says = (id, text) => { talkLine = { id, text, until: performance.now() + TALK_SAY_MS }; };
+  const says = (id, text) => { if (text !== '...') pets.cue('talk'); talkLine = { id, text, until: performance.now() + TALK_SAY_MS }; };
   /**
    * The pet talks to a villager: it asks for its mission of the day (the same for the whole room), tells how far the pet is, or, once the pet has done it,
    * hands it in: the server pays real gold within its daily cap (`missions.claim`), the villager thanks the pet and the mission uses up what it asked for (a bring mission takes its items from the Canasta, the others the day's counted actions).
@@ -415,7 +421,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     const r = await missions.claim(m);
     claiming = false;
     const settle = (line, use = true) => { if (use) { if (m.type === 'bring') canasta.take(m.kind, m.n); else farmMemory.consume(m.type, m.kind, m.n); } farmMemory.markMission(m.id); says(id, line); };
-    if (r.ok) { settle(r.capped ? CAPPED_LINE : thanksFor(vid)); self.jumpAt = performance.now(); net.sendJump(); onFarmDone({ ok: true, icon: 'coin', text: GOLD_POP(r.gold) }); }
+    if (r.ok) { pets.cue('reward'); settle(r.capped ? CAPPED_LINE : thanksFor(vid)); self.jumpAt = performance.now(); net.sendJump(); onFarmDone({ ok: true, icon: 'coin', text: GOLD_POP(r.gold) }); }
     else if (r.error === 'done') settle(doneLine(vid), false);                // the server says it was paid already (this browser forgot): nothing is used up
     else if (r.error === 'cap_reached') settle(CAPPED_LINE);
     else { talkLine = null; onFarmDone({ ok: false, text: claimErrorText(r) }); }
@@ -423,12 +429,12 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   /** Does the farm action of this pet's reach (the object that was tapped, or the pet's own tile)? Does it and returns true. */
   function farmDo() {
     if (!farmAction || farmAction.id === 'hint') return false;
-    if (farmAction.id === 'store') { onStore(); return true; }
-    if (farmAction.id === 'fish') { onFish(); return true; }
+    if (farmAction.id === 'store') { pets.cue('door'); onStore(); return true; }
+    if (farmAction.id === 'fish') { pets.cue('confirm'); onFish(); return true; }
     if (farmAction.id === 'talk') { talk(farmAction.target); return true; }
     const res = perform(farmAction, { basket: canasta, mem: farmMemory, tools: tools() });
     farmAt = -Infinity;                                            // the plots and the prompt are looked at again at once
-    if (res.ok) { const t = performance.now(); self.jumpAt = t; net.sendJump(); onFarmAction({ type: res.type, kind: res.kind || null, target: farmAction.target }); }
+    if (res.ok) { pets.cue('pick'); const t = performance.now(); self.jumpAt = t; net.sendJump(); onFarmAction({ type: res.type, kind: res.kind || null, target: farmAction.target }); }
     onFarmDone(res);
     return true;
   }
@@ -491,7 +497,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   function onKeyDown(ev) {
     if (suspended || isTyping(ev) || modal) return;
     shift = ev.shiftKey;
-    if (self.area === 'shop' && shopNear && (ev.key === 'Enter' || ev.key === 'e' || ev.key === 'E')) { ev.preventDefault(); if (!ev.repeat) onShop(); return; }      // Enter or E at the counter opens the shop
+    if (self.area === 'shop' && shopNear && (ev.key === 'Enter' || ev.key === 'e' || ev.key === 'E')) { ev.preventDefault(); if (!ev.repeat) { pets.cue('door'); onShop(); } return; }      // Enter or E at the counter opens the shop
     if ((ev.key === 'Enter' || ev.key === 'e' || ev.key === 'E') && farmAction && farmAction.id !== 'hint') { ev.preventDefault(); if (!ev.repeat) farmDo(); return; }      // Enter or E next to a farm object does its action
     if (isJumpKey(ev)) {                                                // Space: a hop, also in a game (it changes no rule); never scrolls the page
       ev.preventDefault();
@@ -515,10 +521,10 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     if (i >= 0) held.splice(i, 1);
   }
   function jump() {
-    if (self.area === 'shop' && shopNear && !modal) { onShop(); return; }          // A (or Space) at the counter opens the shop instead of hopping
+    if (self.area === 'shop' && shopNear && !modal) { pets.cue('door'); onShop(); return; }          // A (or Space) at the counter opens the shop instead of hopping
     if (!modal && farmDo()) return;                                                 // A (or Space) next to a farm object does its action instead of hopping
     const t = performance.now();
-    if (!self.fx && !self.gone && (self.jumpAt == null || t - self.jumpAt >= JUMP_MS)) { self.jumpAt = t; net.sendJump(); }
+    if (!self.fx && !self.gone && (self.jumpAt == null || t - self.jumpAt >= JUMP_MS)) { self.jumpAt = t; net.sendJump(); pets.cue('jump'); landAt = t + JUMP_MS * 0.85; }
   }
   const touchpad = pad && createTouchpad({
     ...pad,
@@ -587,7 +593,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     /** The pet's look now (what it wears, a bought item included): the page shows "Jugar" when it wears the VR goggles. */
     look: () => self.look,
     /** The arcade opens over the town (true) or closes (false): the town stops drawing and listening, and the pet stands still. */
-    suspend(on) { suspended = on; if (on) { cityAudio.silence(); held.length = 0; shift = false; padRun = false; stickRun = false; stickDirs = []; self.walker.queue = []; if (touchpad) touchpad.reset(); } },
+    suspend(on) { suspended = on; if (on) { cityAudio.silence(); landAt = 0; held.length = 0; shift = false; padRun = false; stickRun = false; stickDirs = []; self.walker.queue = []; if (touchpad) touchpad.reset(); } },
     setModal(on) { modal = on; if (on) { held.length = 0; self.walker.queue = []; if (touchpad) touchpad.reset(); } },
     /** The pet shows an item it just bought (this screen only: the look the others see does not change), and the shopkeeper says thanks. */
     wear(key) {

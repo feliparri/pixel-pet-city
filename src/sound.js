@@ -13,7 +13,7 @@ export const W = { REST: 0, SQ50: 1, SQ25: 2, SQ12: 3, TRI: 4, NOISE: 5 };
 /** The peak of a full-volume note at each level: 0 off, 1 Bajo, 2 Medio, 3 Alto (sfx.c PEAK). */
 export const PEAK = [0, 2600, 5800, 11500];
 export const DEFAULT_LEVEL = 2;
-export const AMBIENT_MAX = 4;                   // ambient one-shots sounding at once (a bird over a thunder over a call), no more
+export const AMBIENT_MAX = 6;                   // ambient one-shots sounding at once (a bird over a thunder over a footstep), no more
 const ATTACK_SAMPLES = 48;                        // 3 ms
 const LFSR_SEED = 0x4A3B;
 

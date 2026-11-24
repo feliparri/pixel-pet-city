@@ -13,7 +13,7 @@ const PCM = 32767;
 
 // ---- sample makers --------------------------------------------------------------------------------------------------------------------------
 const make = (ms) => new Float32Array(Math.max(1, Math.round(ms * SFX_RATE / 1000)));
-const toPcm = (f, peak = 0.9) => {
+export const toPcm = (f, peak = 0.9) => {
   let m = 0;
   for (let i = 0; i < f.length; i++) m = Math.max(m, Math.abs(f[i]));
   const k = m > 0 ? (peak * PCM) / m : 0, out = new Int16Array(f.length);
@@ -21,7 +21,7 @@ const toPcm = (f, peak = 0.9) => {
   return out;
 };
 /** Adds a tone that glides f0 -> f1 over `ms` at `startMs` into `f`, with a smooth (sine squared) envelope, `vib` Hz of vibrato of depth `depth` (a fraction of the pitch). */
-function tone(f, startMs, ms, f0, f1, amp = 1, { vib = 0, depth = 0, harm = 0 } = {}) {
+export function tone(f, startMs, ms, f0, f1, amp = 1, { vib = 0, depth = 0, harm = 0 } = {}) {
   const s0 = Math.round(startMs * SFX_RATE / 1000), n = Math.round(ms * SFX_RATE / 1000);
   let ph = 0;
   for (let i = 0; i < n && s0 + i < f.length; i++) {
@@ -54,7 +54,7 @@ export function baa() { const f = make(750); tone(f, 0, 750, 360, 300, 1, { harm
 export const ANIMAL_SOUNDS = { hen: cluck, cow: moo, sheep: baa };
 
 /** A one-pole lowpass over a Float32Array in place (alpha 0..1: the smaller, the duller). */
-function lowpass(a, alpha) { let y = 0; for (let i = 0; i < a.length; i++) { y += alpha * (a[i] - y); a[i] = y; } return a; }
+export function lowpass(a, alpha) { let y = 0; for (let i = 0; i < a.length; i++) { y += alpha * (a[i] - y); a[i] = y; } return a; }
 /** Thunder: a crack and a long low rumble (noise through a lowpass, a slow wobble) that dies away; `seed` makes each one a little different. */
 export function thunder(seed = 1) {
   const r = mulberry32(seed >>> 0), ms = 2600 + Math.floor(r() * 1200), f = make(ms), n = f.length;
