@@ -26,6 +26,8 @@ Owner 2026-11-24 asked for a new area on the left of the town: a beach where the
 - [x] BE.3 Camera: eased zoom-out in the water, consistent through cameraFor, followFocus and showCamera; the flat view keeps working. Route: delegated.
 - [x] BE.4 Surfboard tool: client and server TOOLS, a board icon, a migration file (not applied), the mock shop, a dev `?dev=1&board=1`, and the store hint. Route: delegated.
 - [x] BE.5 Surfing: clock-driven waves at the break, catch timing, ride and steer, wipeout, the board drawn under the pet, peers see surfing, sounds. Route: delegated.
+- [x] BE.7 Owner 2026-11-24 feedback after the first look: (a) with the board owned, the pet is on the board as soon as it enters the water (paddling, drawn on the board), no separate step; (b) the wave travels from the bottom of the screen toward the top along a diagonal front (peeling), and the rider rides along it; (c) beach loungers the pet can lie on ("A: Recostarse", a lying pose, any move gets up), peers see it; (d) taller palms; (e) bigger umbrellas. Route: delegated.
+- [x] BE.8 Owner 2026-11-24 "el agua necesita el reflejo del show y las estrellas": the sea (and the town/farm ponds if cheap) reflects the night sky stars and the shows (fireworks, meteors and the other kinds), shimmering with the waves; cheap on the phone (cached, quantised, drawn only over water rows in view). Route: delegated.
 - [ ] BE.6 Owner go: apply the migrations (rod and board) and deploy the trip function.
 
 ## Progress
@@ -35,3 +37,5 @@ Owner 2026-11-24 asked for a new area on the left of the town: a beach where the
 - 2026-11-24 BE.3 done (b0164db): eased zoom (`SWIM_OUT` 0.25) through cameraFor, followFocus and showCamera; flat view keeps its scale. 758 tests pass.
 - 2026-11-24 BE.4 done (3043e61): `surfboard` (60) in both price lists, `board` icon, migration `20261124130000_surfboard_tool.sql` (NOT applied), `?dev=1&board=1`. 759 tests pass.
 - 2026-11-24 BE.5 done (989c706): `src/surf.js` (waves from the clock, catch, ride, wipeout), optional `surf` field on `pos`, sounds. 773 tests pass. Not verified: a second client seeing a ride, real audio, a real phone.
+- 2026-11-24 BE.7 done (57f383a): board paddling in the water (`surf` flag 3), a diagonal peeling wave (`y = k + x`, climbing at 8 rows/s, `src/surf.js`), loungers (`src/lounge.js`, lying derived from the tile), palms 1.8x and umbrellas 1.5x. 780 tests pass.
+- 2026-11-24 BE.8 done (6a5321d): `src/hd2d/reflect.js` mirrors the stars and the show layers into the water through a half-size offscreen canvas, masked by the water tiles, blitted in wobbling strips; `?perf=1&skip=reflejo`. 784 tests pass.
