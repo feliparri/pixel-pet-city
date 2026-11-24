@@ -18,6 +18,7 @@ export class Walker {
     this.onStep = null;                 // (x, y, d) when a step starts
     this.stepOverride = null;           // ms per step when something (the chicken sprinting) goes at its own pace
     this.run = false;                   // the local pet runs: set between steps, so a step never changes pace half way
+    this.tileMult = null;               // (x, y) -> multiplier of the step time onto that tile: the sea slows a swimming pet (src/sea.js); null = none
     this.hurry = false;                 // a remote or referee-driven walker that fell behind catches up at double pace; the local pet never does
   }
 
@@ -32,7 +33,12 @@ export class Walker {
     return { x: this.fx + (this.tx - this.fx) * k, y: this.fy + (this.ty - this.fy) * k };
   }
 
-  stepMs() { return this.stepOverride || (this.hurry && this.queue.length > 3 ? STEP_MS / 2 : this.run ? STEP_MS / RUN_FACTOR : STEP_MS); }   // a remote pet that fell behind hurries (a tapped route of the local pet does not)
+  stepMs() {
+    if (this.stepOverride) return this.stepOverride;
+    const m = this.tileMult ? this.tileMult(this.tx, this.ty) : 1;               // swimming: slower (or faster, the seal) and never a run
+    if (this.hurry && this.queue.length > 3) return (STEP_MS * m) / 2;
+    return m !== 1 ? STEP_MS * m : this.run ? STEP_MS / RUN_FACTOR : STEP_MS;
+  }   // a remote pet that fell behind hurries (a tapped route of the local pet does not)
 
   /** Replace what is left to walk (the step in progress finishes first). */
   setPath(tiles) {

@@ -2,6 +2,7 @@
 import { findPath, dirVector } from './path.js';
 import { isWalkable, doorAt, spotAt, tileAt, getArea, TILES, GAME_PLACES, SPAWNS } from './map.js';
 import { Walker, REMOTE_SNAP } from './walker.js';
+import { paceFactor } from './sea.js';
 import { isTyping, isJumpKey, runs, tapWalks } from './keys.js';
 import { createTouchpad } from './touchpad.js';
 import { JUMP_MS } from './jump.js';
@@ -64,6 +65,7 @@ function spawnFor(id) {
 export function startTown({ canvas, stage, pad = null, sprites, font, net, me, entrance = null, stars = { add() {} }, canasta = createCanasta(), farmMemory = createFarmMemory(), tools = () => [], onStore = () => {}, missions = null, onHud = () => {}, onShow = () => {}, onShop = () => {}, insets = () => ({ top: 0, bottom: 0 }), onFarm = () => {}, onFarmDone = () => {}, onFarmAction = () => {}, onFish = () => {} }) {
   const [sx, sy] = spawnFor(net.id);
   const self = { id: net.id, name: me.name, look: me.look, stats: me.stats || null, act: 'idle', walker: new Walker(sx, sy), emote: null, jumpAt: null, area: 'town' };
+  self.walker.tileMult = (x, y) => paceFactor(self.area, x, y, self.look.species);      // the sea slows the pet (the seal swims faster than it walks), src/sea.js
   if (entrance) self.fx = { id: entrance, phase: 'arrive', t0: performance.now(), resolve: null };
   const others = new Map();
   const state = { me: self, others: [], marker: null, area: 'town', amb: ambientAt(hourNow(location.search)), fade: 0 };
@@ -122,6 +124,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     const w = new Walker(p.x ?? 0, p.y ?? 0, p.d || 'down');
     w.hurry = true;
     const o = { id: p.id, name: p.name, look: p.look, walker: w, emote: null, jumpAt: null, placed: p.x != null, area: p.area || 'town' };
+    w.tileMult = (x, y) => paceFactor(o.area, x, y, o.look.species);                  // the same rule for a remote pet: its steps in the water last as long as the sender's
     w.onStep = (x, y) => { if (o.placed && o.area === self.area && !suspended) pets.peerStep(o.id, Math.hypot(x - self.walker.tileX, y - self.walker.tileY), o.area, x, y, wxLv); };      // another pet's step: heard only when near
     others.set(p.id, o);
   };

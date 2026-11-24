@@ -11,6 +11,8 @@ import { project, petScaleOf } from './camera.js';
 import { lightAt } from './light.js';
 import { grade } from './scene.js';
 import { createFrameCache, createShadows, drawShadow } from './framecache.js';
+import { waterOf, SUBMERGE } from '../sea.js';
+import { drawWake } from '../sea-draw.js';
 
 const PET_RINGS = [[1, 0.16], [8.5 / 11, 0.2], [6 / 11, 0.24]];            // the soft ground shadow: three discs of 11, 8.5 and 6 px
 
@@ -51,7 +53,7 @@ export function createPetPainter(sprites) {
   const animKey = (lay, now) => lay.anim.length ? lay.anim.map(([item, parts]) => parts.map((p) => partAt(item, p, now)).join()).join(';') : '';
 
   /** The depth-sortable item for an entity, or null when it is off screen / gone. `ctx.me` marks the local pet (its name is gold). */
-  function item(e, { cam, n, now, world, me, view, wash = null }) {
+  function item(e, { cam, n, now, world, me, view, wash = null, area = 'town' }) {
     if (!e || e.gone) return null;
     const p = e.walker.pos();
     if (p.x === null) return null;
@@ -62,7 +64,9 @@ export function createPetPainter(sprites) {
     const { w: SIZE, feetY: FEET_Y } = layoutFor(e.sprites || sprites, e.look);
     if (cx < -SIZE * s || cx > view.w + SIZE * s || cy < 0 || cy > view.h + FEET_Y * s) return null;
     const k = e.walker.moving ? Math.min(1, e.walker.t / e.walker.stepMs()) : 0;
-    const hop = e.walker.moving ? Math.round(Math.abs(Math.sin(k * Math.PI)) * 3) : 0;
+    const water = e.npc ? null : waterOf(area, e.walker), swim = water === 'deep';        // in deep water the pet swims: its lower part is under the surface and it bobs instead of hopping
+    const hop = e.walker.moving && !swim ? Math.round(Math.abs(Math.sin(k * Math.PI)) * 3) : 0;
+    const bob = swim ? Math.round(Math.sin(now / 320 + e.id.charCodeAt(0))) : 0;
     const air = jumpLift(now, e.jumpAt);
     const fx = e.fx ? entranceState(e.fx.id, e.fx.phase, now - e.fx.t0) : null;                // an arrival or an exit in progress
     const lift = fx ? Math.round(fx.lift * (cy / s + CELL + 24)) : 0;                            // game px above the spot; 1 = just above the top edge
@@ -71,7 +75,7 @@ export function createPetPainter(sprites) {
       const effects = (front, x, y) => { c.save(); c.translate(cx, cy); c.scale(s, s); drawEntranceFx(c, e.fx.id, fx, x, y, CELL, front); c.restore(); };
       if (fx) effects(false, 0, 0);
       if (!fx || !fx.hidden) {
-        if (lift < (cy / s) * 0.6) drawShadow(c, shadowOf('pet', PET_RINGS, 11 * s), cx, cy - s, Math.max(0.3, cam.sin) * 0.5, 1 - air * 0.04);   // it grows as the pet lands, and stays down in a jump
+        if (!water && lift < (cy / s) * 0.6) drawShadow(c, shadowOf('pet', PET_RINGS, 11 * s), cx, cy - s, Math.max(0.3, cam.sin) * 0.5, 1 - air * 0.04);   // it grows as the pet lands, and stays down in a jump
         if (!(fx && flickers(e.fx.id, e.fx.phase, now - e.fx.t0))) {
           const flap = (e.walker.moving || lift > 0) && Math.floor(now / 140) % 2 === 1;
           const L = layoutFor(e.sprites || sprites, e.look), frame = lift > 0 ? 'happy' : headFrame(e, now, e.id), flip = e.walker.d === 'left';
@@ -86,8 +90,10 @@ export function createPetPainter(sprites) {
             tctx.globalCompositeOperation = 'source-atop'; tctx.fillStyle = `rgba(${tint.r | 0},${tint.g | 0},${tint.b | 0},${tint.a})`; tctx.fillRect(0, 0, L.w, L.h);
             src = t;
           }
-          c.drawImage(src, 0, 0, L.w, L.h, cx - L.feetX * s + sway * s, cy - (L.feetY + air + lift) * s, L.w * s, L.h * s);
+          if (swim) { const sh = L.feetY - SUBMERGE.cut; c.drawImage(src, 0, 0, L.w, sh, cx - L.feetX * s + sway * s, cy - (L.feetY + air + lift - SUBMERGE.sink - bob) * s, L.w * s, sh * s); }      // only what is above the water
+          else c.drawImage(src, 0, 0, L.w, L.h, cx - L.feetX * s + sway * s, cy - (L.feetY + air + lift) * s, L.w * s, L.h * s);
         }
+        if (water) drawWake(c, cx, cy - (swim ? 1 : 0) * s, s, { depth: water, moving: e.walker.moving, d: e.walker.d, squash: Math.max(0.3, cam.sin) * 0.6, now, night: n, seed: e.id.charCodeAt(0) });      // rings and foam on the water instead of the ground shadow
         ov.labels.push({ text: e.name, x: cx + sway * s, y: cy + (2 - lift) * s, colour: e === me ? '#f8d040' : e.npc ? '#a8e6cf' : '#f4f6fa' });
       }
       if (fx) effects(true, sway, -lift);

@@ -8,16 +8,16 @@ import { mulberry32 } from './life.js';
 import { renderNotes, note, W, SFX_RATE } from './sound.js';
 import { toPcm, tone, lowpass } from './ambience.js';
 
-export const GROUNDS = ['grass', 'path', 'stone', 'wood', 'sand', 'snow', 'wet'];
+export const GROUNDS = ['grass', 'path', 'stone', 'wood', 'sand', 'snow', 'wet', 'splash', 'swim'];
 const BY_NAME = {
   grass: 'grass', flowers: 'grass', bush: 'grass', pitch: 'grass', furrow: 'grass', carrots: 'grass', lettuce: 'grass', pumpkins: 'grass', wheat: 'grass',
   path: 'path', mat: 'path', gate: 'path', track: 'path', hurdle: 'path', hay: 'path', finish: 'path', spot: 'path',
-  plaza: 'stone', floor: 'wood', rug: 'wood', door: 'wood', exit: 'wood', puddle: 'wet', sand: 'sand', dock: 'wood', bridge: 'wood', shore: 'sand', towel: 'sand', boardwalk: 'wood',
+  plaza: 'stone', floor: 'wood', rug: 'wood', door: 'wood', exit: 'wood', puddle: 'wet', sand: 'sand', dock: 'wood', bridge: 'wood', shore: 'sand', towel: 'sand', boardwalk: 'wood', shallows: 'splash', 'deep water': 'swim', break: 'swim',
 };
 /** The ground under tile (x, y) of an area, given the weather's amounts (`wx`: rain, snow 0..1, or null): outdoors, rain makes it wet and snow covers grass, paths and paving. */
 export function groundOf(area, x, y, wx = null) {
   const t = TILES[tileAt(x, y, area)], g = (t && BY_NAME[t.name]) || 'grass';
-  if (g === 'wet' || !wx || !getArea(area).outdoor) return g;
+  if (g === 'wet' || g === 'splash' || g === 'swim' || !wx || !getArea(area).outdoor) return g;
   if (wx.snow > 0.3 && (g === 'grass' || g === 'path' || g === 'stone')) return 'snow';
   if (wx.rain > 0.3 && g !== 'wood') return 'wet';
   return g;
@@ -41,12 +41,14 @@ const FOOT = {
   wood: (f, r, v) => { tone(f, 0, 34, 160 + v * 10, 100, 1); grains(f, r, 1, 25, 0.6, 0.35); },
   sand: (f, r, v) => grains(f, r, 2, 100, 0.16 + v * 0.02, 0.9),
   snow: (f, r, v) => grains(f, r, 4, 90, 0.4 + v * 0.03, 0.8),
+  splash: (f, r, v) => { grains(f, r, 3, 90, 0.5 + v * 0.03, 1); tone(f, 6, 34, 700 + v * 90, 420, 0.22); },       // a pet wading: a little splash and a drop
+  swim: (f, r, v) => { grains(f, r, 2, 100, 0.3, 0.7); tone(f, 0, 32, 420 + v * 50, 240, 0.5); tone(f, 4, 22, 900, 600, 0.12); },      // swimming: a soft plop
   wet: (f, r, v) => { grains(f, r, 2, 90, 0.55 + v * 0.03, 1); tone(f, 4, 30, 900 + v * 80, 500, 0.12); },
 };
 export const STEP_VARIANTS = 4;
 export const STEP_MS = 45;                                       // a step lasts this long (was 110 ms of buffer): a soft tap, not a hiss
 /** The dullness of each ground: two one-pole lowpasses of this alpha (cutoff about alpha * 2500 Hz at the 16 kHz rate: 400 to 700 Hz), so no hiss is left, only a soft thud. Before: one pole of 0.16 to 0.7, up to 1.8 kHz. */
-const DULL = { grass: 0.16, sand: 0.14, path: 0.22, snow: 0.2, wet: 0.24, stone: 0.26, wood: 0.28 };
+const DULL = { grass: 0.16, sand: 0.14, path: 0.22, snow: 0.2, wet: 0.24, stone: 0.26, wood: 0.28, splash: 0.26, swim: 0.2 };
 const cache = new Map();
 /** A footstep on a ground: one of STEP_VARIANTS slightly different ones (pitch and grain), Int16 at SFX_RATE, deterministic. */
 export function stepSamples(ground, variant = 0) {

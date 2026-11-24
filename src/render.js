@@ -24,6 +24,8 @@ import { seasonDecor } from './art/decor.js';
 import { GHOST_SCALE } from './ghosts.js';
 import { drawSnow } from './snow.js';
 import { paintSky, drawWeatherTop } from './weather-fx.js';
+import { waterOf, SUBMERGE } from './sea.js';
+import { drawWake } from './sea-draw.js';
 
 export const VIEW_W = 224;              // the portrait reference view; a box taller than wide is fitted to it (and the dev previews use it)
 export const VIEW_H = 288;
@@ -128,7 +130,8 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
   for (const e of all) {
     const p = e.walker.pos();
     const k = e.walker.moving ? Math.min(1, e.walker.t / e.walker.stepMs()) : 0;
-    const hop = e.walker.moving ? Math.round(Math.abs(Math.sin(k * Math.PI)) * 3) : 0;
+    const water = e.npc ? null : waterOf(areaName, e.walker), swim = water === 'deep';                       // swimming: the lower part is under the surface and the pet bobs
+    const hop = e.walker.moving && !swim ? Math.round(Math.abs(Math.sin(k * Math.PI)) * 3) : 0;
     const air = jumpLift(now, e.jumpAt);                                                                      // a jump (Space): the pet rises, its shadow stays
     const bx = Math.round(p.x * TILE + TILE / 2 - cam.x), by = Math.round(p.y * TILE + TILE - cam.y);       // the feet
     if (bx < -20 || bx > vw + 20 || by < 0 || by > vh + 40) continue;                                       // off screen: nothing to draw
@@ -139,14 +142,18 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
       const small = (x, y, f) => { sctx.save(); sctx.translate(x, y); sctx.scale(pr, pr); f(); sctx.restore(); };         // in the pets' px, standing on (x, y)
       if (fx) small(bx, by, () => drawEntranceFx(sctx, e.fx.id, fx, 0, 0, CELL, false));
       if (!fx || !fx.hidden) {
-        if (lift < by * 0.6) {
+        if (!water && lift < by * 0.6) {
           sctx.fillStyle = 'rgba(24,28,44,0.35)';                                                           // shadow (it grows as the pet lands)
           small(bx, by, () => { sctx.fillRect(-7, -3, 14, 3); sctx.fillRect(-5, -4, 10, 1); });
         }
         if (!(fx && flickers(e.fx.id, e.fx.phase, now - e.fx.t0))) {
           const flap = (e.walker.moving || lift > 0) && Math.floor(now / 140) % 2 === 1;
-          small(px, by - lift, () => drawPet(sctx, e.sprites || sprites, e.look, -CELL / 2, -CELL + 2 - hop - air, { frame: lift > 0 ? 'happy' : headFrame(e, now, e.id), flip: e.walker.d === 'left', flap, now }));
+          small(px, by - lift, () => {
+            if (swim) { sctx.beginPath(); sctx.rect(-CELL, -2 * CELL, 2 * CELL, 2 * CELL - SUBMERGE.cut + 1 + SUBMERGE.sink - 5); sctx.clip(); sctx.translate(0, SUBMERGE.sink - 4 + Math.round(Math.sin(now / 320 + e.id.charCodeAt(0)))); }      // only what is above the water
+            drawPet(sctx, e.sprites || sprites, e.look, -CELL / 2, -CELL + 2 - hop - air, { frame: lift > 0 ? 'happy' : headFrame(e, now, e.id), flip: e.walker.d === 'left', flap, now });
+          });
         }
+        if (water) small(px, by - (swim ? 1 : 0), () => drawWake(sctx, 0, 0, 1, { depth: water, moving: e.walker.moving, d: e.walker.d, squash: 0.5, now, night: amb.night, seed: e.id.charCodeAt(0) }));
         labels.push({ text: e.name, x: px - Math.floor(textWidth(font, e.name) / 2), y: by + 2 - lift, colour: e === me ? '#f8d040' : e.npc ? '#a8e6cf' : '#f4f6fa' });
       }
       if (fx) small(px, by - lift, () => drawEntranceFx(sctx, e.fx.id, fx, 0, 0, CELL, true));
