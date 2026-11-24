@@ -81,7 +81,7 @@ export function fishCanvas(id, scale = 1, silhouette = false) {
   c.width = FISH_W * scale; c.height = FISH_H * scale;
   if (rows) {
     const g = c.getContext('2d'), col = { o: '#1c2233', m: sp.m, b: sp.b, f: sp.f, k: sp.k, e: '#10131f' };
-    rows.forEach((row, y) => { for (let x = 0; x < FISH_W; x++) { const ch = row[x]; if (ch === '.') continue; g.fillStyle = silhouette ? (ch === 'o' ? '#0f1320' : '#232a40') : col[ch]; g.fillRect(x * scale, y * scale, scale, scale); } });
+    rows.forEach((row, y) => { for (let x = 0; x < FISH_W; x++) { const ch = row[x]; if (ch === '.') continue; g.fillStyle = silhouette ? (ch === 'o' ? '#0f1320' : '#323c5c') : col[ch]; g.fillRect(x * scale, y * scale, scale, scale); } });
   }
   cache.set(key, c);
   return c;

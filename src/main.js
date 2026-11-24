@@ -26,6 +26,8 @@ import { produceCanvas } from './art/produce.js';
 import { sound } from './sound.js';
 import { startArcade } from './arcade/arcade.js';
 import { startFishing } from './fishing/fishing.js';
+import { createReward, scopedStorage } from './fishing/reward.js';
+import { dayString } from './arcade/arcade.js';
 import { SHOWS } from './show/timeline.js';
 
 const $ = (id) => document.getElementById(id);
@@ -242,11 +244,13 @@ function openArcade(opts = {}) {
   arcade = startArcade({
     root: $('arcade'), sprites, font, look: town.look(), sound,
     storage: { getItem: (k) => store.get(k), setItem: (k, v) => store.set(k, v) },
-    awardStars: (n) => { if (stars) { stars.add(n); $('stars-n').textContent = String(stars.get()); } },
+    awardStars: awardTownStars,
     onExit: closeArcade, ...opts,
   });
   return arcade;
 }
+/** Stars to the town's counter (the arcade's and the fishing's way). */
+function awardTownStars(n) { if (stars) { stars.add(n); $('stars-n').textContent = String(stars.get()); } }
 function closeArcade() {
   if (!arcade) return;
   arcade.destroy(); arcade = null;
@@ -267,7 +271,8 @@ function openFishing(opts = {}) {
   if (!town || fishing || arcade) return null;
   town.suspend(true);
   $('arcade-open').hidden = true;
-  fishing = startFishing({ root: $('fishing'), sprites, font, look: town.look(), sound, getCtx: () => town.fishCtx(), onExit: closeFishing, ...opts });
+  const reward = createReward({ storage: scopedStorage({ getItem: (k) => store.get(k), setItem: (k, v) => store.set(k, v) }, visit ? visit.who : 'dev'), today: dayString, awardStars: awardTownStars });      // the album and today's stars are this pet's
+  fishing = startFishing({ root: $('fishing'), sprites, font, look: town.look(), sound, getCtx: () => town.fishCtx(), reward, onExit: closeFishing, ...opts });
   if (new URLSearchParams(location.search).get('dev') === '1') window.fishingDev = fishing.dev;
   return fishing;
 }
@@ -277,14 +282,15 @@ function closeFishing() {
   if (town) town.suspend(false);
   paintSound(); paintArcade();
 }
-/** Development only (?local=1&dev=1&rod=1&fish=menu|play|charging|waiting|bite|reeling|caught|escaped|result): the fishing layer open on a moment (previews). */
+/** Development only (?local=1&dev=1&rod=1&fish=menu|album|play|charging|waiting|bite|reeling|caught|escaped|result): the fishing layer open on a moment (previews). */
 function devFishing() {
   const q = new URLSearchParams(location.search);
   if (q.get('dev') !== '1' || !town || !q.has('fish')) return;
   const f = openFishing(q.has('seed') ? { seed: Number(q.get('seed')) } : {});
   if (!f) return;
   const where = q.get('fish');
-  if (where && where !== '1' && where !== 'menu') f.dev.go(where, { fish: q.get('fishid') || undefined, reason: q.get('reason') || undefined, power: q.has('power') ? Number(q.get('power')) : undefined });
+  if (where === 'album') f.dev.album();
+  else if (where && where !== '1' && where !== 'menu') f.dev.go(where, { fish: q.get('fishid') || undefined, reason: q.get('reason') || undefined, power: q.has('power') ? Number(q.get('power')) : undefined });
 }
 
 // ---- the farm: what this pet did today (kept in this browser, per pet) and the small prompt and pop over the stage ----------------------------
@@ -486,7 +492,7 @@ async function bootTrip(code) {
   radar.start();
   shopSource = client;                                          // the trip client: its shop state and trip-buy
   $('bag-open').hidden = false; $('missions-open').hidden = false;
-  visit = { client, entrance: client.session.entrance, stop: null, solo: true, saver, canSaver, radar, stars: createStars({ initial: starsFromState(r.state), persist: (n) => saver.save(n) }), canasta: createCanasta({ initial: canastaFrom(r.state), persist: (snap) => canSaver.save(snap) }), farm: farmMemoryFor(code) };
+  visit = { client, entrance: client.session.entrance, stop: null, solo: true, saver, canSaver, radar, stars: createStars({ initial: starsFromState(r.state), persist: (n) => saver.save(n) }), canasta: createCanasta({ initial: canastaFrom(r.state), persist: (snap) => canSaver.save(snap) }), farm: farmMemoryFor(code), who: code };
   const box = $('keepsakes');
   box.replaceChildren();
   for (const k of r.pet.keepsakes) {

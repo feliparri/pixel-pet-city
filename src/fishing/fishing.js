@@ -11,13 +11,14 @@ import { drawFishing } from './view.js';
 import { promptFor, ESCAPE_TEXT, RARITY_TEXT, resultDelay } from './layout.js';
 import { fishCanvas } from './fish-art.js';
 import { playEvents, reelClick, REEL_CLICK_S } from './sfx.js';
+import { albumGrid, cellLines } from './album-grid.js';
 import { createMusic, moodFor, MUSIC_LEVEL } from './music.js';
 
-const NO_REWARD = { settle: () => ({}) };
+const NO_REWARD = { settle: () => ({}), album: () => ({}) };
 
 /**
  * root: the empty element to build in. sprites, font: the town's. look: the pet's. sound: src/sound.js's player. getCtx(): { night, christmas } now (asked at every cast).
- * reward: { settle(catch) -> { first, record, stars, capped } } (the album and the stars, set up by the page). onExit(): back to the town. Returns { destroy, dev }.
+ * reward: { settle(catch) -> { first, record, stars, capped }, album() } (the album and the stars, src/fishing/reward.js, set up by the page). onExit(): back to the town. Returns { destroy, dev }.
  */
 export function startFishing({ root, sprites, font, look, sound, getCtx = () => ({}), reward = NO_REWARD, onExit, seed, screen = 'menu' }) {
   root.replaceChildren();
@@ -73,7 +74,7 @@ export function startFishing({ root, sprites, font, look, sound, getCtx = () => 
     paintMute();
     return b;
   }
-  const menuButtons = (primary) => [button(primary, 'primary big', () => startCast()), button('Volver a la ciudad', '', leave)];
+  const menuButtons = (primary) => [button(primary, 'primary big', () => startCast()), button('Álbum', '', () => dispatch({ type: 'album' })), button('Volver a la ciudad', '', leave)];
 
   function resultPanel() {
     const caught = sim.phase === 'caught', info = [];
@@ -88,7 +89,22 @@ export function startFishing({ root, sprites, font, look, sound, getCtx = () => 
     } else {
       info.push(el('h2', 'arc-head', ESCAPE_TEXT[sim.reason] || 'Se escapó'), el('p', 'arc-sub', 'Prueba otra vez.'));
     }
-    return panel(info, [button('Otra vez', 'primary big', () => startCast()), button('Volver a la ciudad', '', leave)]);
+    return panel(info, [button('Otra vez', 'primary big', () => startCast()), button('Álbum', '', () => dispatch({ type: 'album' })), button('Volver a la ciudad', '', leave)]);
+  }
+
+  /** The album: all the fish as a grid, a caught one with its sprite, name, count and best size, an uncaught one as a silhouette with ???; progress as x/10. */
+  function albumPanel() {
+    const g = albumGrid(reward.album()), grid = el('div', 'fish-album');
+    for (const c of g.cells) {
+      const cell = el('div', `fish-cell${c.caught ? ' got' : ''} ${c.rarity}`), pic = el('canvas', 'fish-cell-pic'), src = fishCanvas(c.id, 2, !c.caught), l = cellLines(c);
+      pic.width = src.width; pic.height = src.height; pic.getContext('2d').drawImage(src, 0, 0); pic.setAttribute('aria-hidden', 'true');
+      cell.append(pic, el('span', 'fish-cell-name', c.label), el('span', 'fish-cell-count', l.count || ' '), el('span', 'fish-cell-best', l.best || ' '));
+      cell.dataset.fish = c.id;
+      grid.append(cell);
+    }
+    const p = el('div', 'arc-panel fish-album-panel');
+    p.append(el('h2', 'arc-head', `Álbum de peces ${g.text}`), grid, button('Atrás', 'primary', () => dispatch({ type: 'back' })));
+    return p;
   }
 
   function paint() {
@@ -102,9 +118,11 @@ export function startFishing({ root, sprites, font, look, sound, getCtx = () => 
       pause.setAttribute('aria-label', 'Pausa'); pause.title = 'Pausa';
       tools.append(back, el('span', 'fish-gap'), muteButton(), pause);
     } else if (flow.screen === 'pause') {
-      ui.append(panel([el('h2', 'arc-head', 'Pausa')], [button('Seguir', 'primary big', () => dispatch({ type: 'resume' })), button('Volver a la ciudad', '', leave)]));
+      ui.append(panel([el('h2', 'arc-head', 'Pausa')], [button('Seguir', 'primary big', () => dispatch({ type: 'resume' })), button('Álbum', '', () => dispatch({ type: 'album' })), button('Volver a la ciudad', '', leave)]));
     } else if (flow.screen === 'result') {
       ui.append(resultPanel());
+    } else if (flow.screen === 'album') {
+      ui.append(albumPanel());
     }
     if (flow.screen !== 'play') tools.append(muteButton());
     paintButton();
@@ -143,7 +161,7 @@ export function startFishing({ root, sprites, font, look, sound, getCtx = () => 
     }
     music.step(ms, sound.isMuted() ? null : moodFor(sim.phase));
   }
-  const detach = attachFishInput([canvas, big], hold, { onPause: () => { if (flow.screen === 'play') dispatch({ type: 'pause' }); else if (flow.screen === 'pause') dispatch({ type: 'resume' }); else if (flow.screen === 'menu') leave(); }, canHold: () => flow.screen === 'play' });
+  const detach = attachFishInput([canvas, big], hold, { onPause: () => { if (flow.screen === 'play') dispatch({ type: 'pause' }); else if (flow.screen === 'pause') dispatch({ type: 'resume' }); else if (flow.screen === 'album') dispatch({ type: 'back' }); else if (flow.screen === 'menu') leave(); }, canHold: () => flow.screen === 'play' });
   const onHidden = () => { if (document.hidden && flow.screen === 'play') dispatch({ type: 'pause' }); };
   document.addEventListener('visibilitychange', onHidden);
 
@@ -179,6 +197,8 @@ export function startFishing({ root, sprites, font, look, sound, getCtx = () => 
       get state() { return sim; },
       get clock() { return clock; },
       freeze(on = true) { frozen = !!on; },
+      /** The album screen (from the menu). */
+      album() { if (flow.screen === 'menu') dispatch({ type: 'album' }); },
       /** go('play' | 'charging' | 'waiting' | 'bite' | 'reeling' | 'caught' | 'escaped' | 'result', { fish, power, reason, ctx, seed }): jumps there with the rules' own steps. */
       go(name, o = {}) {
         if (flow.screen !== 'play' && flow.screen !== 'result') { sim = createFishing(o.seed ?? seed ?? 7, o.ctx || getCtx()); } else if (o.ctx) sim.ctx = o.ctx;

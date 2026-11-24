@@ -260,3 +260,17 @@ a.btn { display: inline-block; text-decoration: none; }
 .fish-new { margin: 0; color: #8bd97f; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
 .arcade.fishing[data-wide="1"] .fish-pic { width: 96px; }
 .arcade.fishing[data-wide="1"] .fish-btn { width: 4.6rem; height: 4.6rem; font-size: .9rem; }
+.fish-album-panel { max-width: 40rem; gap: .5rem; }
+.fish-album { display: grid; grid-template-columns: repeat(2, 1fr); gap: .4rem; max-height: 60vh; overflow-y: auto; touch-action: pan-y; pointer-events: auto; }
+.fish-cell { display: grid; justify-items: center; gap: .1rem; padding: .3rem .2rem; background: rgba(38,44,68,.9); border: 2px solid var(--edge); }
+.fish-cell.got.rare { border-color: #7fc8ff; }
+.fish-cell.got.epic { border-color: #ffd84a; }
+.fish-cell-pic { image-rendering: pixelated; width: 72px; height: auto; }
+.fish-cell-name { font-weight: 800; font-size: .78rem; line-height: 1.1; text-align: center; }
+.fish-cell:not(.got) .fish-cell-name { color: var(--muted); }
+.fish-cell-count, .fish-cell-best { font-size: .7rem; color: var(--muted); min-height: .9em; }
+.arcade.fishing[data-wide="1"] .fish-album-panel { grid-template-columns: 1fr; max-width: 46rem; max-height: calc(100% - 1rem); gap: .3rem; padding: .5rem .7rem; }
+.arcade.fishing[data-wide="1"] .fish-album { grid-template-columns: repeat(5, 1fr); max-height: none; gap: .3rem; }
+.arcade.fishing[data-wide="1"] .fish-cell-pic { width: 60px; }
+.arcade.fishing[data-wide="1"] .fish-cell { padding: .2rem .1rem; }
+.arcade.fishing[data-wide="1"] .fish-album-panel .btn { padding-top: .25rem; padding-bottom: .25rem; }
