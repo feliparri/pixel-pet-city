@@ -59,7 +59,7 @@ const smooth = (k) => { const c = Math.min(1, Math.max(0, k)); return c * c * (3
  * by bite (an eat), or the cup is drunk down (a drink).
  */
 export function drawHeld(ctx, idx, eating, k, flip, now, cell = 32) {
-  const dir = flip ? -1 : 1, hand = { x: dir * 10, y: -cell * 0.42 }, mouth = { x: dir * 4, y: -cell * 0.66 };
+  const dir = flip ? -1 : 1, hand = { x: dir * 10, y: -cell * 0.16 }, mouth = { x: dir * 4, y: -cell * 0.06 }, lips = -cell * 0.44;      // the hand at the belly, the treat's top at the mouth (the pet's mouth row is about 14 px over its feet)
   const lift = eating ? smooth(k / 0.22) : 0, drink = idx === 1 || idx === 2;
   const left = eating ? Math.max(0.06, 1 - Math.max(0, k - 0.22) / 0.74) : 1;
   const bite = eating && k > 0.22 ? Math.sin((k - 0.22) * 40) * (drink ? 0.5 : 1.2) : 0, bob = eating ? bite : Math.sin(now / 420) * 0.8;
@@ -72,6 +72,6 @@ export function drawHeld(ctx, idx, eating, k, flip, now, cell = 32) {
   ctx.restore();
   if (eating && k > 0.25 && k < 0.95) {                                                                                       // crumbs and drops fly off with each bite
     const f = ((k - 0.22) * 20) % 1;
-    dot(ctx, drink ? '#8ccbff' : '#ffe9b0', Math.round(mouth.x + dir * (2 + f * 4)), Math.round(mouth.y + 3 + f * 5)); dot(ctx, drink ? '#d6efff' : '#ffffff', Math.round(mouth.x - dir * (1 + f * 3)), Math.round(mouth.y + 4 + f * 6));
+    dot(ctx, drink ? '#8ccbff' : '#ffe9b0', Math.round(mouth.x + dir * (2 + f * 4)), Math.round(lips + 3 + f * 5)); dot(ctx, drink ? '#d6efff' : '#ffffff', Math.round(mouth.x - dir * (1 + f * 3)), Math.round(lips + 4 + f * 6));
   }
 }

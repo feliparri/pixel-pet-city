@@ -61,7 +61,7 @@ export function drawProp(ctx, p, flip, now, cell = 32) {
       break;
     }
     case 'stick': {                                                                             // a toasting stick held out to the fire with a marshmallow on the end: white, then golden, then (now and then) black. `tone` 0..2, `k` through the toast
-      ctx.translate(dir * 9, -cell * 0.38);
+      ctx.translate(dir * 9, -cell * 0.2);
       const bob = Math.sin((p.t || 0) / 160) * 0.6;
       rect(ctx, '#8a5a2b', dir > 0 ? 0 : -14, -1 + bob, 14, 1);
       const col = ['#fbf6ec', '#e8b84a', '#2a2420'][p.tone || 0];
