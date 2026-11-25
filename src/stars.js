@@ -27,6 +27,13 @@ export function createStars({ initial = 0, persist = () => {} } = {}) {
       persist(n);
       return n;
     },
+    /** Spends `k` stars (the Kiosco): true when the pet had them (the count goes down and is saved like any change), false and nothing changes otherwise. */
+    spend(k) {
+      if (!Number.isInteger(k) || k <= 0 || k > n) return false;
+      n -= k;
+      persist(n);
+      return true;
+    },
   };
 }
 

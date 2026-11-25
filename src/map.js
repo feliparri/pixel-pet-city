@@ -133,6 +133,7 @@ export const SIGNS = [
   { area: 'town', x: 4, y: 28, text: 'La Playa', sub: 'Al oeste' },
   { area: 'beach', x: 66, y: 20, text: 'Pueblo', sub: 'Al este' },
   { area: 'beach', x: 44, y: 20, text: 'Surf', sub: 'Con tabla' },
+  { area: 'beach', x: 60, y: 19, text: 'Kiosco', sub: 'Helados' },
   { area: 'farm', x: 2, y: 16, text: 'Pueblo', sub: 'Al oeste' },
   { area: 'farm', x: 36, y: 15, text: 'Almacén', sub: 'Herramientas' },
   { area: 'shop', x: 6.5, y: 2, text: 'Tienda', sub: 'Abierto' },
@@ -387,7 +388,7 @@ function buildBeach() {
     for (const hut of BEACH.huts) fill(hut.x, hut.y, hut.w, hut.h, '5');
     fill(BEACH.kiosk.x, BEACH.kiosk.y, BEACH.kiosk.w, BEACH.kiosk.h, '7');
     for (const [x, y] of [[62, 9], [55, 34], [64, 28], [64, 39], [51, 40], [55, 2], [60, 15]]) set(x, y, 'J');           // a few more palms
-    for (const [x, y] of [[58, 16], [63, 20]]) set(x, y, 'L');                                        // a lamp by the Kiosco's counter
+    for (const [x, y] of [[58, 16]]) set(x, y, 'L');                                        // a lamp by the Kiosco's counter
     for (const y of BEACH.pier.y) for (let x = BEACH.pier.from; x < shallowFrom(y) + 5; x++) set(x, y, '1');          // the pier: planks over the sea, out to where the water is deep
     // signs
     for (const s of SIGNS) if (s.area === 'beach') set(s.x, s.y, 'S');

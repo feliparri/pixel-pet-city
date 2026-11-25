@@ -17,6 +17,7 @@ import { P, noise } from './art/palette.js';
 import { badge, bobY, BADGE } from './art/icons.js';
 import { drawChicken, CHICKEN_SIZE } from './art/chicken.js';
 import { ball as drawBall } from './art/places.js';
+import { drawHeld } from './art/treat.js';
 import { drawCrab, drawBird, drawButterfly, drawFirefly, drawDuck, drawRing, drawSpray } from './art/life.js';
 import { drawAnimal, plotTile, COW_SIZE, SHEEP_SIZE } from './art/farm.js';
 import { ghostFrames } from './art/halloween.js';
@@ -175,6 +176,7 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
             drawPet(sctx, e.sprites || sprites, e.look, -CELL / 2, -CELL + 2 - hop - air, { frame: lift > 0 ? 'happy' : lie ? 'blink' : headFrame(e, now, e.id), flip: e.walker.d === 'left', flap, now });
           });
         }
+        if (e.treatView && !water && !lie && !ride && !wiped) small(px, by - lift - air, () => drawHeld(sctx, e.treatView.idx, e.treatView.eating, e.treatView.k, e.walker.d === 'left', now, CELL));      // a treat from the Kiosco in its hand
         if (lie && !rec) small(px, by - rl, () => { for (const z of zzzAt(now, CELL)) sctx.drawImage(zzzSprite(), 0, 0, 12, 14, z.x, z.y, 12 * z.k, 14 * z.k); });      // the two Zzz
         if (wiped) small(px, by, () => drawBoard(sctx, 26, 1, 1, { squash: 0.5, night: amb.night, tilt: Math.sin(now / 200) }));
         if (water) small(px, by - (swim ? 1 : 0), () => drawWake(sctx, 0, 0, 1, { depth: water, moving: ride || e.walker.moving, d: ride ? 'right' : e.walker.d, paddle, squash: 0.5, now, night: amb.night, seed: e.id.charCodeAt(0) }));

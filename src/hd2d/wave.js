@@ -5,7 +5,7 @@
 // How it is made: the wave stands on its front line (y = k + x, the geometry of src/surf.js); across that line, towards the shore, the profile above is extruded vertically on screen, its
 // height at every point of the front being the wave's own (waveBody's bodyAt height times WAVE_LIFT), so it grows towards the peel point and the broken part carries the big foam cap
 // with whitewater behind. The ground points of that sheet (every few world px along the front and across it) are projected and written, nearest first, into a small grid of cells
-// (two art pixels wide, anchored at the screen's origin so every block is snapped to the art pixel grid); each cell column is then emitted as runs, merged sideways, batched into one
+// (three art pixels wide, anchored at the screen's origin so every block is snapped to the art pixel grid); each cell column is then emitted as runs, merged sideways, batched into one
 // fill per colour. Nothing here decides anything: the clock gives the geometry, the sample's row and the wave's age give every dash and spray pixel; nothing is stored; the grid
 // covers the rows in view only and the number of rectangles is bounded.
 import { bodyAt, WAVE_LIFT } from '../surf.js';

@@ -172,11 +172,11 @@ async function enter(code, { transport = mode, arrival = null, solo = false } = 
   stars = visit ? visit.stars : createStars();                  // dev only: a counter that lives for this visit
   const showStars = () => { $('stars-n').textContent = String(stars.get()); };
   showStars();
-  const counter = { add(n) { stars.add(n); showStars(); } };
+  const counter = { add(n) { stars.add(n); showStars(); }, get: () => stars.get(), spend(n) { const ok = stars.spend(n); showStars(); return ok; } };      // the games add stars; the Kiosco spends them (src/kiosk.js)
   canasta = visit ? visit.canasta : (canasta || createCanasta());       // dev only: a basket that lives for this page
   if (!visit && !devFarm) devFarm = farmMemoryFor('dev');
   window.cityDebug = () => ({ town, net, canasta });                    // handy in the console when testing with two tabs
-  town = startTown({ canvas: $('view'), stage: $('stage'), pad: touch ? { stick: $('stick'), a: $('pad-a'), b: $('pad-b') } : null, sprites, font, net, me, entrance: arrival, stars: counter, canasta, farmMemory: visit ? visit.farm : devFarm, tools: toolsNow, onFish: () => openFishing(), onStore: () => shopUi && shopUi.openStore(), missions: missionsApi, onFarm: paintFarmPrompt, onFarmDone: farmPop, onHud: (info) => { hud && hud.update(info); cueResults(info); }, onShow: (on, running) => { const b = $('show-back'); b.hidden = !running; b.textContent = on ? 'Volver al pueblo' : 'Ver show'; b.setAttribute('aria-pressed', String(on)); }, onShop: () => shopUi && shopUi.openShop(), insets: stageInsets });
+  town = startTown({ canvas: $('view'), stage: $('stage'), pad: touch ? { stick: $('stick'), a: $('pad-a'), b: $('pad-b') } : null, sprites, font, net, me, entrance: arrival, stars: counter, canasta, farmMemory: visit ? visit.farm : devFarm, tools: toolsNow, onFish: () => openFishing(), onStore: () => shopUi && shopUi.openStore(), onKiosk: () => shopUi && shopUi.openKiosk(), missions: missionsApi, onFarm: paintFarmPrompt, onFarmDone: farmPop, onHud: (info) => { hud && hud.update(info); cueResults(info); }, onShow: (on, running) => { const b = $('show-back'); b.hidden = !running; b.textContent = on ? 'Volver al pueblo' : 'Ver show'; b.setAttribute('aria-pressed', String(on)); }, onShop: () => shopUi && shopUi.openShop(), insets: stageInsets });
   paintArcade();
   devArcade();
   devFishing();
@@ -549,8 +549,10 @@ async function boot() {
     onOpenChange: (open) => { $('play').classList.toggle('modal', open); if (town) town.setModal(open); },
     canasta: () => canasta,
     missionList: () => (town ? town.missions.list() : null),
+    kiosk: { stars: () => (town ? town.kiosk.stars() : 0), buy: (idx) => (town ? town.kiosk.buy(idx) : { ok: false, text: 'Te faltan estrellas' }) },
     onBought: (key, line) => { sound.play('buy'); if (town) { town.wear(key); town.thank(line); paintArcade(); } },
     onToolBought: (key, line) => { sound.play('buy'); if (town) town.thank(line); },
+    onTreatBought: () => sound.play('buy'),
   });
   $('bag-open').addEventListener('click', () => shopUi.openBag());
   $('missions-open').addEventListener('click', () => shopUi.openMissions());

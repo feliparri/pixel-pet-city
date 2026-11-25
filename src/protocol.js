@@ -95,6 +95,9 @@ export const newPeerId = () => {
  *   jump   { id }                  the peer hopped (cosmetic; the receiver draws the arc)
  *   bye    { id }
  */
+/** The optional `treat` field of a position: an integer 1 to 8 (a Kiosco treat, held 1-4 or being eaten 5-8). Anything else is dropped. */
+const isTreat = (v) => Number.isInteger(v) && v >= 1 && v <= 8;
+
 export function validateMessage(raw, catalogue) {
   const m = parse(raw);
   if (!m || typeof m !== 'object' || Array.isArray(m) || !isId(m.id)) return null;
@@ -104,7 +107,7 @@ export function validateMessage(raw, catalogue) {
       if (!look) return null;
       const out = { t: 'hello', id: m.id, name: sanitizeName(m.name), look, stats: validateStats(m.s), act: ACTIVITIES.includes(m.a) ? m.a : 'idle' };
       const area = m.area === undefined ? DEFAULT_AREA : m.area;                  // a heartbeat may carry the position: kept only when it is a real tile
-      if (m.x !== undefined && isArea(area) && Number.isInteger(m.x) && Number.isInteger(m.y) && isWalkable(m.x, m.y, area) && DIRS.includes(m.d)) out.pos = { x: m.x, y: m.y, d: m.d, area, ...(m.surf === 1 || m.surf === 2 || m.surf === 3 ? { surf: m.surf } : {}), ...(m.rest === 1 ? { rest: 1 } : {}) };
+      if (m.x !== undefined && isArea(area) && Number.isInteger(m.x) && Number.isInteger(m.y) && isWalkable(m.x, m.y, area) && DIRS.includes(m.d)) out.pos = { x: m.x, y: m.y, d: m.d, area, ...(m.surf === 1 || m.surf === 2 || m.surf === 3 ? { surf: m.surf } : {}), ...(m.rest === 1 ? { rest: 1 } : {}), ...(isTreat(m.treat) ? { treat: m.treat } : {}) };
       return out;
     }
     case 'pos':
@@ -114,6 +117,7 @@ export function validateMessage(raw, catalogue) {
       const pos = { t: 'pos', id: m.id, x: m.x, y: m.y, d: m.d, area };
       if (m.surf === 1 || m.surf === 2 || m.surf === 3) pos.surf = m.surf;                  // optional: 1 riding a wave, 2 wiped out, 3 paddling on its board; an older client never sends it and ignores it (unknown fields are stripped)
       if (m.rest === 1) pos.rest = 1;                                          // optional: the pet lies down on a lounger or a towel (src/lounge.js); an older client ignores it
+      if (isTreat(m.treat)) pos.treat = m.treat;                               // optional: a treat from the Kiosco in the pet's hand, 1 to 4 held, 5 to 8 being eaten or drunk (src/kiosk.js); an older client ignores it
       return pos;
     }
     case 'jump':

@@ -76,8 +76,11 @@ export const CUES = {
   whoosh: [note(W.NOISE, 700, 3800, 170, 80), note(W.TRI, 262, 523, 120, 70)],                         // catching a wave: the board takes off
   wipe: [note(W.NOISE, 2600, 300, 140, 110), note(W.TRI, 247, 80, 240, 120), note(W.NOISE, 1500, 200, 160, 60)],   // a wipeout: a big splash and the drop
   splash: [note(W.NOISE, 3000, 600, 70, 80), note(W.TRI, 520, 300, 60, 70)],                          // the board lands in the shallows at the end of a ride
+  munch: [note(W.NOISE, 2800, 900, 40, 90), note(W.REST, 0, 0, 40, 0), note(W.NOISE, 2400, 800, 45, 90), note(W.REST, 0, 0, 40, 0), note(W.NOISE, 2600, 700, 45, 80)],      // biting an ice cream or an ice pop
+  sip: [note(W.TRI, 900, 520, 70, 80), note(W.NOISE, 3500, 1500, 90, 40), note(W.REST, 0, 0, 50, 0), note(W.TRI, 760, 420, 80, 70), note(W.NOISE, 3200, 1200, 80, 40)],   // a drink through a straw
+  yum: [note(W.SQ25, 784, 784, 60, 120), note(W.SQ25, 988, 988, 60, 120), note(W.SQ25, 1319, 1319, 150, 120)],                                                                // the treat is finished: a happy little tune
 };
-const GAIN = { step: 0.08, jump: 0.5, land: 0.55, talk: 0.5, door: 0.6, confirm: 0.5, pick: 0.55, reward: 0.6, whoosh: 0.45, wipe: 0.5, splash: 0.4, ride: 0.18 };
+const GAIN = { step: 0.08, jump: 0.5, land: 0.55, talk: 0.5, door: 0.6, confirm: 0.5, pick: 0.55, reward: 0.6, whoosh: 0.45, wipe: 0.5, splash: 0.4, munch: 0.5, sip: 0.5, yum: 0.55, ride: 0.18 };
 export const HEAR_TILES = 9;                                     // another pet's steps are heard from this many tiles, fading to nothing
 export const peerGain = (dist) => (dist >= HEAR_TILES ? 0 : 0.05 * (1 - dist / HEAR_TILES) ** 2);
 

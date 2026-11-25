@@ -5,12 +5,14 @@ import { drawProduce, produceCanvas } from './art/produce.js';
 import { KINDS, NAMES } from './canasta.js';
 import { shopRows, bagList, confirmText, buyErrorText, thanks, CLOSED_TEXT, GOLD_TEXT, SHOP } from './shop.js';
 import { MISSIONS_TITLE, MISSIONS_HINT, MISSIONS_CLOSED } from './missions.js';
+import { KIOSK_TITLE, KIOSK_HINT, treatRows, TREATS } from './kiosk.js';
+import { drawTreatIcon } from './art/treat.js';
 import { TOOLS, toolRows, confirmToolText, toolErrorText, STORE_TITLE, STORE_HINT, CLERK_THANKS } from './tools.js';
 
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 
 /** source: () => { shop, buy(key), buyTool(key) } | null (nothing to show: no pet's trip). sprites: for the item icons. onToolBought(key, line): the Almacén sold a tool. missionList(): today's missions ({ rows, earned, cap }, src/town.js missions.list) or null. */
-export function createShopUi($, { source, sprites, canasta = () => null, missionList = () => null, onBought = () => {}, onToolBought = () => {}, onOpenChange = () => {} }) {
+export function createShopUi($, { source, sprites, canasta = () => null, missionList = () => null, kiosk = null, onBought = () => {}, onToolBought = () => {}, onTreatBought = () => {}, onOpenChange = () => {} }) {
   const panel = $('panel'), body = $('panel-body'), note = $('panel-note');
   let view = null, confirming = null, busy = false, sold = 0;
 
@@ -78,6 +80,32 @@ export function createShopUi($, { source, sprites, canasta = () => null, mission
       list.append(li);
     }
     body.replaceChildren(el('p', 'empty', STORE_HINT), list);
+  }
+
+  const treatIcon = (idx) => { const c = el('canvas', 'icon'); c.width = c.height = 40; c.setAttribute('aria-hidden', 'true'); drawTreatIcon(c.getContext('2d'), idx, 40); return c; };
+  function paintKiosk() {                                         // the Kiosco: treats paid with the town's stars (the pet's counter in the corner), no trip needed, nothing goes home
+    const stars = kiosk ? kiosk.stars() : 0;
+    $('panel-title').textContent = KIOSK_TITLE;
+    $('panel-gold').textContent = `⭐ ${stars}`; $('panel-gold').hidden = false;
+    const list = el('ul', 'shop-list');
+    for (const row of treatRows(stars)) {
+      const li = el('li', `shop-row ${row.afford ? 'open' : 'short'}`);
+      const info = el('div', 'shop-info');
+      info.append(el('strong', '', row.name), el('span', 'price', `${row.price} ${row.price === 1 ? 'estrella' : 'estrellas'}`));
+      const b = el('button', row.afford ? 'btn small primary' : 'btn small', 'Comprar');
+      b.type = 'button';
+      b.addEventListener('click', () => buyTreat(row.idx));
+      li.append(treatIcon(row.idx), info, b);
+      list.append(li);
+    }
+    body.replaceChildren(el('p', 'empty', KIOSK_HINT), list);
+  }
+  function buyTreat(idx) {                                        // a treat is cheap: no confirmation; "Te faltan estrellas" when the pet cannot pay
+    if (!kiosk) return;
+    const r = kiosk.buy(idx);
+    if (!r.ok) { say(r.text, 'bad'); paintKiosk(); return; }
+    onTreatBought(TREATS[idx]);
+    close();
   }
 
   const STATE_LABEL = { open: (r) => `Llevas ${r.have} de ${r.need}`, ready: (r) => `¡Listo! Habla con ${r.name}`, done: () => 'Hecha, ¡gracias!' };
@@ -153,6 +181,7 @@ export function createShopUi($, { source, sprites, canasta = () => null, mission
   }
 
   function paint() {
+    if (view === 'kiosk') { paintKiosk(); return; }
     const src = source();
     if (!view || !src) return;
     if (view === 'missions') paintMissions();
@@ -182,7 +211,8 @@ export function createShopUi($, { source, sprites, canasta = () => null, mission
   }
 
   function open(which) {
-    if (!source()) return false;
+    if (which !== 'kiosk' && !source()) return false;
+    if (which === 'kiosk' && !kiosk) return false;
     view = which; confirming = null; busy = false; say('');
     panel.hidden = false;
     paint();
@@ -204,5 +234,5 @@ export function createShopUi($, { source, sprites, canasta = () => null, mission
     if (confirming && !busy) { confirming = null; paint(); } else close();
   });
 
-  return { openShop: () => open('shop'), openStore: () => open('store'), openBag: () => open('bag'), openMissions: () => open('missions'), close, get isOpen() { return view !== null; } };
+  return { openShop: () => open('shop'), openStore: () => open('store'), openBag: () => open('bag'), openMissions: () => open('missions'), openKiosk: () => open('kiosk'), close, get isOpen() { return view !== null; } };
 }
