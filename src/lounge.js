@@ -24,11 +24,18 @@ export const lying = (area, w, rest) => !!rest && !w.moving && !(w.queue && w.qu
 
 /**
  * The prompt for a pet standing still at (x, y) of the beach: "Recostarse" (id 'lounge', `target` the spot: its own tile, or the neighbouring one) on or beside a resting spot, and
- * "Levantarse" (id 'getup') while it is lying; null elsewhere. `resting`: the pet is lying now.
+ * "Levantarse" (id 'getup') while it is lying; null elsewhere. `resting`: the pet is lying now. `taken(x, y)`: is the spot held by someone else (the crowd's sunbathers, src/crowd.js)? A taken spot
+ * is skipped for a free one beside the pet, and when none is free the prompt is the hint "Ocupado" (it does nothing).
  */
-export function loungeAt(x, y, area = 'beach', resting = false) {
+export function loungeAt(x, y, area = 'beach', resting = false, taken = () => false) {
   if (area !== 'beach') return null;
-  if (isRestSpot(x, y, area)) return resting ? { id: 'getup', label: 'Levantarse', target: [x, y] } : { id: 'lounge', label: 'Recostarse', target: [x, y] };
-  const s = SIDES.find(([dx, dy]) => isRestSpot(x + dx, y + dy, area));
-  return s ? { id: 'lounge', label: 'Recostarse', target: [x + s[0], y + s[1]] } : null;
+  if (isRestSpot(x, y, area)) {
+    if (resting) return { id: 'getup', label: 'Levantarse', target: [x, y] };
+    return taken(x, y) ? BUSY : { id: 'lounge', label: 'Recostarse', target: [x, y] };
+  }
+  const near = SIDES.filter(([dx, dy]) => isRestSpot(x + dx, y + dy, area));
+  const s = near.find(([dx, dy]) => !taken(x + dx, y + dy));
+  if (s) return { id: 'lounge', label: 'Recostarse', target: [x + s[0], y + s[1]] };
+  return near.length ? BUSY : null;
 }
+const BUSY = { id: 'hint', label: 'Ocupado', target: 'lounge' };

@@ -18,6 +18,7 @@ import { badge, bobY, BADGE } from './art/icons.js';
 import { drawChicken, CHICKEN_SIZE } from './art/chicken.js';
 import { ball as drawBall } from './art/places.js';
 import { drawHeld } from './art/treat.js';
+import { drawProp } from './art/crowd-props.js';
 import { drawCrab, drawBird, drawButterfly, drawFirefly, drawDuck, drawRing, drawSpray } from './art/life.js';
 import { drawAnimal, plotTile, COW_SIZE, SHEEP_SIZE } from './art/farm.js';
 import { ghostFrames } from './art/halloween.js';
@@ -177,10 +178,11 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
           });
         }
         if (e.treatView && !water && !lie && !ride && !wiped) small(px, by - lift - air, () => drawHeld(sctx, e.treatView.idx, e.treatView.eating, e.treatView.k, e.walker.d === 'left', now, CELL));      // a treat from the Kiosco in its hand
+        if (e.propView && !water && !lie && !ride && !wiped) small(px, by - lift - air, () => drawProp(sctx, e.propView, e.walker.d === 'left', now, CELL));      // what a pet of the crowd works with or plays with (src/crowd.js)
         if (lie && !rec) small(px, by - rl, () => { for (const z of zzzAt(now, CELL)) sctx.drawImage(zzzSprite(), 0, 0, 12, 14, z.x, z.y, 12 * z.k, 14 * z.k); });      // the two Zzz
         if (wiped) small(px, by, () => drawBoard(sctx, 26, 1, 1, { squash: 0.5, night: amb.night, tilt: Math.sin(now / 200) }));
         if (water) small(px, by - (swim ? 1 : 0), () => drawWake(sctx, 0, 0, 1, { depth: water, moving: ride || e.walker.moving, d: ride ? 'right' : e.walker.d, paddle, squash: 0.5, now, night: amb.night, seed: e.id.charCodeAt(0) }));
-        labels.push({ text: e.name, x: px - Math.floor(textWidth(font, e.name) / 2), y: by + 2 - lift, colour: e === me ? '#f8d040' : e.npc ? '#a8e6cf' : '#f4f6fa' });
+        labels.push({ text: e.name, x: px - Math.floor(textWidth(font, e.name) / 2), y: by + 2 - lift, colour: e === me ? '#f8d040' : e.npc || e.crowd ? '#a8e6cf' : '#f4f6fa' });
       }
       if (fx) small(px, by - lift, () => drawEntranceFx(sctx, e.fx.id, fx, 0, 0, CELL, true));
     } });

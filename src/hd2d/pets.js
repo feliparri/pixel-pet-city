@@ -18,6 +18,7 @@ import { poseSprite, breath } from '../art/poses.js';
 import { swellLift } from '../surf.js';
 import { shallowFrom } from '../map.js';
 import { drawHeld } from '../art/treat.js';
+import { drawProp } from '../art/crowd-props.js';
 const RIDE_LIFT = 12;
 const RIDE_SLOPE = 0.2, RIDE_LEAN = 0.1;                                                           // the board's tilt (rows per column, high at the tail) and the rider's lean                                                                              // art px a surfer is raised: on the face of the wave, not at its foot
 import { lieScale, zzzAt, zzzSprite } from '../art/sleep.js';
@@ -123,15 +124,16 @@ export function createPetPainter(sprites) {
           else c.drawImage(src, 0, 0, L.w, L.h, cx - L.feetX * s + sway * s, cy - (L.feetY + air + lift + stand) * s, L.w * s, L.h * s);
         }
         if (e.treatView && !water && !lie && !ride && !wiped) { c.save(); c.translate(cx + sway * s, cy - (air + lift) * s); c.scale(s, s); drawHeld(c, e.treatView.idx, e.treatView.eating, e.treatView.k, e.walker.d === 'left', now, CELL); c.restore(); }      // a treat from the Kiosco in its hand
+        if (e.propView && !water && !lie && !ride && !wiped) { c.save(); c.translate(cx + sway * s, cy - (air + lift) * s); c.scale(s, s); drawProp(c, e.propView, e.walker.d === 'left', now, CELL); c.restore(); }      // what a pet of the crowd works with or plays with (src/crowd.js)
         if (wiped) { drawBoard(c, cx + 26 * s, cy + s, s, { squash: Math.max(0.3, cam.sin) * 0.6, night: n, tilt: Math.sin(now / 200) }); drawWake(c, cx, cy - s, s * 1.3, { depth: 'deep', moving: false, d: 'down', squash: Math.max(0.3, cam.sin) * 0.6, now: now * 2, night: n, seed: 3 }); }
         if (water) drawWake(c, cx, cy - (ride ? RIDE_LIFT * 0.85 : swim ? 1 : 0) * s, s, { depth: water, moving: ride || e.walker.moving, d: ride ? 'right' : e.walker.d, paddle, squash: Math.max(0.3, cam.sin) * 0.6, now, night: n, seed: e.id.charCodeAt(0) });      // rings and foam on the water instead of the ground shadow
         if (lie && !rec) for (const z of zzzAt(now, CELL)) c.drawImage(zzzSprite(), 0, 0, 12, 14, Math.round(cx + z.x * s), Math.round(cy + (z.y - rl) * s), Math.round(12 * z.k * s), Math.round(14 * z.k * s));      // the two Zzz drifting up from its head
-        ov.labels.push({ text: e.name, x: cx + sway * s, y: cy + (2 - lift) * s, colour: e === me ? '#f8d040' : e.npc ? '#a8e6cf' : '#f4f6fa' });
+        ov.labels.push({ text: e.name, x: cx + sway * s, y: cy + (2 - lift) * s, colour: e === me ? '#f8d040' : e.npc || e.crowd ? '#a8e6cf' : '#f4f6fa' });
       }
       if (fx) effects(true, sway, -lift);
       if (e.emote && now < e.emote.until && !lift && !(fx && fx.hidden)) ov.bubbles.push({ x: cx, y: cy - (CELL + hop + air) * s, e: e.emote.e });
       else if (e.say && !lift) ov.bubbles.push({ x: cx, y: cy - (CELL + hop) * s, text: e.say });                  // a villager's line
-      if (!e.npc) ov.hits.push({ e, x: cx - 14 * s, y: cy - (CELL + air) * s, w: 28 * s, h: (CELL + 4) * s });
+      if (!e.npc && !e.crowd) ov.hits.push({ e, x: cx - 14 * s, y: cy - (CELL + air) * s, w: 28 * s, h: (CELL + 4) * s });
     } };
   }
   return { item };

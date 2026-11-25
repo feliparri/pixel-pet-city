@@ -23,6 +23,7 @@ import { activityOf, radarPets } from './radar.js';
 import { createLife, createFarmLife, createBeachLife, stepLife, lifeFrame, farmLifeFrame, beachLifeFrame } from './life.js';
 import { inArea } from './presence.js';
 import { SLOTS } from './protocol.js';
+import { createCrowd } from './crowd.js';
 import { createNpcs, showSpans, nearShopkeeper, shopGreeting, SHOPKEEPER, SHOP_SAY_MS, nearStore, clerkGreeting } from './npcs.js';
 import config from '../config.js';
 import { isConfigured } from './config-check.js';
@@ -82,6 +83,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   const farmLife = createFarmLife(net.code || net.id);
   const beachLife = createBeachLife(net.code || net.id);               // the beach's gulls and crabs (pure functions of the room and the clock)               // and the farm's: the animals walk where the room's clock says
   const renderer = createTownRenderer({ canvas, sprites, font, minH: pad ? MIN_VIEW_H : VIEW_H, minW: pad ? MIN_VIEW_W : VIEW_W, flat: new URLSearchParams(location.search).get('flat') === '1', skip: perfSkip(location.search), gl: glWanted(location.search), onNotice: (text) => games.notify(text) });   // a phone: 1.25 times the tiles it showed (and a whole-number pixel size); a desktop: as many tiles as before
+  const crowd = createCrowd({ sprites });                                   // the beach's and the farm's extras (src/crowd.js): a function of the UTC clock alone, nothing over the net
   const npcs = createNpcs({ seed: net.code || net.id, sprites });           // the villagers: their place and lines come from (room, server time) alone, nothing of them goes over the net
   const search = new URLSearchParams(location.search);
   const meter = search.get('perf') === '1' ? createMeter() : null;      // ?perf=1: a box with what each frame costs on this device (src/perf.js)
@@ -296,7 +298,8 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       const wait = new Set(); if (talkGo) wait.add(talkGo.id); if (nearTalkId) wait.add(nearTalkId); if (talkLine && t < talkLine.until) wait.add(talkLine.id);
       hold.step(all, wait, { x: w.tileX, y: w.tileY }, dt, self.area, (x0, y0, x1, y1) => findPath(x0, y0, x1, y1, self.area));      // the villagers waiting for this pet stand still facing it, then walk back to their routine
       npcsHere = all.filter((n) => n.area === self.area);
-      state.others = [...state.others, ...npcsHere];
+      const extras = crowd.update(self.area, sn, t).filter((c) => !(resting && c.rest && self.area === 'beach' && c.walker.tileX === w.tileX && c.walker.tileY === w.tileY));      // the pet lying on a spot: nobody lies there too
+      state.others = [...state.others, ...npcsHere, ...extras];
     } else npcsHere = [];
     if (talkGo) {                                                  // the pet was sent to a tapped villager: talk when it has arrived
       const n = npcsHere.find((e) => e.id === talkGo.id), id = talkGo.id;
@@ -319,7 +322,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       farmAction = !w.busy && !self.fx && !modal && !mv.closed ? actionAt('farm', w.tileX, w.tileY, w.d, { basket: canasta, mem: farmMemory, room: net.code || net.id, nowMs: devNpcT === null ? events.serverNow() : devNpcT, tools: tools() }) : null;
     } else { state.farm = null; farmAction = null; }
     if (self.area === 'town' && !farmAction && !w.busy && !self.fx && !modal && !mv.closed) farmAction = pondAction(self.area, w.tileX, w.tileY, tools());      // beside the park's pond: A fishes (with the rod)
-    if (self.area === 'beach' && !farmAction && !w.busy && !self.fx && !modal && !mv.closed && surf.mode === 'idle') farmAction = surfAction(utc, w.tileX, w.tileY, tools()) || loungeAt(w.tileX, w.tileY, 'beach', resting);      // at the break: A catches the wave (with the board), or what is missing
+    if (self.area === 'beach' && !farmAction && !w.busy && !self.fx && !modal && !mv.closed && surf.mode === 'idle') farmAction = surfAction(utc, w.tileX, w.tileY, tools()) || loungeAt(w.tileX, w.tileY, 'beach', resting, (x, y) => crowd.taken(x, y));      // at the break: A catches the wave (with the board), or what is missing
     if (self.area === 'beach' && (!farmAction || farmAction.id === 'hint') && !w.busy && !self.fx && !modal && !mv.closed && surf.mode === 'idle') { const ka = kioskAt(w.tileX, w.tileY, 'beach'); if (ka) farmAction = ka; }      // in front of the Kiosco's counter: A opens its menu
     const talkTo = !w.busy && !self.fx && !modal && !mv.closed && !claiming && missions && missions.enabled() ? talkTarget() : null;
     nearTalkId = talkTo ? talkTo.id : null;

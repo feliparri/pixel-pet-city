@@ -6,9 +6,9 @@ export const DIR_NAMES = DIRS.map((d) => d[2]);
 export const dirVector = (name) => { const d = DIRS.find((e) => e[2] === name); return d ? [d[0], d[1]] : [0, 0]; };
 
 /** Tiles to walk from (sx, sy) to (tx, ty), excluding the start; [] when already there or no way.
- * `where` is an area name (default the town) or, for tests, a walkable(x, y) function over the town's dimensions. */
-export function findPath(sx, sy, tx, ty, where = DEFAULT_AREA) {
-  const area = getArea(typeof where === 'string' ? where : DEFAULT_AREA);
+ * `where` is an area name (default the town) or a walkable(x, y) function over the dimensions of the area named `dims` (default the town). */
+export function findPath(sx, sy, tx, ty, where = DEFAULT_AREA, dims = DEFAULT_AREA) {
+  const area = getArea(typeof where === 'string' ? where : dims);
   const MAP_W = area.w, MAP_H = area.h;
   const walkable = typeof where === 'function' ? where : (x, y) => isWalkable(x, y, area.name);
   if (!walkable(sx, sy) || !walkable(tx, ty)) return [];
