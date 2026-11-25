@@ -3,7 +3,7 @@ import { findPath, dirVector } from './path.js';
 import { isWalkable, doorAt, spotAt, tileAt, getArea, waterAt, isBreak, TILES, GAME_PLACES, SPAWNS } from './map.js';
 import { Walker, REMOTE_SNAP } from './walker.js';
 import { paceFactor, waterOf, zoomTarget } from './sea.js';
-import { createSurf, surfFlag, surfAction, press as surfPress, wipeout, wipeOver, finishRide, rideDecide, waveAt, RIDE_MS, SAY, BOARD } from './surf.js';
+import { createSurf, surfFlag, surfAction, press as surfPress, wipeout, wipeOver, finishRide, rideDecide, waveAt, waveSize, SIZES, HUGE, RIDE_MS, SAY, BOARD } from './surf.js';
 import { loungeAt } from './lounge.js';
 import { isTyping, isJumpKey, runs, tapWalks } from './keys.js';
 import { createTouchpad } from './touchpad.js';
@@ -145,7 +145,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       if (!o) return;
       o.rest = ev.rest || 0;                                                                  // lying on a lounger or a towel (the pet chose to)
       o.surf = ev.surf || 0;                                                                  // riding (1) or wiped out (2): drawn with a board; a ride is walked at the wave's own pace
-      o.walker.stepOverride = o.surf === 1 ? RIDE_MS : null;
+      o.walker.stepOverride = o.surf === 1 ? (waveAt(devNpcT === null ? events.serverNow() : devNpcT) || { rideMs: RIDE_MS }).rideMs : null;      // a ride is walked at the pace of the wave of the clock (a bigger one is quicker)
       if (!o.placed || o.area !== ev.area || Math.abs(o.walker.tileX - ev.x) + Math.abs(o.walker.tileY - ev.y) > REMOTE_SNAP) { o.walker.snap(ev.x, ev.y, ev.d); o.placed = true; o.area = ev.area; } else o.walker.goTo(ev.x, ev.y, ev.d, o.area);
     } else if (ev.type === 'game') {
       games.onMessage(ev.m);
@@ -229,10 +229,11 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     const utc = devNpcT === null ? events.serverNow() : devNpcT;                      // the clock the waves run on, the weather's: every player sees the same wave
     if (self.area !== 'beach' && surf.mode !== 'idle') { finishRide(surf); w.stepOverride = null; }      // taken away (a debug warp): no surfing anywhere else
     if (surf.mode === 'ride') {                                                          // riding: the wave sets the pace; the pet follows the crest, steering across it with up and down
-      w.stepOverride = RIDE_MS;
+      const zr = SIZES[waveSize(surf.wave)] || SIZES[1];                                 // the wave being ridden: its size sets the ride's pace and how far behind the crest the rider may fall
+      w.stepOverride = zr.rideMs;
       if (!w.busy) {
         const wave = waveAt(utc), steer = held.findLast((d) => d === 'up' || d === 'down');
-        const dec = rideDecide({ k: wave ? wave.k : null, x: w.tileX, y: w.tileY, steer, steps: surf.steps, walkable: (x, y) => isWalkable(x, y, 'beach'), water: (x, y) => waterAt(x, y, 'beach') });
+        const dec = rideDecide({ k: wave ? wave.k : null, x: w.tileX, y: w.tileY, steer, steps: surf.steps, maxLag: zr.maxLag, walkable: (x, y) => isWalkable(x, y, 'beach'), water: (x, y) => waterAt(x, y, 'beach') });
         if (dec.type === 'move') { surf.steps++; w.stepToward(w.tileX + dec.dx, w.tileY + dec.dy); }
         else if (dec.type === 'end') endRide(dec.why, t);
       }
@@ -466,7 +467,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   /** A on the break: catch the wave when it is passing (it starts the ride), or fall (too early, too late). Sounds, a line over the pet, and the position the others see. */
   function catchWave() {
     const w = self.walker, t = performance.now(), r = surfPress(surf, { utcMs: devNpcT === null ? events.serverNow() : devNpcT, x: w.tileX, y: w.tileY, tools: tools(), t });
-    if (r === 'catch') { pets.cue('whoosh'); w.queue = []; w.face('right'); net.sendPos(w.tileX, w.tileY, 'right', self.area, surfFlag(surf)); }
+    if (r === 'catch') { pets.cue('whoosh'); w.queue = []; w.face('right'); if (waveSize(surf.wave) === HUGE) selfSay = { text: SAY.giant, until: t + 1800 }; net.sendPos(w.tileX, w.tileY, 'right', self.area, surfFlag(surf)); }
     else if (r === 'early' || r === 'late') fall(r, t);
   }
   function fall(why, t) {
@@ -484,9 +485,10 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     const w = self.walker;
     w.stepOverride = null;
     if (why === 'lag') { fall('lag', t); return; }
+    const giant = waveSize(surf.wave) === HUGE;
     finishRide(surf);
-    pets.cue('splash'); pets.cue('reward');
-    selfSay = { text: SAY.done, until: t + 1800 };
+    pets.cue('splash'); pets.cue('reward'); if (giant) sound.play('win');
+    selfSay = { text: giant ? SAY.giant : SAY.done, until: t + 1800 };
     self.jumpAt = t; net.sendJump();
     net.sendPos(w.tileX, w.tileY, w.d, self.area, surfFlag(surf, paddling(w.tileX, w.tileY)));
   }

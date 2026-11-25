@@ -1,7 +1,7 @@
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
-import { WAVE, WAVE_LIFE_MS, waveSize, waveAt, crestRow, crestOffset, judgeCatch, surfAction, createSurf, surfFlag, press, wipeout, wipeOver, finishRide, rideDecide, waveStrokes,
+import { SAY, WAVE, WAVE_LIFE_MS, waveSize, waveAt, crestRow, crestOffset, judgeCatch, surfAction, createSurf, surfFlag, press, wipeout, wipeOver, finishRide, rideDecide, waveStrokes,
   CATCH_TILES, PROMPT_AHEAD, PROMPT_BEHIND, WIPE_MS, MAX_LAG, MAX_AHEAD, RIDE_MS, BOARD } from '../src/surf.js';
 import { BEACH, waterAt, isWalkable, isBreak, shallowFrom } from '../src/map.js';
 
@@ -302,4 +302,58 @@ test('swellLift: it fades where the wave dies on the shallows and does not move 
   const src = readFileSync(new URL('../src/hd2d/pets.js', import.meta.url), 'utf8'), flat = readFileSync(new URL('../src/render.js', import.meta.url), 'utf8');
   assert.ok(src.includes('swellLift(wave, p.x, p.y') && src.includes('Math.round(g.y - swell)'), 'the HD-2D pet, its label, board and rings move with it');
   assert.ok(flat.includes('swellLift(wave, p.x, p.y'), 'the flat view has a simple version');
+});
+
+// ---- variable waves (BE.17 b) -----------------------------------------------------------------------------------------------------------------
+import { SIZES, HUGE, waveSize as sizeOf } from '../src/surf.js';
+test('wave sizes come from the clock: the same id gives the same size for every player, about 1 in 8 is huge, and they come in sets', () => {
+  const n = 20000, c = [0, 0, 0, 0];
+  for (let id = 0; id < n; id++) c[sizeOf(id)]++;
+  assert.ok(c.every((v) => v > n * 0.1), `every size shows up: ${c}`);
+  assert.ok(Math.abs(c[HUGE] / n - 0.125) < 0.012, `huge is 1 in 8: ${c[HUGE] / n}`);
+  assert.ok(c[0] < n * 0.4 && c[1] < n * 0.4 && c[2] < n * 0.4);
+  for (const id of [0, 1, 17, 12345, 99999999]) assert.equal(sizeOf(id), sizeOf(id), 'deterministic');
+  assert.equal(waveAt(5 * WAVE.periodMs + 100).size, sizeOf(5), 'the wave of the clock carries it');
+  assert.equal(waveAt(5 * WAVE.periodMs + 100).size, waveAt(5 * WAVE.periodMs + 9000).size, 'the same size through its life');
+  let runs = 0, set = 0;                                                       // sets: in some sets the middle waves rise a notch, never into a huge one
+  for (let s = 0; s < 4000; s++) { const sizes = [0, 1, 2, 3].map((p) => sizeOf(s * 4 + p)); if (sizes[1] >= 1 && sizes[2] >= 1) set++; runs++; }
+  assert.ok(set > 0);
+});
+
+test('the size scales the wall, the swell lift, the catch window and the ride: a small wave can still be caught, a huge one is higher, wider to catch, quicker and longer', () => {
+  const ids = SIZES.map((_, s) => [...Array(200).keys()].find((i) => sizeOf(i) === s));
+  const waves = ids.map((id) => waveAt(id * WAVE.periodMs + 5500));
+  waves.forEach((w, s) => assert.equal(w.size, s));
+  for (let s = 1; s < 4; s++) {
+    assert.ok(SIZES[s].h > SIZES[s - 1].h && SIZES[s].catchTiles > SIZES[s - 1].catchTiles && SIZES[s].speed > SIZES[s - 1].speed && SIZES[s].rideMs < SIZES[s - 1].rideMs && SIZES[s].maxLag > SIZES[s - 1].maxLag, `size ${s} is bigger in everything`);
+  }
+  for (const z of SIZES) assert.ok(z.rideMs < 1000 / z.speed, 'the rider is always a little quicker than the crest');
+  assert.ok(SIZES[0].lifeMs < WAVE.periodMs && SIZES[3].lifeMs < WAVE.periodMs, 'one wave at a time, whatever its size');
+  const heights = waves.map((w) => bodyAt(w, 22, 34).h);
+  for (let s = 1; s < 4; s++) assert.ok(heights[s] > heights[s - 1], `the wall grows with the size (${heights.map((h) => h.toFixed(1))})`);
+  const same = (z) => bodyAt({ ...waves[1], h: z.h }, 22, 34).h;                                  // the same moment and peel: only the size differs
+  assert.ok(Math.abs(same(SIZES[3]) / same(SIZES[1]) - SIZES[3].h / SIZES[1].h) < 1e-9, 'in proportion to the size factor');
+  const lifts = waves.map((w) => swellLift(w, 22, w.k + 22, () => 34));
+  for (let s = 1; s < 4; s++) assert.ok(lifts[s] > lifts[s - 1], `and so does the swell lift (${lifts.map((l) => l.toFixed(1))})`);
+  assert.ok(judgeCatch(1.9, SIZES[0].catchTiles) === 'late' && judgeCatch(1.9, SIZES[3].catchTiles) === 'catch', 'a bigger wave is a little wider to catch');
+  for (let s = 0; s < 4; s++) {                                                // every size can be caught on the break
+    const st = createSurf(), id = ids[s], x = BEACH.breakX[0], y = 20, t = id * WAVE.periodMs + ((WAVE.k0 - SIZES[s].speed * 0 - (y - x)) / SIZES[s].speed) * 1000;
+    const w = waveAt(t);
+    assert.equal(press(st, { utcMs: t, x, y, tools: [BOARD], t: 0 }), 'catch', `a ${SIZES[s].key} wave is caught on its crest (k ${w.k.toFixed(2)})`);
+    assert.equal(st.wave, id);
+  }
+  // the ride: a huge wave rides longer (more rows behind the crest allowed) and quicker steps
+  const huge = waves[3], small = waves[0];
+  assert.equal(rideDecide({ ...map, k: 20 - 10 - 5, x: 10, y: 20, steer: undefined, steps: 0, maxLag: huge.maxLag }).type, 'move', 'a huge wave lets the rider fall 5 rows behind');
+  assert.deepEqual(rideDecide({ ...map, k: 20 - 10 - 5, x: 10, y: 20, steer: undefined, steps: 0, maxLag: small.maxLag }), { type: 'end', why: 'lag' }, 'a small one does not');
+  assert.ok(huge.rideMs < small.rideMs);
+});
+
+test('the prompt names a giant wave, and the giant cue exists', () => {
+  const hugeId = [...Array(200).keys()].find((i) => sizeOf(i) === HUGE), x = BEACH.breakX[0], y = 20;
+  const t = hugeId * WAVE.periodMs + ((WAVE.k0 - (y - x - 1)) / SIZES[HUGE].speed) * 1000;
+  assert.equal(surfAction(t, x, y, [BOARD]).label, 'Tomar la ola gigante');
+  assert.equal(SAY.giant, '¡Ola gigante!');
+  const midT = at(((WAVE.k0 - (y - x - 1)) / WAVE.speed) * 1000);
+  assert.equal(surfAction(midT, x, y, [BOARD]).label, 'Tomar la ola');
 });

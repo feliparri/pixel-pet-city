@@ -83,7 +83,7 @@ export const judgeCatch = (e, tol = CATCH_TILES) => (e < -tol ? 'early' : e > to
 export function surfAction(utcMs, x, y, tools) {
   if (!isBreak(x, y, 'beach')) return null;
   if (!Array.isArray(tools) || !tools.includes(BOARD)) return { id: 'hint', label: needText(BOARD), need: BOARD, target: 'break' };
-  return crestOffset(utcMs, x, y) !== null ? { id: 'surf', label: 'Tomar la ola', target: 'wave' } : { id: 'hint', label: 'Espera la próxima ola', target: 'break' };
+  return crestOffset(utcMs, x, y) !== null ? { id: 'surf', label: (waveAt(utcMs) || {}).size === HUGE ? 'Tomar la ola gigante' : 'Tomar la ola', target: 'wave' } : { id: 'hint', label: 'Espera la próxima ola', target: 'break' };
 }
 
 export const createSurf = () => ({ mode: 'idle', since: 0, wave: null, why: null, steps: 0 });
