@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { drawWave, drawWaveFlat, pixelOf, MAX_PARTICLES, bodyFrac, capSpan, lipReach } from '../src/hd2d/wave.js';
-import { waveAt, WAVE } from '../src/surf.js';
+import { waveAt, WAVE, waveSize } from '../src/surf.js';
 import { makeCamera } from '../src/hd2d/camera.js';
 import { shallowFrom, AREAS } from '../src/map.js';
 
@@ -12,12 +12,13 @@ function recorder() {
   let style = null, path = [];
   return { fills, set fillStyle(v) { style = v; }, get fillStyle() { return style; }, beginPath() { path = []; }, rect(x, y, w, h) { path.push([x, y, w, h]); }, fill() { fills.push({ color: style, rects: path.slice() }); path = []; }, fillRect() { throw new Error('single fillRect: particles are batched'); } };
 }
-const cam = makeCamera({ focusX: 220, focusY: 290, pitch: 60, dist: 330, focal: 330 * 2.6, cx: 855, cy: 520 });
+const cam = makeCamera({ focusX: 560, focusY: 360, pitch: 60, dist: 330, focal: 330 * 2.6, cx: 855, cy: 520 });
 const view = { w: 1710, h: 986 };
-const wave = (ageMs, id = 7) => waveAt(id * WAVE.periodMs + ageMs);
+const MID = [...Array(60).keys()].find((i) => waveSize(i) === 1 && waveSize(i + 1) === 1);
+const wave = (ageMs, id = MID) => waveAt(id * WAVE.periodMs + ageMs);
 
 test('the wave is drawn as snapped pixel blocks, batched by colour: whole pixels of the scene, a few fill calls', () => {
-  const ctx = recorder(), U = pixelOf(cam), n = drawWave(ctx, cam, view, wave(3500), 0, 123456, shallowFrom, 36);
+  const ctx = recorder(), U = pixelOf(cam), n = drawWave(ctx, cam, view, wave(5500), 0, 123456, shallowFrom, 44);
   assert.ok(n > 200 && n <= MAX_PARTICLES, `${n} rectangles`);
   assert.ok(ctx.fills.length >= 6 && ctx.fills.length <= 16, `${ctx.fills.length} fill calls`);
   assert.equal(new Set(ctx.fills.map((f) => f.color)).size, ctx.fills.length, 'one fill call per colour');
@@ -27,27 +28,27 @@ test('the wave is drawn as snapped pixel blocks, batched by colour: whole pixels
 });
 
 test('the pattern is deterministic: the same clock gives the same particles for every player, another moment gives another, nothing is stored', () => {
-  const run = (age, id = 7, t = 5000) => { const c = recorder(); drawWave(c, cam, view, wave(age, id), 0, t, shallowFrom, 36); return JSON.stringify(c.fills); };
-  assert.equal(run(3500), run(3500), 'the same wave and time');
-  assert.equal(run(3500, 7, 1000), run(3500, 7, 99999), 'the local frame time does not matter: only the wave\'s own clock');
-  assert.notEqual(run(3500), run(3700), 'it moves with the clock');
-  assert.notEqual(run(3500, 7), run(3500, 8), 'each wave has its own pattern');
-  assert.equal(drawWave(recorder(), cam, view, null, 0, 0, shallowFrom, 36), 0, 'no wave, nothing drawn');
+  const run = (age, id = MID, t = 5000) => { const c = recorder(); drawWave(c, cam, view, wave(age, id), 0, t, shallowFrom, 44); return JSON.stringify(c.fills); };
+  assert.equal(run(5500), run(5500), 'the same wave and time');
+  assert.equal(run(5500, MID, 1000), run(5500, MID, 99999), 'the local frame time does not matter: only the wave\'s own clock');
+  assert.notEqual(run(5500), run(5700), 'it moves with the clock');
+  assert.notEqual(run(5500, MID), run(5500, MID + 1), 'each wave has its own pattern');
+  assert.equal(drawWave(recorder(), cam, view, null, 0, 0, shallowFrom, 44), 0, 'no wave, nothing drawn');
 });
 
 test('only the rows in view are drawn, the colours darken at night, and a dying wave thins out', () => {
-  const full = drawWave(recorder(), cam, view, wave(3500), 0, 0, shallowFrom, 36);
-  const tight = drawWave(recorder(), makeCamera({ focusX: 220, focusY: 100, pitch: 60, dist: 330, focal: 330 * 2.6, cx: 855, cy: 520 }), view, wave(3500), 0, 0, shallowFrom, 36);
+  const full = drawWave(recorder(), cam, view, wave(5500), 0, 0, shallowFrom, 44);
+  const tight = drawWave(recorder(), makeCamera({ focusX: 560, focusY: 100, pitch: 60, dist: 330, focal: 330 * 2.6, cx: 855, cy: 520 }), view, wave(5500), 0, 0, shallowFrom, 44);
   const day = recorder(), night = recorder();
-  drawWave(day, cam, view, wave(3500), 0, 0, shallowFrom, 36); drawWave(night, cam, view, wave(3500), 1, 0, shallowFrom, 36);
+  drawWave(day, cam, view, wave(5500), 0, 0, shallowFrom, 44); drawWave(night, cam, view, wave(5500), 1, 0, shallowFrom, 44);
   assert.notDeepEqual(day.fills.map((f) => f.color), night.fills.map((f) => f.color));
   assert.ok(night.fills.some((f) => /^rgb/.test(f.color)), 'mixed towards the night blue');
-  const late = drawWave(recorder(), cam, view, wave(6900), 0, 0, shallowFrom, 36), mid = drawWave(recorder(), cam, view, wave(3500), 0, 0, shallowFrom, 36);
+  const late = drawWave(recorder(), cam, view, wave(10500), 0, 0, shallowFrom, 44), mid = drawWave(recorder(), cam, view, wave(5500), 0, 0, shallowFrom, 44);
   assert.ok(late <= mid);
 });
 
 test('the flat view has the same style, simpler: cells of 2 px, batched, fewer particles', () => {
-  const ctx = recorder(), n = drawWaveFlat(ctx, wave(3500), { x: 0, y: 0 }, AREAS.beach, shallowFrom);
+  const ctx = recorder(), n = drawWaveFlat(ctx, wave(5500), { x: 0, y: 0 }, AREAS.beach, shallowFrom);
   assert.ok(n > 60 && n < 1500, `${n} rectangles`);
   const body = ctx.fills.find((f) => f.color === '#1d8fd3');
   assert.ok(body && body.rects.length > 10, 'a solid blue body');

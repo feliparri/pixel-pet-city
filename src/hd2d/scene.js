@@ -71,6 +71,8 @@ export function buildWorld(areaName = 'town') {
     if (g.kind === 'lamp' && inRegion(g.x, g.y)) {
       lamps.push({ x: g.x, y: g.y + LAMP_TOP, z: LAMP_TOP });
       pools.push({ x: g.x, y: g.y + LAMP_TOP - 3, r: LAMP_RADIUS, k: 1 });
+    } else if (g.kind === 'fire' && inRegion(g.x, g.y)) {
+      pools.push({ x: g.x, y: g.y + 4, r: g.r * 1.2, k: 1.15 });                                // a bonfire lights the sand round it, warm
     } else if (g.kind === 'window' && inRegion(g.x, g.y)) {
       windows.push({ x: g.x + g.w / 2, y: g.y + g.h / 2, w: g.w, h: g.h });
     } else if (g.kind === 'door' && inRegion(g.x, g.y)) pools.push({ x: g.x + g.w / 2, y: g.y + 10, r: 44, k: 0.6 });

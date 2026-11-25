@@ -17,7 +17,7 @@ import { P, noise } from './art/palette.js';
 import { badge, bobY, BADGE } from './art/icons.js';
 import { drawChicken, CHICKEN_SIZE } from './art/chicken.js';
 import { ball as drawBall } from './art/places.js';
-import { drawBird, drawButterfly, drawFirefly, drawDuck, drawRing, drawSpray } from './art/life.js';
+import { drawCrab, drawBird, drawButterfly, drawFirefly, drawDuck, drawRing, drawSpray } from './art/life.js';
 import { drawAnimal, plotTile, COW_SIZE, SHEEP_SIZE } from './art/farm.js';
 import { ghostFrames } from './art/halloween.js';
 import { seasonDecor } from './art/decor.js';
@@ -196,6 +196,7 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
   }
   if (ball && areaName === 'town') items.push({ sortY: ball.y * TILE + 3, order: 1, draw: () => drawBall(sctx, Math.round(ball.x * TILE - cam.x), Math.round(ball.y * TILE - cam.y)) });   // the football
   if (life) {                                                                  // birds, the duck and the farm animals stand in the scene, sorted with the pets
+    for (const c of life.crabs || []) items.push({ sortY: c.y, order: 0, draw: () => drawCrab(sctx, Math.round(c.x - cam.x), Math.round(c.y - cam.y), c.frame, c.claws) });
     for (const b of life.birds) items.push({ sortY: b.y, order: 0, draw: () => drawBird(sctx, Math.round(b.x - cam.x), Math.round(b.y - cam.y), b.kind, b.frame, b.flip, b.air) });
     if (life.duck) items.push({ sortY: life.duck.y, order: 0, draw: () => drawDuck(sctx, Math.round(life.duck.x - cam.x), Math.round(life.duck.y - cam.y), life.duck.frame, life.duck.flip) });
     for (const a of life.animals || []) items.push({ sortY: a.y, order: 0, draw: () => { const x = Math.round(a.x - cam.x), y = Math.round(a.y - cam.y); sctx.fillStyle = 'rgba(24,28,44,0.3)'; const sw = ((a.kind === 'cow' ? COW_SIZE : SHEEP_SIZE).w >> 1) - 3; sctx.fillRect(x - sw, y - 2, sw * 2, 2); drawAnimal(sctx, a, x, y); } });
@@ -292,10 +293,10 @@ function drawGlows(sctx, glows, cam, night, now, vw, vh) {
   sctx.globalCompositeOperation = 'lighter';
   const flick = 1 + Math.sin(now / 900) * 0.04;
   for (const g of glows) {
-    if (g.kind === 'lamp') {
+    if (g.kind === 'lamp' || g.kind === 'fire') {
       if (g.x - cam.x < -40 || g.x - cam.x > vw + 40 || g.y - cam.y < -40 || g.y - cam.y > vh + 40) continue;
       for (const [k, a] of [[1, 0.04], [0.85, 0.045], [0.7, 0.05], [0.55, 0.055], [0.4, 0.06], [0.25, 0.07]]) {
-        sctx.fillStyle = `rgba(${g.rgb || '255,196,96'},${a * night * flick})`;
+        sctx.fillStyle = `rgba(${g.rgb || '255,196,96'},${a * night * (g.kind === 'fire' ? 1.5 + Math.sin(now / 90 + k * 3) * 0.18 + Math.sin(now / 230) * 0.1 : flick)})`;
         const r = Math.round(g.r * k);
         for (let y = -r; y <= r; y += 2) { const hw = Math.round(Math.sqrt(r * r - y * y)); sctx.fillRect(g.x - hw - cam.x, g.y + y - cam.y, hw * 2, 2); }
       }

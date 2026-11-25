@@ -19,7 +19,7 @@ import { createGames } from './games/manager.js';
 import { GAME_RULES } from './games/rules.js';
 import { stumbled, paceAt, RACE } from './games/race.js';
 import { activityOf, radarPets } from './radar.js';
-import { createLife, createFarmLife, stepLife, lifeFrame, farmLifeFrame } from './life.js';
+import { createLife, createFarmLife, createBeachLife, stepLife, lifeFrame, farmLifeFrame, beachLifeFrame } from './life.js';
 import { inArea } from './presence.js';
 import { SLOTS } from './protocol.js';
 import { createNpcs, showSpans, nearShopkeeper, shopGreeting, SHOPKEEPER, SHOP_SAY_MS, nearStore, clerkGreeting } from './npcs.js';
@@ -75,7 +75,8 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   const others = new Map();
   const state = { me: self, others: [], marker: null, area: 'town', amb: ambientAt(hourNow(location.search)), fade: 0 };
   const life = createLife(net.code || net.id);                       // the same scene for a room, from its code; nothing of it goes over the net
-  const farmLife = createFarmLife(net.code || net.id);               // and the farm's: the animals walk where the room's clock says
+  const farmLife = createFarmLife(net.code || net.id);
+  const beachLife = createBeachLife(net.code || net.id);               // the beach's gulls and crabs (pure functions of the room and the clock)               // and the farm's: the animals walk where the room's clock says
   const renderer = createTownRenderer({ canvas, sprites, font, minH: pad ? MIN_VIEW_H : VIEW_H, minW: pad ? MIN_VIEW_W : VIEW_W, flat: new URLSearchParams(location.search).get('flat') === '1', skip: perfSkip(location.search), gl: glWanted(location.search), onNotice: (text) => games.notify(text) });   // a phone: 1.25 times the tiles it showed (and a whole-number pixel size); a desktop: as many tiles as before
   const npcs = createNpcs({ seed: net.code || net.id, sprites });           // the villagers: their place and lines come from (room, server time) alone, nothing of them goes over the net
   const search = new URLSearchParams(location.search);
@@ -275,7 +276,8 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     } else if (self.area === 'farm') {                            // the farm: the same birds, and the animals of the paddock
       stepLife(farmLife, [{ x: w.tileX, y: w.tileY }, ...inArea(others.values(), 'farm').map((o) => ({ x: o.walker.tileX, y: o.walker.tileY }))], t);
       state.life = shelterLife(farmLifeFrame(farmLife, t, state.amb), wxLv);
-    } else state.life = null;
+    } else if (self.area === 'beach') state.life = shelterLife(beachLifeFrame(beachLife, t, state.amb), wxLv);      // the gulls land and walk, the crabs scuttle sideways
+    else state.life = null;
     const gv = games.view();
     if (getArea(self.area).outdoor && !vision && !(gv.game && gv.game.play)) {         // the villagers live in the town and on the farm (the ones of this area are drawn); while a game is played they are not drawn at all
       const sn = devNpcT === null ? events.serverNow() : devNpcT;

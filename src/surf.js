@@ -17,28 +17,52 @@ import { needText } from './tools.js';
 
 export const BOARD = 'surfboard';
 export const WAVE = {
-  periodMs: 10000,         // a new wave every 10 s
-  speed: 8,                // tiles a second the crest climbs at any column
-  k0: 34,                  // the intercept when it appears: the line is below the bottom row of the map
-  kEnd: -22,               // and when it has gone: the line is above the top of the map, even at the shore end
-  peelFrom: 19,            // the peel point starts at this column (the shore end) ...
-  peelTo: 2,               // ... and runs out to this one
+  periodMs: 12000,         // a new wave every 12 s (the beach is deeper: a wave takes longer to cross it)
+  speed: 8,                // tiles a second the crest climbs at any column (a medium wave; the others are in SIZES)
+  k0: 44,                  // the intercept when it appears: the line is below the bottom row of the map
+  kEnd: -40,               // and when it has gone: the line is above the top of the map, even at the shore end
+  peelFrom: 33,            // the peel point starts at this column (the shore end) ...
+  peelTo: 6,               // ... and runs out to this one (just past the break)
 };
-export const WAVE_LIFE_MS = ((WAVE.k0 - WAVE.kEnd) / WAVE.speed) * 1000;
-export const CATCH_TILES = 2;         // the window: the crest within this many rows of the pet, before or after (a quarter of a second)
+/**
+ * The sizes a wave can have, from the clock: `h` the factor on its height (the drawn wall, bodyAt and so the swell lift), `speed` the crest's tiles a second (a bigger wave is
+ * quicker: a longer, faster ride), `catchTiles` the half window of the catch (a bigger one is a little wider; the small ones can still be caught), `maxLag` how far behind the crest
+ * the rider may fall, `name` the label. `rideMs` (the ride's step) is derived: always a little quicker than the crest, a fifth.
+ */
+export const SIZES = [
+  { key: 'small', name: 'chica', h: 0.62, speed: 7.2, catchTiles: 1.6, maxLag: 3 },
+  { key: 'medium', name: 'mediana', h: 1, speed: 8, catchTiles: 2, maxLag: 4 },
+  { key: 'big', name: 'grande', h: 1.3, speed: 8.8, catchTiles: 2.3, maxLag: 5 },
+  { key: 'huge', name: 'gigante', h: 1.75, speed: 9.6, catchTiles: 2.6, maxLag: 6 },
+].map((z) => ({ ...z, rideMs: Math.round((1000 / z.speed) * 0.8), lifeMs: ((44 + 40) / z.speed) * 1000 }));
+export const HUGE = 3;
+const mix32 = (a, b = 0) => { let h = Math.imul(a ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(b + 0x7f4a7c15, 0xc2b2ae35); h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d); h ^= h >>> 12; h = Math.imul(h, 0x297a2d39); h ^= h >>> 15; return (h >>> 0) / 4294967296; };
+/**
+ * The size (an index of SIZES) of wave number `id`, from the id alone, so every player sees the same one: about 1 in 8 is huge, then big, medium and small. Waves come in sets: in some
+ * sets (a seed from the set's number) the two middle waves rise a notch (a small one to medium, a medium one to big), never into a huge one (those stay 1 in 8).
+ */
+export function waveSize(id) {
+  const r = mix32(id, 1);
+  let size = r < 0.125 ? 3 : r < 0.36 ? 2 : r < 0.68 ? 1 : 0;
+  const pos = ((id % 4) + 4) % 4;
+  if (size < 2 && (pos === 1 || pos === 2) && mix32(Math.floor(id / 4), 2) > 0.62) size++;
+  return size;
+}
+export const WAVE_LIFE_MS = ((WAVE.k0 - WAVE.kEnd) / WAVE.speed) * 1000;       // a medium wave's life
+export const CATCH_TILES = 2;         // the window of a medium wave: the crest within this many rows of the pet, before or after (a quarter of a second)
 export const PROMPT_AHEAD = 8;        // "Tomar la ola" shows from when the crest is this many rows below the pet ...
 export const PROMPT_BEHIND = 3;       // ... until it is this many rows above it
-export const RIDE_MS = 100;           // a step of the ride: a little quicker than the crest climbs (125 ms a row), so the rider is never left behind
+export const RIDE_MS = 100;           // a step of a medium wave's ride: a little quicker than the crest climbs (125 ms a row), so the rider is never left behind
 export const MAX_LAG = 4;             // more rows behind the crest than this and the rider falls off
 export const MAX_AHEAD = 3;           // ... and it waits for the wave when it is this far ahead of it
 export const WIPE_MS = 1500;          // how long a wipeout lasts
-export const SAY = { early: 'Muy pronto', late: 'Muy tarde', lag: '¡Te caíste!', done: '¡Qué ola!' };
+export const SAY = { early: 'Muy pronto', late: 'Muy tarde', lag: '¡Te caíste!', done: '¡Qué ola!', giant: '¡Ola gigante!' };
 
-/** The wave of the clock at `utcMs` (ms): { id, age (ms), k (the front's intercept: row = k + column), peel (the column the foam has reached) }, or null in the quiet between two waves. */
+/** The wave of the clock at `utcMs` (ms): { id, age (ms), k (the front's intercept: row = k + column), peel (the column the foam has reached), size (index of SIZES), h, speed, catchTiles, maxLag, rideMs }, or null in the quiet between two waves. */
 export function waveAt(utcMs) {
   if (!Number.isFinite(utcMs)) return null;
-  const id = Math.floor(utcMs / WAVE.periodMs), age = utcMs - id * WAVE.periodMs, k = WAVE.k0 - (WAVE.speed * age) / 1000;
-  return k >= WAVE.kEnd ? { id, age, k, peel: WAVE.peelFrom + (WAVE.peelTo - WAVE.peelFrom) * (age / WAVE_LIFE_MS) } : null;
+  const id = Math.floor(utcMs / WAVE.periodMs), age = utcMs - id * WAVE.periodMs, size = waveSize(id), z = SIZES[size], k = WAVE.k0 - (z.speed * age) / 1000;
+  return k >= WAVE.kEnd ? { id, age, k, peel: WAVE.peelFrom + (WAVE.peelTo - WAVE.peelFrom) * (age / z.lifeMs), size, h: z.h, speed: z.speed, catchTiles: z.catchTiles, maxLag: z.maxLag, rideMs: z.rideMs } : null;
 }
 
 /** The row of the crest at a column: the front is the line row = k + column. */
@@ -53,7 +77,7 @@ export function crestOffset(utcMs, x, y) {
 }
 
 /** What pressing at offset `e` does: 'early', 'catch' or 'late'. */
-export const judgeCatch = (e) => (e < -CATCH_TILES ? 'early' : e > CATCH_TILES ? 'late' : 'catch');
+export const judgeCatch = (e, tol = CATCH_TILES) => (e < -tol ? 'early' : e > tol ? 'late' : 'catch');
 
 /** The prompt at the break for a pet standing still at (x, y): the catch with a wave near, what is missing without a board, or null away from the break. */
 export function surfAction(utcMs, x, y, tools) {
@@ -74,7 +98,7 @@ export function press(s, { utcMs, x, y, tools, t }) {
   if (s.mode !== 'idle' || !isBreak(x, y, 'beach') || !Array.isArray(tools) || !tools.includes(BOARD)) return 'none';
   const e = crestOffset(utcMs, x, y);
   if (e === null) return 'none';
-  const r = judgeCatch(e), w = waveAt(utcMs);
+  const w = waveAt(utcMs), r = judgeCatch(e, w ? w.catchTiles : CATCH_TILES);
   if (r === 'catch') { s.mode = 'ride'; s.since = t; s.wave = w.id; s.why = null; s.steps = 0; } else wipeout(s, t, r);
   return r;
 }
@@ -96,10 +120,10 @@ export function finishRide(s) { s.mode = 'idle'; s.wave = null; s.why = null; s.
  * the wave to the end) or 'lag' (it fell behind the crest). Both moves keep the rider on the crest; `steer` 'up' prefers north, 'down' east, none alternates them (a diagonal);
  * `steps` is how many it has taken. `k` is the wave's intercept (null once it is gone); `walkable(x, y)` and `water(x, y)` read the map.
  */
-export function rideDecide({ k, x, y, steer, steps = 0, walkable, water }) {
+export function rideDecide({ k, x, y, steer, steps = 0, walkable, water, maxLag = MAX_LAG }) {
   if (water(x, y) !== 'deep' || k === null || k === undefined) return { type: 'end', why: 'shore' };
   const e = y - (k + x);
-  if (e > MAX_LAG) return { type: 'end', why: 'lag' };
+  if (e > maxLag) return { type: 'end', why: 'lag' };
   if (e - 1 < -MAX_AHEAD) return { type: 'wait' };
   const N = { type: 'move', dx: 0, dy: -1 }, E = { type: 'move', dx: 1, dy: 0 };
   const order = steer === 'up' ? [N, E] : steer === 'down' ? [E, N] : steps % 2 ? [E, N] : [N, E];
@@ -140,7 +164,7 @@ export function bodyAt(wave, col, sx) {
   const rise = Math.min(1, wave.age / 600), a = Math.min(1, Math.max(0, 1 - Math.max(0, col - sx) / 3.5)) * rise * Math.min(1, (col - 0.7) / 1.5);
   if (a <= 0) return null;
   const broken = col >= wave.peel, d = (col - wave.peel) / 2.2, curl = Math.exp(-d * d), swell = Math.exp(-(((col - wave.peel) / 5) ** 2));
-  const h = (broken ? 7 + 3 * curl : 3 + 3 * swell) * (0.55 + 0.45 * Math.min(1, Math.max(0, (sx - col) / 3 + 0.5)));
+  const h = (broken ? 7 + 3 * curl : 3 + 3 * swell) * (wave.h || 1) * (0.55 + 0.45 * Math.min(1, Math.max(0, (sx - col) / 3 + 0.5)));
   return { a, broken, curl, h };
 }
 

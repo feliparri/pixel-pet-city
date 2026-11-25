@@ -17,6 +17,7 @@ test('the beach is an outdoor area with the sea on the west and land on the east
   for (let y = 1; y < B.h - 1; y++) for (let x = 0; x < B.w; x++) { if (waterAt(x, y, 'beach')) sea++; else if (isLand(x, y, 'beach')) land++; }
   assert.ok(land / (land + sea) >= 0.4, `land share ${land / (land + sea)}`);
   for (let y = 1; y < B.h - 1; y++) {                                       // west to east: open sea, deep water (the break inside), shallows, then land
+    if (BEACH.pier.y.includes(y)) continue;                                  // (the pier's rows have planks over the shallows)
     const row = [...B.grid[y]];
     const kinds = row.map((c, x) => (c === '%' ? 'edge' : waterAt(x, y, 'beach') || 'land'));
     const firstShallow = kinds.indexOf('shallow');
@@ -30,7 +31,7 @@ test('the beach is an outdoor area with the sea on the west and land on the east
 test('the beach tiles: sea is walkable by a pet but is never land', () => {
   assert.equal(waterAt(10, 10, 'beach'), 'deep');
   assert.equal(waterAt(shallowFrom(10), 10, 'beach'), 'shallow');
-  assert.equal(waterAt(40, 10, 'beach'), null);
+  assert.equal(waterAt(50, 10, 'beach'), null);
   assert.equal(isWalkable(10, 10, 'beach'), true);
   assert.equal(isLand(10, 10, 'beach'), false);
   assert.equal(isWalkable(0, 10, 'beach'), false);                           // the open sea at the edge is solid
@@ -64,7 +65,7 @@ test('the doors join the town and the beach both ways', () => {
 
 test('the town path reaches the beach door and a pet can walk from it to the break', () => {
   assert.ok(findPath(10, 29, 1, 29, 'town').length > 0);
-  const toBreak = findPath(46, 17, BEACH.breakX[0], 17, 'beach');
+  const toBreak = findPath(66, 21, BEACH.breakX[0], 21, 'beach');
   assert.ok(toBreak.length > 0);
   assert.ok(toBreak.some(([x, y]) => waterAt(x, y, 'beach') === 'deep'));
   const noSolid = toBreak.every(([x, y]) => isWalkable(x, y, 'beach'));
@@ -75,7 +76,8 @@ test('peers: a pet in the sea is valid, a rock or the open sea is not', () => {
   const pos = (x, y) => validateMessage({ t: 'pos', id, x, y, d: 'left', area: 'beach' });
   assert.deepEqual(pos(10, 10), { t: 'pos', id, x: 10, y: 10, d: 'left', area: 'beach' });
   assert.equal(pos(0, 10), null);
-  assert.equal(pos(tileAt(28, 3, 'beach') === 'X' ? 28 : 29, 3), null);
+  const rock = B.grid.flatMap((row, y) => [...row].map((c, x) => [x, y, c])).find(([, , c]) => c === 'X');
+  assert.equal(pos(rock[0], rock[1]), null);
   assert.equal(validateMessage({ t: 'pos', id, x: 5, y: 7, d: 'left', area: 'town' }), null, 'a roof of the town');
 });
 
@@ -118,9 +120,9 @@ test('a big sea is re-baked row by row, a small pond in one box', () => {
 
 import { SCATTER } from '../src/art/beach.js';
 test('the beach scatter lies on open sand, the seaweed on the wet sand, never on a solid tile, and it is sparse', () => {
-  assert.ok(SCATTER.length >= 10 && SCATTER.length <= 32, `${SCATTER.length} things`);
+  assert.ok(SCATTER.length >= 10 && SCATTER.length <= 60, `${SCATTER.length} things`);
   const kinds = new Set(SCATTER.map((s) => s.kind));
-  for (const k of ['shell', 'starfish', 'castle', 'bucket', 'ball', 'weed', 'prints', 'table', 'tuft']) assert.ok(kinds.has(k), k);
+  for (const k of ['shell', 'starfish', 'castle', 'bucket', 'ball', 'weed', 'prints', 'table', 'tuft', 'court', 'vball']) assert.ok(kinds.has(k), k);
   for (const s of SCATTER) {
     const ch = tileAt(s.x, s.y, 'beach');
     assert.ok(ch === (s.kind === 'weed' ? 'i' : 's'), `${s.kind} at ${s.x},${s.y} is on ${ch}`);

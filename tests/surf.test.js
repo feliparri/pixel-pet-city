@@ -1,12 +1,13 @@
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
-import { WAVE, WAVE_LIFE_MS, waveAt, crestRow, crestOffset, judgeCatch, surfAction, createSurf, surfFlag, press, wipeout, wipeOver, finishRide, rideDecide, waveStrokes,
+import { WAVE, WAVE_LIFE_MS, waveSize, waveAt, crestRow, crestOffset, judgeCatch, surfAction, createSurf, surfFlag, press, wipeout, wipeOver, finishRide, rideDecide, waveStrokes,
   CATCH_TILES, PROMPT_AHEAD, PROMPT_BEHIND, WIPE_MS, MAX_LAG, MAX_AHEAD, RIDE_MS, BOARD } from '../src/surf.js';
 import { BEACH, waterAt, isWalkable, isBreak, shallowFrom } from '../src/map.js';
 
 const X = BEACH.breakX[0], Y = 20;
-const at = (ageMs, id = 7) => id * WAVE.periodMs + ageMs;            // a clock reading `ageMs` into wave number `id`
+const MID = [...Array(60).keys()].find((i) => waveSize(i) === 1 && waveSize(i + 1) === 1);      // a medium wave (and the next one too): the rules below are the medium wave's
+const at = (ageMs, id = MID) => id * WAVE.periodMs + ageMs;            // a clock reading `ageMs` into wave number `id`
 const withBoard = [BOARD];
 /** The clock reading at which the crest is `e` rows below (negative) or above (positive) a pet at (x, y): offset = y - crest row. */
 const clockAt = (x, y, e) => at(((WAVE.k0 - (y - e - x)) / WAVE.speed) * 1000);
@@ -15,14 +16,14 @@ test('waves come from the clock: the same instant gives the same wave, one every
   assert.deepEqual(waveAt(at(1000)), waveAt(at(1000)));
   assert.equal(waveAt(at(0)).k, WAVE.k0);
   assert.ok(Math.abs(waveAt(at(1000)).k - (WAVE.k0 - WAVE.speed)) < 1e-9);
-  assert.equal(waveAt(at(1000, 7)).id + 1, waveAt(at(1000, 8)).id);
-  assert.equal(waveAt(at(1000, 7)).k, waveAt(at(1000, 8)).k, 'every wave is the same');
+  assert.equal(waveAt(at(1000, MID)).id + 1, waveAt(at(1000, MID + 1)).id);
+  assert.equal(waveAt(at(1000, MID)).k, waveAt(at(1000, MID + 1)).k, 'two waves of one size are the same');
   assert.ok(waveAt(at(WAVE_LIFE_MS - 10)));
   assert.equal(waveAt(at(WAVE_LIFE_MS + 10)), null, 'quiet until the next one');
   assert.ok(WAVE_LIFE_MS < WAVE.periodMs, 'one wave at a time');
   assert.equal(waveAt(NaN), null);
-  const base = 5e12 - (5e12 % WAVE.periodMs), a = waveAt(base + 1234), b = waveAt(base + 1234 + WAVE.periodMs);
-  assert.ok(Math.abs(a.k - b.k) < 1e-6);
+  const base = MID * WAVE.periodMs, a = waveAt(base + 1234), b = waveAt(base + 1234 + WAVE.periodMs);
+  assert.ok(Math.abs(a.k - b.k) < 1e-6, 'two medium waves one period apart are the same');
 });
 
 test('the front is a diagonal that climbs: the row of the crest falls with the clock at every column, and rises towards the south-east along the line', () => {
@@ -30,9 +31,9 @@ test('the front is a diagonal that climbs: the row of the crest falls with the c
   for (const x of [2, 10, 18]) assert.ok(Math.abs(crestRow(w0, x) - crestRow(w1, x) - WAVE.speed) < 1e-9, `column ${x} climbs ${WAVE.speed} rows a second`);
   assert.equal(crestRow(w0, 11) - crestRow(w0, 10), 1, 'one row lower for every column to the east: a "\\" line');
   const early = waveAt(at(100));
-  assert.ok(crestRow(early, 1) > 34, 'it starts below the bottom of the map');
+  assert.ok(crestRow(early, 1) > BEACH.h - 2, 'it starts below the bottom of the map');
   const late = waveAt(at(WAVE_LIFE_MS - 50));
-  assert.ok(crestRow(late, 22) < 1, 'and leaves above the top');
+  assert.ok(crestRow(late, shallowFrom(1) + 4) < 1, 'and leaves above the top, even at the shore end');
   assert.ok(waveAt(at(3000)).peel < waveAt(at(500)).peel, 'the peel point runs out to the open sea');
   assert.ok(waveAt(at(0)).peel <= WAVE.peelFrom && waveAt(at(WAVE_LIFE_MS - 1)).peel >= WAVE.peelTo);
 });
@@ -122,7 +123,7 @@ test('the ride: north or east keep the rider on the crest, up and down pick the 
   assert.ok(RIDE_MS < 1000 / WAVE.speed, 'the rider is a little quicker than the crest');
 });
 
-const simulate = (steer, start = { x: X, y: 24 }) => {
+const simulate = (steer, start = { x: X, y: 38 }) => {
   let { x, y } = start, ms = 0, steps = 0, e0 = null;
   const t0 = clockAt(x, y, 0);
   const path = [];
@@ -140,8 +141,8 @@ test('a full ride from the break stays on the crest and reaches the shallows in 
   const r = simulate(null);
   assert.equal(r.end, 'shore');
   assert.equal(waterAt(r.x, r.y, 'beach'), 'shallow');
-  assert.ok(r.ms > 800 && r.ms < 5000, `${r.ms} ms`);
-  assert.ok(r.y < 24 && r.x > X, 'north and east');
+  assert.ok(r.ms > 800 && r.ms < 9000, `${r.ms} ms`);
+  assert.ok(r.y < 38 && r.x > X, 'north and east');
   for (const [, , off] of r.path) assert.ok(off >= -MAX_AHEAD - 0.5 && off <= MAX_LAG, `offset ${off}`);
 });
 
@@ -157,7 +158,7 @@ test('steering up rides up the wall for longer, steering down cuts back to the s
 
 test('the foam: strokes along the diagonal, white where it has broken (south-east of the peel point), a thin swell ahead of it, fading on the shallows, none without a wave', () => {
   assert.deepEqual(waveStrokes(null, 0, 10), []);
-  const w = waveAt(at(3000)), s = waveStrokes(w, 1, 34, 16, () => 20);
+  const w = waveAt(at(5500)), s = waveStrokes(w, 1, 42, 16, () => 34);
   assert.ok(s.length > 60);
   assert.ok(s.every((q) => q.a > 0 && q.a <= 1 && q.w > 0 && q.h > 0));
   const crest = s.filter((q) => q.w === 16 && q.h === 7);
@@ -166,10 +167,10 @@ test('the foam: strokes along the diagonal, white where it has broken (south-eas
   assert.ok(swell.length > 3 && swell.every((q) => q.x / 16 - 0.5 < w.peel + 0.01));
   const sorted = [...crest].sort((a, b) => a.x - b.x);
   assert.ok(sorted[sorted.length - 1].y > sorted[0].y, 'further east, lower on the screen: a "\\" front');
-  assert.ok(waveStrokes(waveAt(at(100)), 1, 34, 16, () => 20)[0].a < 0.5 || waveStrokes(waveAt(at(100)), 1, 34, 16, () => 20).length === 0, 'it fades in');
-  const gone = waveStrokes({ id: 1, age: 7100, k: -25, peel: 3 }, 1, 34, 16, () => 20);
+  assert.ok(waveStrokes(waveAt(at(100)), 1, 42, 16, () => 34).length === 0 || waveStrokes(waveAt(at(100)), 1, 42, 16, () => 34)[0].a < 0.5, 'it fades in');
+  const gone = waveStrokes({ id: 1, age: 7100, k: -50, peel: 3 }, 1, 34, 16, () => 34);
   assert.equal(gone.length, 0, 'off the top of the map');
-  assert.ok(Math.max(...s.map((q) => q.x)) < (20 + 4.5) * 16, 'nothing beyond the shallows');
+  assert.ok(Math.max(...s.map((q) => q.x)) < (34 + 4.5) * 16, 'nothing beyond the shallows');
 });
 
 // ---- the net, the sounds and the old clients ---------------------------------------------------------------------------------------------------
@@ -238,7 +239,7 @@ test('the surfboard and the wipeout are drawn as squares only: the drawing helpe
 import { waveBody } from '../src/surf.js';
 test('the wave body for the renderers: samples along the same diagonal as the clock wave, taller where it has broken and curling at the peel point, fading on the shallows', () => {
   assert.deepEqual(waveBody(null, 1, 34), []);
-  const w = waveAt(at(3000)), b = waveBody(w, 1, 34, 16, () => 20);
+  const w = waveAt(at(5500)), b = waveBody(w, 1, 42, 16, () => 34);
   assert.ok(b.length > 30);
   for (const s of b) {
     assert.ok(Math.abs(s.x / 16 - 0.5 - (s.y / 16 - 0.5 - w.k)) < 1e-9, 'on the front: column = row - k');
@@ -250,9 +251,9 @@ test('the wave body for the renderers: samples along the same diagonal as the cl
   const peak = b.reduce((m, s) => (s.curl > m.curl ? s : m), b[0]);
   assert.ok(Math.abs(peak.col - w.peel) < 0.6 && peak.curl > 0.9, 'the lip is thrown at the peel point');
   assert.ok(b.every((s) => s.broken === (s.col >= w.peel)), 'the same split as the foam');
-  const near = waveBody({ ...w, k: -1 }, 1, 34, 16, () => 20).filter((s) => s.col > 20.4);
+  const near = waveBody({ ...w, k: -1 }, 1, 34, 16, () => 34).filter((s) => s.col > 34.4);
   assert.ok(near.every((s) => s.a < 1), 'it fades on the shallows');
-  assert.equal(waveBody({ id: 1, age: 7100, k: -25, peel: 3 }, 1, 34, 16, () => 20).length, 0);
+  assert.equal(waveBody({ id: 1, age: 7100, k: -50, peel: 3 }, 1, 34, 16, () => 34).length, 0);
 });
 
 test('net: a rest change is sent even on the same tile and a peer hears it', async () => {
@@ -278,7 +279,7 @@ test('swellLift: a pet in the water is lifted by the wall\'s own height profile,
   assert.equal(at12(12).lift, 0, 'far behind it: flat');
   const peak = at12(0), wall = bodyAt(peak.w, 12, 20);
   assert.ok(Math.abs(peak.lift - wall.h * WAVE_LIFT * SWELL.share * wall.a) < 1e-6, 'at the crest: the wall\'s height (WAVE_LIFT) times its share');
-  assert.ok(peak.lift > 10, `${peak.lift} world px`);
+  assert.ok(peak.lift > 8, `${peak.lift} world px`);
   let prev = 0;
   for (let e = -SWELL.front; e <= 0.001; e += 0.25) { const l = at12(e).lift; assert.ok(l >= prev - 1e-6, `rises at ${e}`); prev = l; }
   for (let e = 0; e <= SWELL.back + 0.001; e += 0.25) { const l = at12(e).lift; assert.ok(l <= prev + 1e-6, `falls at ${e}`); prev = l; }

@@ -3,7 +3,7 @@
 // ripples are drawn on top each frame (rippleSpots) in the colour `rippleColour` gives for the tile.
 import { P, noise, rect, dot, mix, shadow, canvas } from './palette.js';
 import { rippleSpots } from './ground.js';
-import { shallowFrom } from '../map.js';
+import { shallowFrom, BEACH } from '../map.js';
 
 const C = {
   sand: '#ead9a2', sand2: '#f6ecc4', sandDark: '#d4bd84', wet: '#c9b27a', wet2: '#b69e68',
@@ -64,7 +64,7 @@ export function towel(ctx, x, y, tx, ty) {
  * (by column), the break is lighter with foam flecks, the shallows are clear turquoise with the sand showing through.
  */
 export function sea(ctx, x, y, tx, ty, ch, at) {
-  const far = clamp01((20 - tx) / 18);                                                 // 1 at the far edge, 0 near the shore
+  const e = shallowFrom(ty), far = clamp01((e - tx) / (e - 2));                                                 // 1 at the far edge, 0 near the shore
   const base = ch === '%' ? C.reef : ch === 'l' ? C.shallow : ch === 'K' ? mix(C.deep1, C.shallow, 0.3) : mix(C.deep1, C.deep0, far * far * 0.9 + 0.05);
   rect(ctx, base, x, y, 16, 16);
   const light = ch === 'l' ? C.shallow2 : ch === 'K' ? C.foam : mix(base, '#6bb0f0', 0.22);
@@ -264,7 +264,7 @@ export function rocks(seed = 0) {
 // ---- sparse scatter on the sand ---------------------------------------------------------------------------------------------------------------------
 
 /** Where the small things lie, in tiles: kind, tile column and row, and a pixel offset inside the tile. Footprints are painted on the ground, the rest are upright props. */
-export const SCATTER = [
+const OLD = [
   { kind: 'shell', x: 25, y: 8, dx: 4, dy: 9 }, { kind: 'shell', x: 26, y: 19, dx: 9, dy: 5 }, { kind: 'shell', x: 28, y: 27, dx: 3, dy: 8 }, { kind: 'shell', x: 38, y: 14, dx: 10, dy: 7 },
   { kind: 'starfish', x: 27, y: 14, dx: 6, dy: 6 }, { kind: 'starfish', x: 29, y: 30, dx: 5, dy: 8 },
   { kind: 'castle', x: 29, y: 24, dx: 2, dy: 12 },
@@ -273,8 +273,17 @@ export const SCATTER = [
   { kind: 'table', x: 31, y: 6, dx: 1, dy: 15 }, { kind: 'table', x: 40, y: 13, dx: 1, dy: 15 }, { kind: 'table', x: 43, y: 25, dx: 1, dy: 15 },   // side tables with a drink beside some deck chairs
   { kind: 'tuft', x: 31, y: 7, dx: 6, dy: 14 }, { kind: 'tuft', x: 43, y: 7, dx: 4, dy: 14 }, { kind: 'tuft', x: 35, y: 32, dx: 3, dy: 13 },
   { kind: 'shell', x: 33, y: 7, dx: 6, dy: 6 }, { kind: 'shell', x: 43, y: 26, dx: 9, dy: 8 }, { kind: 'starfish', x: 42, y: 7, dx: 5, dy: 9 }, { kind: 'starfish', x: 35, y: 33, dx: 8, dy: 5 },
-  ...[6, 13, 21, 26, 31].map((y) => ({ kind: 'weed', x: shallowFrom(y) + 4, y, dx: 0, dy: 0 })),         // on the wet sand at the waterline
   { kind: 'prints', x: 30, y: 17, dx: 0, dy: 0 }, { kind: 'prints', x: 28, y: 18, dx: 0, dy: 0 },
+].map((e) => ({ ...e, x: e.x + 14, y: e.y + 4 })).filter((e) => !(e.x >= BEACH.court.x && e.x < BEACH.court.x + BEACH.court.w && e.y >= BEACH.court.y && e.y < BEACH.court.y + BEACH.court.h));                                          // the first beach's things, shifted with the sea and the rows added
+export const SCATTER = [
+  ...OLD,
+  ...[10, 17, 25, 30, 35, 3, 22, 39].map((y) => ({ kind: 'weed', x: shallowFrom(y) + 4, y, dx: 0, dy: 0 })),         // on the wet sand at the waterline
+  { kind: 'court', x: BEACH.court.x, y: BEACH.court.y, dx: 0, dy: 0 }, { kind: 'vball', x: 55, y: 12, dx: 5, dy: 9 },                          // the volleyball court's lines, and the ball by the net
+  { kind: 'shell', x: 42, y: 2, dx: 5, dy: 8 }, { kind: 'shell', x: 52, y: 33, dx: 8, dy: 4 }, { kind: 'shell', x: 60, y: 38, dx: 3, dy: 7 }, { kind: 'shell', x: 47, y: 40, dx: 9, dy: 9 },
+  { kind: 'starfish', x: 41, y: 22, dx: 6, dy: 6 }, { kind: 'starfish', x: 56, y: 40, dx: 5, dy: 6 },
+  { kind: 'tuft', x: 58, y: 3, dx: 4, dy: 14 }, { kind: 'tuft', x: 52, y: 25, dx: 5, dy: 13 }, { kind: 'tuft', x: 63, y: 29, dx: 3, dy: 14 }, { kind: 'tuft', x: 45, y: 41, dx: 6, dy: 13 },
+  { kind: 'bucket', x: 61, y: 19, dx: 6, dy: 12 }, { kind: 'ball', x: 60, y: 31, dx: 7, dy: 11 },
+  { kind: 'prints', x: 56, y: 20, dx: 0, dy: 0 }, { kind: 'prints', x: 41, y: 33, dx: 0, dy: 0 },
 ];
 
 /** Paints the flat things of the scatter into the ground (shells, starfish, seaweed at the waterline and footprints leading to the boardwalk). `raw(x, y)` gives a tile's char. */
@@ -295,6 +304,10 @@ export function scatterGround(ctx) {
         dot(ctx, P.g2, bx, by);
       }
       for (const [dx, dy] of [[-4, 1], [3, 6], [6, 2]]) dot(ctx, P.ink2, x0 + dx, s.y * 16 + 4 + dy);
+    } else if (s.kind === 'court') {                                                       // the volleyball court: pale lines on the sand, an outer rectangle, a line across each half
+      const x0 = s.x * 16 + 6, y0 = s.y * 16 + 5, cw = 9 * 16 - 12, ch = 5 * 16 - 10, ln = '#fbf2d2';
+      rect(ctx, ln, x0, y0, cw, 1); rect(ctx, ln, x0, y0 + ch - 1, cw, 1); rect(ctx, ln, x0, y0, 1, ch); rect(ctx, ln, x0 + cw - 1, y0, 1, ch);
+      rect(ctx, ln, x0, y0 + 14, cw, 1); rect(ctx, ln, x0, y0 + ch - 15, cw, 1);
     } else if (s.kind === 'prints') {                                                    // footprints: pairs of dents in the sand walking towards the boardwalk
       for (let k = 0; k < 4; k++) {
         const px = s.x * 16 + 1 + k * 4, py = s.y * 16 + 5 + (k % 2) * 4;
@@ -332,5 +345,137 @@ export function beachBall() {
     dot(ctx, edge ? P.ink : col, i, j);
   }
   dot(ctx, '#ffffff', 3, 2); dot(ctx, '#ffffff', 2, 3);                                                          // the highlight
+  return c;
+}
+
+// ---- the things of the second beach -----------------------------------------------------------------------------------------------------------------
+
+/** One tile of the pier: the sea (or the wet sand) under it, then planks running east-west with seams and nails; the top row of the pier has a rail, the bottom one a shadow on the water and posts every few tiles. */
+export function pier(ctx, x, y, tx, ty, at) {
+  const e = shallowFrom(ty);
+  if (tx < e) sea(ctx, x, y, tx, ty, 'D', at); else if (tx < e + 4) sea(ctx, x, y, tx, ty, 'l', at); else shore(ctx, x, y, tx, ty);
+  const top = at && at(0, -1) !== '1', bottom = at && at(0, 1) !== '1', end = at && at(-1, 0) !== '1';
+  if (bottom) { ctx.globalAlpha = 0.28; rect(ctx, P.ink2, x, y + 14, 16, 2); ctx.globalAlpha = 1; }
+  const y0 = top ? y + 3 : y, h = (top ? 13 : 16) - (bottom ? 3 : 0);
+  rect(ctx, P.w3, x, y0, 16, h);
+  for (let r = 0; r * 5 < h; r++) {                                                       // the planks: lit top edge, dark seam under
+    const py = y0 + r * 5;
+    rect(ctx, r % 2 ? P.w4 : P.w3, x, py, 16, 4); rect(ctx, P.w5, x, py, 16, 1); rect(ctx, P.w1, x, Math.min(py + 4, y0 + h - 1), 16, 1);
+    const seam = 2 + ((tx * 7 + r * 5) % 12); rect(ctx, P.w1, x + seam, py, 1, 4);
+    dot(ctx, P.w0, x + 1, py + 1); dot(ctx, P.w0, x + 14, py + 2);
+  }
+  if (top) { rect(ctx, P.w1, x, y + 1, 16, 2); rect(ctx, P.w4, x, y + 1, 16, 1); if (tx % 4 === 0) { rect(ctx, P.w0, x + 6, y - 1, 3, 4); rect(ctx, P.w3, x + 6, y - 1, 2, 3); } }   // the rail, with a post every four tiles
+  if (bottom && tx % 4 === 2) { rect(ctx, P.w0, x + 5, y + 12, 3, 4); rect(ctx, P.w2, x + 5, y + 12, 2, 3); }
+  if (end) { rect(ctx, P.w0, x, y0, 1, h); rect(ctx, P.w1, x + 1, y0, 1, h); }
+}
+
+/** A tide pool: wet sand with a rim of dark rocks round a small pool of clear water with a sparkle and, now and then, a starfish. Solid: walked around. */
+export function tidePool(ctx, x, y, tx, ty) {
+  sand(ctx, x, y, tx, ty);
+  const cx = 8 + ((noise(tx, ty, 11) * 2 - 1) | 0), cy = 9, rx = 6.4, ry = 4.6;
+  shadow(ctx, x + 8, y + 14, 8, 2, 0.2);
+  for (let j = 0; j < 16; j++) for (let i = 0; i < 16; i++) {
+    const dx = (i + 0.5 - cx) / rx, dy = (j + 0.5 - cy) / ry, d = dx * dx + dy * dy;
+    if (d > 1.55) continue;
+    if (d > 1) { dot(ctx, noise(tx * 16 + i, ty * 16 + j, 61) > 0.45 ? P.s1 : P.s0, x + i, y + j); continue; }                // the rocky rim
+    dot(ctx, d > 0.72 ? P.a0 : d > 0.4 ? '#3f9ec0' : '#6cc3d8', x + i, y + j);                                                 // the water, deeper towards the rim
+  }
+  for (const [i, j] of [[5, 8], [6, 8], [9, 10]]) dot(ctx, P.a4, x + i, y + j);                                                 // glints
+  for (const [i, j] of [[3, 5], [12, 6], [10, 14], [4, 13]]) rect(ctx, P.s2, x + i, y + j, 2, 2);                               // small rocks about
+  if ((tx + ty) % 3 === 0) { dot(ctx, P.orange, x + 8, y + 10); dot(ctx, P.orange, x + 7, y + 10); dot(ctx, P.orange, x + 9, y + 10); dot(ctx, P.yellow, x + 8, y + 9); dot(ctx, P.orange, x + 8, y + 11); }
+}
+
+/** The volleyball net's post: a pole with a red cap and a dark foot, 16 x 34. */
+export function netPost() {
+  const c = canvas(16, 34), ctx = c.getContext('2d');
+  rect(ctx, P.ink, 6, 2, 4, 32); rect(ctx, '#e8e2d0', 7, 3, 2, 30); rect(ctx, '#bdb7a4', 8, 3, 1, 30); rect(ctx, P.cream, 7, 3, 1, 30);
+  rect(ctx, P.ink, 5, 0, 6, 4); rect(ctx, P.red, 6, 1, 4, 2); dot(ctx, '#f47a74', 6, 1);
+  for (const y of [8, 22]) rect(ctx, P.s2, 6, y, 4, 1);                                  // the straps that hold the net
+  rect(ctx, P.ink, 4, 31, 8, 3); rect(ctx, P.s1, 5, 31, 6, 2);                            // the foot, in the sand
+  return c;
+}
+/** A tile of the volleyball net: a white tape along the top, a dark mesh below it, 16 x 22 (the posts on both sides line up with its ends). */
+export function netMesh() {
+  const c = canvas(16, 22), ctx = c.getContext('2d');
+  rect(ctx, P.ink, 0, 4, 16, 14); rect(ctx, P.cream, 0, 5, 16, 3); rect(ctx, '#d9d2b8', 0, 7, 16, 1);       // the top tape
+  for (let j = 8; j < 17; j++) for (let i = 0; i < 16; i++) if ((i + j) % 3 === 0) dot(ctx, '#e8e2d0', i, j);        // the mesh: a lattice of light knots on dark
+  rect(ctx, P.ink, 0, 17, 16, 1); rect(ctx, P.cream, 0, 17, 16, 1); ctx.globalAlpha = 0.5; rect(ctx, P.cream, 0, 17, 16, 1); ctx.globalAlpha = 1;   // the bottom cord
+  return c;
+}
+/** A volleyball, 8 x 8: white with blue and yellow panels. */
+export function volleyball() {
+  const c = canvas(9, 9), ctx = c.getContext('2d');
+  for (let j = 0; j < 9; j++) for (let i = 0; i < 9; i++) {
+    const dx = (i - 4) / 4, dy = (j - 4) / 4, d = dx * dx + dy * dy;
+    if (d > 1) continue;
+    let col = d > 0.72 ? P.ink : Math.abs(dx - dy) < 0.32 ? '#3f7ad0' : Math.abs(dx + dy) < 0.32 ? P.yellow : P.cream;
+    if (col === P.cream && dx + dy > 0.4) col = '#d9c9ac';
+    dot(ctx, col, i, j);
+  }
+  dot(ctx, '#ffffff', 2, 2);
+  return c;
+}
+
+/** A beach cabana, 3 x 2 tiles (48 wide, 46 tall; its foot is the bottom edge): striped walls, a pitched roof with a lit edge, a wooden door, a shuttered window and a step. `seed` 1 is blue and white, otherwise red and white. */
+export function hut(seed = 0) {
+  const c = canvas(48, 46), ctx = c.getContext('2d'), blue = seed % 2 === 1;
+  const main = blue ? '#3f78d0' : RED, lit = blue ? '#6ea4ec' : RED_LIT, dk = blue ? '#2a56a0' : RED_DK;
+  rect(ctx, INK, 3, 17, 42, 28); rect(ctx, CREAM, 4, 18, 40, 26);
+  for (let i = 0; i < 20; i++) rect(ctx, i % 2 ? CREAM : main, 4 + i * 2, 18, 2, 26);                      // vertical stripes on the walls
+  rect(ctx, CREAM_DK, 4, 40, 40, 4); rect(ctx, WOOD_DK, 4, 43, 40, 1);                                      // the shaded foot
+  rect(ctx, INK, 19, 24, 12, 21); rect(ctx, WOOD, 20, 25, 10, 20); rect(ctx, WOOD_LIT, 20, 25, 1, 20); rect(ctx, WOOD_DK, 29, 25, 1, 20);   // the door
+  for (const y of [29, 35]) rect(ctx, WOOD_DK, 21, y, 8, 1);
+  dot(ctx, P.yellow, 27, 35);
+  rect(ctx, INK, 7, 25, 9, 9); rect(ctx, '#8ccbff', 8, 26, 7, 7); rect(ctx, '#d6efff', 8, 26, 3, 3); rect(ctx, WOOD, 11, 26, 1, 7); rect(ctx, WOOD, 8, 29, 7, 1);   // the window
+  rect(ctx, INK, 34, 25, 9, 9); rect(ctx, WOOD, 35, 26, 7, 7); for (const y of [27, 29, 31]) rect(ctx, WOOD_DK, 35, y, 7, 1);                           // a shuttered one
+  rect(ctx, INK, 16, 44, 18, 2); rect(ctx, WOOD_LIT, 17, 44, 16, 1);                                       // the step
+  for (let j = 0; j < 17; j++) {                                                                            // the roof: a trapezoid, rows from the ridge to the eave
+    const inset = Math.round((16 - j) * 0.9), x0 = 1 + inset, x1 = 47 - inset;
+    rect(ctx, INK, x0, j, x1 - x0, 1);
+    if (j > 0 && j < 16) { rect(ctx, j % 4 < 2 ? main : lit, x0 + 1, j, x1 - x0 - 2, 1); rect(ctx, dk, x1 - 6 - Math.round((16 - j) * 0.2), j, 5 + Math.round((16 - j) * 0.2), 1); }
+  }
+  rect(ctx, INK, 0, 16, 48, 3); rect(ctx, lit, 1, 16, 46, 1); rect(ctx, dk, 1, 17, 46, 1);              // the eave, lit on top
+  rect(ctx, INK, 22, 0, 4, 3); rect(ctx, P.cream, 23, 0, 2, 2);                                             // the ridge cap
+  return c;
+}
+
+/** The bonfire ring, 24 x 22: a ring of grey stones round crossed logs and a tall flame (orange, yellow and white at the heart), a little ash and a few embers. */
+export function bonfire() {
+  const c = canvas(24, 22), ctx = c.getContext('2d');
+  for (const [x, y] of [[1, 15], [4, 18], [8, 19], [13, 19], [17, 18], [20, 15], [18, 12], [4, 12]]) { rect(ctx, INK, x, y, 5, 4); rect(ctx, P.s2, x + 1, y + 1, 3, 2); dot(ctx, P.s4, x + 1, y + 1); }       // the stones
+  rect(ctx, INK, 4, 14, 16, 4); rect(ctx, '#3a2a28', 5, 15, 14, 2);                                                                // the ash bed
+  for (let k = 0; k < 14; k++) { dot(ctx, INK, 5 + k, 16 - (k >> 2)); dot(ctx, P.w1, 5 + k, 15 - (k >> 2)); dot(ctx, INK, 18 - k, 16 - (k >> 2)); dot(ctx, P.w2, 18 - k, 15 - (k >> 2)); }   // two crossed logs
+  const flame = [[12, 0, 1], [11, 2, 3], [10, 4, 5], [9, 6, 7], [8, 8, 9], [8, 10, 9], [9, 12, 7]];                                  // [x, y, width] of the outer flame, rows of 2
+  for (const [x, y, w] of flame) { rect(ctx, '#e8531c', x, y, w, 2); rect(ctx, '#ff9a2e', x + 1, y + 1, Math.max(1, w - 2), 1); }
+  rect(ctx, '#ffd24a', 10, 6, 4, 6); rect(ctx, '#fff2a0', 11, 8, 2, 4); dot(ctx, '#ffffff', 11, 10);
+  for (const [x, y] of [[6, 9], [17, 7], [14, 2], [9, 3]]) dot(ctx, '#ffb347', x, y);                                                  // embers
+  return c;
+}
+
+/**
+ * The Kiosco, 4 x 2 tiles (64 wide, 62 tall: its foot is the bottom edge): a small stand with a striped awning that overhangs the front, a counter with a few treats on it, and shelves
+ * and a menu board behind. The counter is the row of tiles south of it.
+ */
+export function kiosk() {
+  const c = canvas(64, 62), ctx = c.getContext('2d');
+  rect(ctx, INK, 3, 14, 58, 48); rect(ctx, '#e9d4a6', 4, 15, 56, 46);                                       // the back wall (light wood)
+  for (let i = 0; i < 14; i++) rect(ctx, i % 2 ? '#e1c995' : '#ecd9ae', 4 + i * 4, 15, 4, 46);
+  rect(ctx, INK, 6, 28, 22, 18); rect(ctx, '#6b3421', 7, 29, 20, 16);                                        // a shelf unit with bottles and cones on it
+  for (const y of [36, 44]) rect(ctx, WOOD_LIT, 7, y, 20, 1);
+  for (const [x, col] of [[9, '#e0485a'], [13, '#3f7ad0'], [17, '#2fa87a'], [21, '#ffcb6b']]) { rect(ctx, INK, x, 31, 3, 5); rect(ctx, col, x, 32, 3, 4); rect(ctx, P.cream, x, 30, 3, 2); }
+  for (const [x, col] of [[10, '#f4a8c0'], [16, '#fbe8c8'], [22, '#a8683a']]) { rect(ctx, INK, x, 38, 3, 6); rect(ctx, '#d8a868', x, 41, 3, 3); rect(ctx, col, x, 38, 3, 3); }
+  rect(ctx, INK, 36, 24, 22, 20); rect(ctx, '#2f4a3a', 37, 25, 20, 18); rect(ctx, '#f0e6c8', 40, 29, 14, 1); rect(ctx, '#f0e6c8', 40, 33, 11, 1); rect(ctx, '#f0e6c8', 40, 37, 13, 1);      // the menu board
+  rect(ctx, P.yellow, 38, 28, 2, 2); rect(ctx, P.pink, 38, 32, 2, 2); rect(ctx, '#8ccbff', 38, 36, 2, 2);
+  rect(ctx, INK, 0, 47, 64, 15); rect(ctx, WOOD, 1, 48, 62, 13); rect(ctx, WOOD_LIT, 1, 48, 62, 3); rect(ctx, WOOD_DK, 1, 58, 62, 3);       // the counter: lit top edge, dark front
+  for (let i = 0; i < 6; i++) rect(ctx, WOOD_DK, 10 + i * 10, 52, 1, 6);                                      // its planks
+  for (const [x, col] of [[6, '#f4a8c0'], [30, '#3f7ad0']]) { rect(ctx, INK, x, 42, 7, 7); rect(ctx, col, x + 1, 43, 5, 5); dot(ctx, '#ffffff', x + 1, 43); }   // treats on the counter: a cup and a bottle
+  rect(ctx, INK, 46, 40, 5, 9); rect(ctx, '#ffffff', 47, 41, 3, 7); rect(ctx, '#7a4a28', 47, 41, 3, 3); dot(ctx, P.red, 48, 45);                                  // a coconut drink and a straw
+  for (let i = 0; i < 64; i += 8) {                                                                          // the awning: red and cream stripes with a scalloped hem
+    for (let k = 0; k < 8; k++) { const col = (i / 8) % 2 ? CREAM : RED; rect(ctx, col, i + k, 2, 1, 12); }
+    rect(ctx, (i / 8) % 2 ? CREAM_DK : RED_DK, i, 12, 8, 2);
+    for (let k = 0; k < 8; k++) { const d = Math.round(2.4 * Math.sin((Math.PI * (k + 0.5)) / 8)); rect(ctx, (i / 8) % 2 ? CREAM_DK : RED_DK, i + k, 14, 1, d); rect(ctx, INK, i + k, 14 + d, 1, 1); }
+  }
+  rect(ctx, INK, 0, 0, 64, 2); rect(ctx, RED_LIT, 0, 1, 64, 1); rect(ctx, INK, 0, 11, 64, 1); rect(ctx, RED_LIT, 0, 2, 64, 1);
+  rect(ctx, INK, 0, 14, 3, 48); rect(ctx, WOOD, 1, 14, 1, 46); rect(ctx, INK, 61, 14, 3, 48); rect(ctx, WOOD, 62, 14, 1, 46);               // the posts at the corners
   return c;
 }

@@ -2,7 +2,7 @@
 // the Parque, a duck and ripples on the pond, the fountain's spray. All client-side: the scene is seeded by the room code (so everybody sees
 // a similar one) and nothing of it is ever sent. Positions are pure functions of the clock; only the birds keep a tiny state. None of it
 // blocks walking: it is drawn over the town and never read by the game rules.
-import { tileAt, isLand, TILES, TILE, GARDEN, PARQUE, AREAS, FARM } from './map.js';
+import { tileAt, isLand, TILES, TILE, GARDEN, PARQUE, AREAS, FARM, BEACH, shallowFrom } from './map.js';
 
 export const LIFE = {
   birds: 9, birdSpacing: 5, scare: 3, calm: 4.5,             // a pet within `scare` tiles flushes a bird; it returns when every pet is farther than `calm`
@@ -226,4 +226,66 @@ export function animalPose(a, now) {
 export function farmLifeFrame(l, now, amb) {
   const base = lifeFrame({ ...l, duck: null }, now, amb);
   return { birds: base.birds, butterflies: base.butterflies, fireflies: base.fireflies, ripples: base.ripples, animals: l.animals.map((a) => ({ id: a.id, kind: a.kind, ...animalPose(a, now) })) };
+}
+
+// ---- the beach's life: gulls that land and walk, crabs that walk sideways ----------------------------------------------------------------------------
+/** The beach's scene: how many gulls and crabs, and the length of a gull's visit and a crab's slot (ms). Land only: every spot is open sand, and nothing here is ever sent. */
+export const BEACH_LIFE = { gulls: 5, crabs: 7, gullMs: 20000, crabMs: 9000, walkMs: 650, crabWalkMs: 520 };
+const sandAt = (x, y) => isLand(x, y, 'beach') && tileAt(x, y, 'beach') === 's';
+const DX = [-2, -1, 1, 2];
+
+/** `list` of sand tiles near the waterline (the gulls and crabs keep to the shore side of the beach, where there is room). */
+function shoreSand(from, to) {
+  const out = [];
+  for (let y = 2; y < BEACH.h - 2; y++) for (let x = shallowFrom(y) + 5 + from; x < shallowFrom(y) + 5 + to; x++) if (sandAt(x, y)) out.push([x, y]);
+  return out;
+}
+
+/** The scene of the beach for a room: gulls and crabs, each a pure function of (seed, clock) (see gullPose, crabPose): no state. */
+export function createBeachLife(seed) {
+  const rng = mulberry32(hashSeed(`beach:${seed}`));
+  const gullTiles = shoreSand(0, 12), crabTiles = shoreSand(0, 9);
+  const gulls = Array.from({ length: BEACH_LIFE.gulls }, (_, i) => ({ id: i, seed: String(seed), tiles: gullTiles, ph: Math.floor(rng() * BEACH_LIFE.gullMs * 3) }));
+  const crabs = Array.from({ length: BEACH_LIFE.crabs }, (_, i) => {
+    const [hx, hy] = crabTiles[Math.floor(rng() * crabTiles.length)];
+    let lo = 0, hi = 0;                                                                    // its lane: the open sand to each side of its home tile, up to three tiles
+    while (lo > -3 && sandAt(hx + lo - 1, hy)) lo--;
+    while (hi < 3 && sandAt(hx + hi + 1, hy)) hi++;
+    return { id: i, seed: String(seed), hx, hy, lo, hi: hi + 0.6, ph: Math.floor(rng() * BEACH_LIFE.crabMs * 5) };
+  });
+  return { seed: String(seed), gulls, crabs, birds: [] };
+}
+
+/** Where a gull is at `now` (ms), in map pixels (the feet): a visit is one slot of gullMs: it glides in from over the sea (west), lands, stands, walks to another spot, pecks, takes off towards the sea and is gone until the next slot. null while gone. */
+export function gullPose(g, now) {
+  const t = now + g.ph, k = Math.floor(t / BEACH_LIFE.gullMs), into = t - k * BEACH_LIFE.gullMs, r = mulberry32(hashSeed(`${g.seed}:g${g.id}:${k}`));
+  const [ax, ay] = g.tiles[Math.floor(r() * g.tiles.length)];
+  const dx = DX[Math.floor(r() * 4)] * (2 + Math.floor(r() * 3));
+  let bx = ax;                                                                                   // it walks only over open sand: tile by tile up to dx
+  while (Math.abs(bx - ax) < Math.abs(dx) && sandAt(bx + Math.sign(dx), ay)) bx += Math.sign(dx);
+  const fx = r() < 0.5, ox = Math.floor(r() * 7) - 3;
+  const A = { x: ax * TILE + TILE / 2 + ox, y: ay * TILE + TILE - 2 }, B = { x: bx * TILE + TILE / 2 + ox, y: A.y };
+  const IN = 2600, WALK_AT = 4200, walk = Math.abs(bx - ax) * BEACH_LIFE.walkMs, OUT_AT = 16000, OUT = 2600;
+  if (into < IN) { const q = into / IN, e = q * q * (3 - 2 * q); return { x: A.x - (1 - e) * 11 * TILE, y: A.y - (1 - e) * 2 * TILE, air: Math.round((1 - e) * 34), frame: 3 + (Math.floor(now / 120) % 2), flip: false }; }
+  if (into >= OUT_AT + OUT) return null;
+  if (into >= OUT_AT) { const q = (into - OUT_AT) / OUT, e = q * q; return { x: B.x - e * 12 * TILE, y: B.y - e * 3 * TILE, air: Math.round(e * 40), frame: 3 + (Math.floor(now / 110) % 2), flip: true }; }
+  if (into >= WALK_AT && into < WALK_AT + walk && bx !== ax) { const q = (into - WALK_AT) / walk; return { x: A.x + (B.x - A.x) * q, y: A.y, air: 0, frame: 2 + (Math.floor(now / 160) % 2) * 0, flip: bx < ax, step: Math.floor(now / 170) % 2 }; }
+  const at = into < WALK_AT ? A : B, peck = (Math.floor((into + g.id * 700) / 900) % 4) === 3;
+  return { x: at.x, y: at.y, air: 0, frame: peck ? 1 : 0, flip: bx !== ax ? (into < WALK_AT + walk ? bx < ax : fx) : fx };
+}
+
+/** Where a crab is at `now`: it lives on one row of sand (its lane: a run of open sand round its home tile) and in each slot scuttles sideways, east or west, to a new spot of the lane and sits there (claws waving). A pure function of (seed, clock): where it ends a slot is where it starts the next. `frame` 0 sits, 1 and 2 the two scuttling poses. */
+export function crabPose(c, now) {
+  const t = now + c.ph, k = Math.floor(t / BEACH_LIFE.crabMs), into = t - k * BEACH_LIFE.crabMs;
+  const spot = (j) => { const r = mulberry32(hashSeed(`${c.seed}:c${c.id}:${j}`)); return c.lo + r() * (c.hi - c.lo); };
+  const from = spot(k - 1), to = spot(k), walk = Math.abs(to - from) * BEACH_LIFE.crabWalkMs, startAt = 1200 + (c.id * 311) % 1500;
+  const walking = into >= startAt && into < startAt + walk, q = into < startAt ? 0 : into >= startAt + walk ? 1 : (into - startAt) / walk;
+  return { x: (c.hx + from + (to - from) * q) * TILE + 6, y: c.hy * TILE + TILE - 3, frame: walking ? 1 + (Math.floor(now / 110) % 2) : 0, claws: Math.floor(now / 500 + c.id) % 2 };
+}
+
+/** What to draw on the beach at `now`: the gulls in sight (not at night) and the crabs (a few less in the rain); same shape as the town's life, with `crabs` and no butterflies or ripples. */
+export function beachLifeFrame(l, now, amb) {
+  const night = amb ? amb.night : 0;
+  const birds = night > 0.55 ? [] : l.gulls.map((g) => { const p = gullPose(g, now); return p && { id: g.id, kind: 10, ...p }; }).filter(Boolean);
+  return { birds, butterflies: [], fireflies: [], ripples: [], crabs: l.crabs.map((c) => ({ id: c.id, ...crabPose(c, now) })) };
 }

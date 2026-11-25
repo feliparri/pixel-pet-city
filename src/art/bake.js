@@ -13,7 +13,7 @@ import { drawPet, CELL } from '../sprites.js';
 import { SHOPKEEPER } from '../npcs.js';
 
 let sprites = null;
-const kit = () => sprites || (sprites = { barn: FM.barn(), well: FM.well(), scarecrow: FM.scarecrow(), stallBack: FM.stallBack(), stallFront: FM.stallFront(), fruit: [FM.fruitTree(0), FM.fruitTree(1), FM.fruitTree(2)], palm: [BE.palm(0), BE.palm(1)], umbrella: [0, 1, 2, 3].map((i) => BE.umbrella(i)), lounger: BE.lounger(), table: BE.sideTable(), tuft: BE.tuft(), castle: BE.sandcastle(), bucket: BE.bucket(), ball: BE.beachBall(), lifeguard: BE.lifeguard(), rocks: [BE.rocks(0), BE.rocks(1)], oak: [oak(1), oak(2)], pine: [pine(1), pine(2)], bush: [bush(0), bush(1)], lamp: lamp(), lampLit: lampLit(), coop: PL.coop(), counter: counter(), nightWindow: nightWindow() });
+const kit = () => sprites || (sprites = { barn: FM.barn(), well: FM.well(), scarecrow: FM.scarecrow(), stallBack: FM.stallBack(), stallFront: FM.stallFront(), fruit: [FM.fruitTree(0), FM.fruitTree(1), FM.fruitTree(2)], palm: [BE.palm(0), BE.palm(1)], umbrella: [0, 1, 2, 3].map((i) => BE.umbrella(i)), lounger: BE.lounger(), netPost: BE.netPost(), netMesh: BE.netMesh(), hut: [BE.hut(0), BE.hut(1)], bonfire: BE.bonfire(), kiosk: BE.kiosk(), vball: BE.volleyball(), table: BE.sideTable(), tuft: BE.tuft(), castle: BE.sandcastle(), bucket: BE.bucket(), ball: BE.beachBall(), lifeguard: BE.lifeguard(), rocks: [BE.rocks(0), BE.rocks(1)], oak: [oak(1), oak(2)], pine: [pine(1), pine(2)], bush: [bush(0), bush(1)], lamp: lamp(), lampLit: lampLit(), coop: PL.coop(), counter: counter(), nightWindow: nightWindow() });
 
 /** The outdoor areas: the town (plaza, fountain, houses) and the farm (fields, barn, orchard) share every tile that is the same. */
 function bakeOutdoor(area) {
@@ -48,6 +48,13 @@ function bakeOutdoor(area) {
       case 'J': BE.sand(ctx, x, y, tx, ty); shadow(ctx, x + 12, y + 14, 14, 3.5, 0.3); out.props.push({ x: x - 20, y: y + 16 - 88, sortY: y + 16, sprite: k.palm[(tx + ty) & 1] }); break;
       case 'X': BE.sand(ctx, x, y, tx, ty); shadow(ctx, x + 8, y + 14, 8, 2, 0.28); out.props.push({ x, y: y + 16 - 14, sortY: y + 14, sprite: k.rocks[(tx * 5 + ty) & 1] }); break;
       case 'I': BE.sand(ctx, x, y, tx, ty); shadow(ctx, x + 10, y + 15, 11, 3, 0.3); out.props.push({ x: x - 4, y: y + 16 - 40, sortY: y + 16, sprite: k.lifeguard }); break;
+      case '1': BE.pier(ctx, x, y, tx, ty, at); break;                                                        // the pier: planks over the sea (not in the water list: they are not re-baked)
+      case '2': BE.sand(ctx, x, y, tx, ty); shadow(ctx, x + 8, y + 15, 7, 2, 0.28); out.props.push({ x, y: y + 16 - 34, sortY: y + 15, sprite: k.netPost }); break;
+      case '3': BE.sand(ctx, x, y, tx, ty); shadow(ctx, x + 8, y + 15, 8, 1.5, 0.2); out.props.push({ x, y: y + 16 - 22, sortY: y + 14, sprite: k.netMesh }); break;
+      case '4': BE.tidePool(ctx, x, y, tx, ty); break;
+      case '5': BE.sand(ctx, x, y, tx, ty); if (raw(tx - 1, ty) !== '5' && raw(tx, ty - 1) !== '5') { shadow(ctx, x + 24, y + 31, 26, 3, 0.3); out.props.push({ x, y: y + 32 - 46, sortY: y + 32, sprite: k.hut[(tx + ty) & 1] }); } break;
+      case '6': BE.sand(ctx, x, y, tx, ty); shadow(ctx, x + 8, y + 14, 11, 3, 0.3); out.props.push({ x: x - 4, y: y + 16 - 20, sortY: y + 16, sprite: k.bonfire }); out.glows.push({ kind: 'fire', x: x + 8, y: y + 6, r: 60, rgb: '255,140,50' }); break;
+      case '7': BE.sand(ctx, x, y, tx, ty); if (raw(tx - 1, ty) !== '7' && raw(tx, ty - 1) !== '7') { shadow(ctx, x + 32, y + 31, 34, 3, 0.3); out.props.push({ x, y: y + 32 - 62, sortY: y + 32, sprite: k.kiosk }); } break;
       case 'p': PL.pad(ctx, x, y, tx, ty); break;
       case 'a': PL.gate(ctx, x, y, tx, ty); break;
       case 'y': PL.pitch(ctx, x, y, tx, ty); break;
@@ -83,7 +90,7 @@ function bakeOutdoor(area) {
   }
   if (beach) {                                                                           // sparse small things on the sand: the flat ones in the ground, the upright ones as props
     BE.scatterGround(ctx);
-    const up = { castle: [k.castle, 14, 12], bucket: [k.bucket, 12, 10], ball: [k.ball, 10, 10], table: [k.table, 14, 16], tuft: [k.tuft, 9, 7] };
+    const up = { vball: [k.vball, 9, 9], castle: [k.castle, 14, 12], bucket: [k.bucket, 12, 10], ball: [k.ball, 10, 10], table: [k.table, 14, 16], tuft: [k.tuft, 9, 7] };
     for (const s of BE.SCATTER) {
       const u = up[s.kind];
       if (!u) continue;

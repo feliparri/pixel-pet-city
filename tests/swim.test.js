@@ -74,9 +74,10 @@ test('steps in the water splash instead of stepping: shallows and deep water hav
   assert.equal(groundOf('beach', shallowX, 10), 'splash');
   assert.equal(groundOf('beach', 10, 10), 'swim');
   assert.equal(groundOf('beach', 5, 10), 'swim');
-  assert.equal(groundOf('beach', 40, 10), 'sand');
+  assert.equal(groundOf('beach', 50, 10), 'sand');
   assert.equal(groundOf('beach', 10, 10, { rain: 1, snow: 0 }), 'swim');
-  assert.equal(groundOf('beach', 33, 17, { rain: 0, snow: 0 }), 'wood', 'the boardwalk');
+  assert.equal(groundOf('beach', 50, 21, { rain: 0, snow: 0 }), 'wood', 'the boardwalk');
+  assert.equal(groundOf('beach', 30, 31, { rain: 0, snow: 0 }), 'wood', 'the pier: wood underfoot, not the sea\'s splash');
   assert.ok(GROUNDS.includes('splash') && GROUNDS.includes('swim'));
   assert.notDeepEqual(Array.from(stepSamples('swim', 0)), Array.from(stepSamples('sand', 0)));
 });

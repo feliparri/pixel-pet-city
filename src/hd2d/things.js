@@ -4,7 +4,7 @@
 import { TILE } from '../map.js';
 import { drawChicken, CHICKEN_SIZE } from '../art/chicken.js';
 import { ball as drawBall } from '../art/places.js';
-import { drawBird, drawButterfly, drawFirefly, drawDuck, drawRing } from '../art/life.js';
+import { drawCrab, drawBird, drawButterfly, drawFirefly, drawDuck, drawRing } from '../art/life.js';
 import { drawAnimal, COW_SIZE, SHEEP_SIZE } from '../art/farm.js';
 import { project, standAt, snapScale } from './camera.js';
 import { lightAt } from './light.js';
@@ -46,6 +46,7 @@ export function createThings() {
     }
     if (ball) add(stand(ctx3, ball.x * TILE, ball.y * TILE + 4, 'ball', (c, ax, ay) => drawBall(c, ax, ay - 4)));
     if (life) {
+      for (const c of life.crabs || []) add(stand(ctx3, c.x, c.y, `crab|${c.frame}|${c.claws}`, (cx, ax, ay) => drawCrab(cx, ax, ay, c.frame, c.claws), 6));
       for (const b of life.birds) add(stand(ctx3, b.x, b.y, `bird|${b.kind}|${b.frame}|${b.flip ? 1 : 0}|${b.air}`, (c, ax, ay) => drawBird(c, ax, ay, b.kind, b.frame, b.flip, b.air)));
       if (life.duck) add(stand(ctx3, life.duck.x, life.duck.y + 4, `duck|${life.duck.frame}|${life.duck.flip ? 1 : 0}`, (c, ax, ay) => drawDuck(c, ax, ay - 4, life.duck.frame, life.duck.flip)));
       for (const a of life.animals || []) add(stand(ctx3, a.x, a.y, `animal|${a.kind}|${a.frame}|${a.flip ? 1 : 0}`, (c, ax, ay) => drawAnimal(c, a, ax, ay), (a.kind === 'cow' ? COW_SIZE : SHEEP_SIZE).w / 2 - 2));
