@@ -5,6 +5,8 @@ import { tileAt } from './map.js';
 
 /** A resting pet is drawn as the board draws a sleeping pet, lying flat (src/art/sleep.js: ported from the device's ui_goal.c): on a lounger on its seat, on a towel at ground level. */
 export const LIE_LIFT = 3;
+/** On a deck chair the pet sunbathes instead (src/art/recline.js): sitting back on the seat, this many art px above the ground. A towel keeps the sleeping pose. */
+export const RECLINE_LIFT = 7;
 
 export const LOUNGER = '&';
 export const TOWEL = 'Q';
@@ -14,8 +16,8 @@ const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 export const isLounger = (x, y, area = 'beach') => tileAt(x, y, area) === LOUNGER;
 /** A lounger or a towel: somewhere to lie down. */
 export const isRestSpot = (x, y, area = 'beach') => { const c = tileAt(x, y, area); return c === LOUNGER || c === TOWEL; };
-/** How many art px a pet lying at (x, y) is above the ground: the seat of a lounger, nothing on a towel. */
-export const restLift = (x, y, area = 'beach') => (isLounger(x, y, area) ? LIE_LIFT : 0);
+/** How many art px a pet resting at (x, y) is above the ground: on the seat of a deck chair, nothing on a towel. */
+export const restLift = (x, y, area = 'beach') => (isLounger(x, y, area) ? RECLINE_LIFT : 0);
 
 /** Is this pet drawn lying down? It chose to (`rest`: the flag), and it stands still on a resting spot (a walker: { tx, ty, moving, queue }). */
 export const lying = (area, w, rest) => !!rest && !w.moving && !(w.queue && w.queue.length) && isRestSpot(w.tx, w.ty, area);

@@ -118,9 +118,9 @@ test('a big sea is re-baked row by row, a small pond in one box', () => {
 
 import { SCATTER } from '../src/art/beach.js';
 test('the beach scatter lies on open sand, the seaweed on the wet sand, never on a solid tile, and it is sparse', () => {
-  assert.ok(SCATTER.length >= 10 && SCATTER.length <= 24, `${SCATTER.length} things`);
+  assert.ok(SCATTER.length >= 10 && SCATTER.length <= 32, `${SCATTER.length} things`);
   const kinds = new Set(SCATTER.map((s) => s.kind));
-  for (const k of ['shell', 'starfish', 'castle', 'bucket', 'ball', 'weed', 'prints']) assert.ok(kinds.has(k), k);
+  for (const k of ['shell', 'starfish', 'castle', 'bucket', 'ball', 'weed', 'prints', 'table', 'tuft']) assert.ok(kinds.has(k), k);
   for (const s of SCATTER) {
     const ch = tileAt(s.x, s.y, 'beach');
     assert.ok(ch === (s.kind === 'weed' ? 'i' : 's'), `${s.kind} at ${s.x},${s.y} is on ${ch}`);

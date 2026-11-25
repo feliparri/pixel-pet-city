@@ -46,16 +46,25 @@ const dim = (hex, night) => {
   return `rgb(${n[0]},${n[1]},${n[2]})`;
 };
 
+export const BOARD_HALF = 22;           // half the length of the board in art px: a longboard, 44 px long (it was 26)
+
 /**
- * A surfboard lying on the water, seen from above and a little from the side: pointed at both ends, a stripe down the middle. (cx, cy) is its middle on the surface, `u` the size
- * of an art pixel, `squash` the tilt of the ground (the board gets thinner the lower the camera), `tilt` -1..1 turns one end up for a board that tumbles after a wipeout.
+ * A longboard lying on the water, seen from above and a little from the side: a rounded nose on the right, a stripe down the middle, a narrower tail with a fin hint under it.
+ * (cx, cy) is its middle on the surface, `u` the size of an art pixel, `squash` the tilt of the ground (the board gets thinner the lower the camera), `tilt` -1..1 turns one end up
+ * for a board that tumbles after a wipeout.
  */
 export function drawBoard(c, cx, cy, u, { squash = 0.6, night = 0, tilt = 0 } = {}) {
-  const rows = Math.max(4, Math.round(9 * Math.min(1, squash * 1.3))), L = 13;
-  for (let j = 0; j < rows; j++) {
-    const t = ((j + 0.5) / rows) * 2 - 1, hw = Math.max(2, Math.round(L * Math.sqrt(1 - t * t * 0.85))), y = Math.round(cy + (j - rows / 2) * u + tilt * (j - rows / 2) * u * 0.5);
-    c.fillStyle = dim('#312439', night); c.fillRect(Math.round(cx - (hw + 1) * u), y, Math.round((hw * 2 + 2) * u), Math.max(1, Math.round(u)));
-    c.fillStyle = dim(j === (rows >> 1) ? '#e0485a' : j === 0 || j === rows - 1 ? '#c9b8a0' : '#fff0c8', night);
-    c.fillRect(Math.round(cx - hw * u), y, Math.round(hw * 2 * u), Math.max(1, Math.round(u)));
+  const rows = Math.max(4, Math.round(9 * Math.min(1, squash * 1.3))), L = BOARD_HALF, px = Math.max(1, Math.round(u));
+  for (let i = -L; i <= L; i++) {
+    const nose = i > L * 0.55 ? Math.sqrt(Math.max(0, 1 - ((i - L * 0.55) / (L * 0.45)) ** 2)) : 1;
+    const tail = i < -L * 0.45 ? 0.5 + 0.5 * ((i + L) / (L * 0.55)) : 1;
+    const half = Math.max(1, (rows / 2) * Math.min(nose, tail) + 0.5), top = cy - half * u + tilt * i * u * 0.12, h = Math.max(px, Math.round(half * 2 * u));
+    const x = Math.round(cx + i * u);
+    c.fillStyle = dim('#312439', night); c.fillRect(x, Math.round(top - px), px, h + 2 * px);                   // the outline
+    c.fillStyle = dim(i > L * 0.8 ? '#fff6e2' : '#fff0c8', night); c.fillRect(x, Math.round(top), px, h);        // the deck
+    c.fillStyle = dim('#c9b8a0', night); c.fillRect(x, Math.round(top + h - px), px, px);                         // the shaded rail
+    if (i > -L * 0.7 && i < L * 0.8) { c.fillStyle = dim('#e0485a', night); c.fillRect(x, Math.round(top + h / 2 - px / 2), px, px); }   // the stripe
   }
+  c.fillStyle = dim('#312439', night);
+  for (let k = 0; k < 4; k++) c.fillRect(Math.round(cx + (-L + 3 + k) * u), Math.round(cy + rows * 0.5 * u + (k % 2 ? px : 0)), px, px * 2);   // the fin hint at the tail
 }

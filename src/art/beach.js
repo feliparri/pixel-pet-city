@@ -131,56 +131,89 @@ export function palm(seed = 0) {
   return c;
 }
 
-/** A beach umbrella, 36 x 48 (1.5 times the first one): six striped panels with seam folds, the left lit and the right in shade, a scalloped hem with its dark underside, a finial, and a ringed pole. */
+const RED = '#e8484e', RED_LIT = '#f47a74', RED_DK = '#b8343e', RED_TIP = '#8a2634', CREAM = '#fbe8c8', CREAM_LIT = '#fff6e2', CREAM_DK = '#e3c4a0', CREAM_TIP = '#b89478';
+const WOOD = '#a8602c', WOOD_LIT = '#d68e5a', WOOD_DK = '#6b3421', INK = '#2a2033';
+const mixHex = (a, b, t) => mix(a, b, t);
+
+/**
+ * A beach umbrella, 36 x 48, in the style of the reference (odd/refs/beach-chair-ref.png): a domed canopy of red and cream panels, the left lit and the right in shade with a darker
+ * band along the hem, a scalloped hem with darker tips, a wooden finial, and a ringed wooden pole on a small square wooden base. `seed` 1 gives a blue and cream one, the others red.
+ */
 export function umbrella(seed = 0) {
   const c = canvas(36, 48), ctx = c.getContext('2d');
-  const pal = [[P.red, P.red2, '#f06a60'], ['#3f7ad0', '#2a56a0', '#6ea0e8'], ['#f0b030', '#c88a1c', '#ffd868'], ['#2fa87a', '#1f7a58', '#5ed0a0']][seed % 4];
-  rect(ctx, P.ink, 16, 15, 4, 33); rect(ctx, P.w4, 17, 15, 1, 33); rect(ctx, P.w2, 18, 15, 1, 33); rect(ctx, P.w1, 19, 15, 1, 33);      // the pole: lit, mid, shaded
-  for (const y of [22, 30, 38]) { rect(ctx, P.ink, 16, y, 4, 1); rect(ctx, P.w5, 17, y + 1, 1, 1); }                                   // its rings
-  rect(ctx, P.ink, 13, 45, 10, 3); rect(ctx, P.w3, 14, 45, 8, 1); rect(ctx, P.w1, 14, 47, 8, 1);                                      // the foot, with a mound of sand round it
-  const cx = 18.5, cy = 16.5, panels = 6;
-  for (let j = 0; j < 17; j++) for (let i = 0; i < 37; i++) {
-    const dx = (i - cx) / 18, dy = (j - cy + 0.5) / 15, d = dx * dx + dy * dy;
-    if (d > 1) continue;
-    const edge = d > 0.86 || j === 0, ang = Math.atan2(-dy, dx), panel = Math.min(panels - 1, Math.floor(((Math.PI - ang) / Math.PI) * panels)), cream = panel % 2 === 1;
-    let col = cream ? P.cream : pal[0];
-    if (i < 12) col = cream ? '#fffbe8' : pal[2];                                       // the lit side
-    else if (i > 24) col = cream ? P.cream3 : pal[1];                                   // the shaded side
-    if (d < 0.18 && j < 5) col = cream ? '#fffbe8' : pal[2];                            // a highlight near the top
-    dot(ctx, edge ? P.ink : col, i, j + 1);
+  const blue = seed % 4 === 1, main = blue ? '#3f78d0' : RED, lit = blue ? '#6ea4ec' : RED_LIT, dk = blue ? '#2a56a0' : RED_DK, tip = blue ? '#1d3f78' : RED_TIP;
+  // the pole: wood with rings, and the square base
+  rect(ctx, INK, 15, 20, 6, 24); rect(ctx, WOOD, 16, 20, 4, 24); rect(ctx, WOOD_LIT, 16, 20, 1, 24); rect(ctx, WOOD_DK, 19, 20, 1, 24);
+  for (const y of [25, 29, 33, 37, 41]) { rect(ctx, WOOD_DK, 16, y, 4, 1); rect(ctx, WOOD_LIT, 16, y + 1, 2, 1); }
+  rect(ctx, INK, 10, 43, 16, 5); rect(ctx, WOOD, 11, 44, 14, 3); rect(ctx, WOOD_LIT, 11, 44, 14, 1); rect(ctx, WOOD_DK, 11, 46, 14, 1);          // the base: lit top edge, dark front
+  rect(ctx, WOOD_DK, 13, 45, 1, 1); rect(ctx, WOOD_DK, 22, 45, 1, 1);                                                                           // its nails
+  // the canopy: eight panels, lit on the left, shaded on the right, a darker band along the hem
+  const cx = 17.5, cy = 20, rx = 17.5, ry = 16.5, hem = 20;
+  for (let j = 3; j <= hem; j++) for (let i = 0; i < 36; i++) {
+    const dx = (i + 0.5 - 18) / rx, dy = (cy - j - 0.5) / ry;
+    if (dy < 0 || dx * dx + dy * dy > 1) continue;
+    const edge = dx * dx + dy * dy > 0.88 || j === 3, ang = Math.atan2(dy * ry, dx * rx), k = Math.min(7, Math.floor(((Math.PI - ang) / Math.PI) * 8)), cream = k % 2 === 1;
+    let col = cream ? CREAM : main;
+    if (i < 12) col = cream ? CREAM_LIT : lit;
+    else if (i > 23) col = cream ? CREAM_DK : dk;
+    if (j >= hem - 3) col = cream ? CREAM_DK : dk;                                                                                              // the hem band is in shadow
+    if (j <= 6 && i > 10 && i < 22) col = cream ? CREAM_LIT : lit;                                                                              // the top catches the light
+    rect(ctx, edge ? INK : col, i, j, 1, 1);
   }
-  for (let k = 1; k < panels; k++) {                                                    // the seams: folds running from the finial down to the hem
-    const a = Math.PI - (k / panels) * Math.PI;
-    for (let r = 2; r < 17; r += 1) {
-      const x = Math.round(cx + Math.cos(a) * r * 1.12), y = Math.round(1 + (cy - 1) - Math.sin(a) * r * 0.9 + r * 0.05);
-      if (x >= 1 && x < 36 && y >= 2 && y < 17) dot(ctx, pal[1], x, y);
-    }
+  for (let i = 0; i < 36; i++) {                                                                                                                  // the scalloped hem with darker tips
+    const sIdx = Math.floor(i / 6), s = i % 6, depth = Math.round(2.6 * Math.sin((Math.PI * (s + 0.5)) / 6)), cream = sIdx % 2 === 0, body = cream ? CREAM_DK : dk, tp = cream ? CREAM_TIP : tip;
+    for (let d = 1; d <= depth; d++) rect(ctx, d === depth ? tp : body, i, hem + d, 1, 1);
+    rect(ctx, INK, i, hem + depth + 1, 1, 1);
+    if (s === 0 || s === 5) rect(ctx, INK, i, hem + 1, 1, Math.max(1, depth));
   }
-  for (let i = 1; i < 36; i += 6) {                                                     // the scalloped hem, each scallop with a dark underside
-    rect(ctx, P.ink, i, 18, 6, 1); rect(ctx, (i % 12 === 1 ? pal[0] : P.cream), i + 1, 18, 4, 1);
-    rect(ctx, P.ink2, i + 1, 19, 4, 1); dot(ctx, P.navy, i + 2, 20);                    // the shaded underside showing below the hem
-  }
-  rect(ctx, P.ink, 17, 0, 3, 2); dot(ctx, P.cream, 18, 0);                              // the finial
+  rect(ctx, INK, 16, 0, 4, 4); rect(ctx, WOOD, 17, 1, 2, 2); dot(ctx, WOOD_LIT, 17, 1);                                                          // the wooden finial
   return c;
 }
 
-/** A lounger (deck chair), 28 x 18: a wooden frame with grain, slats on the raised back, a striped cushion with a fold and a pillow. `seed` picks the colours. */
+/**
+ * A deck chair, 32 x 26, in the style of the reference: a slanted back of red and cream striped fabric between wooden rails, a striped sling seat, crossed wooden legs with bolts, a
+ * wooden crossbar at the front, a dark outline. It faces left (the back rises on the right) and the seat is centred on column 13. `seed` is unused (all are red and cream).
+ */
 export function lounger(seed = 0) {
-  const c = canvas(28, 18), ctx = c.getContext('2d');
-  const pal = [[P.red, P.cream, P.red2], ['#3f7ad0', P.cream, '#2a56a0'], ['#2fa87a', P.yellow2, '#1f7a58']][seed % 3];
-  rect(ctx, P.ink, 4, 14, 3, 4); rect(ctx, P.ink, 21, 14, 3, 4); rect(ctx, P.w3, 5, 14, 1, 3); rect(ctx, P.w1, 6, 15, 1, 2); rect(ctx, P.w3, 22, 14, 1, 3);      // the legs, lit on the left
-  rect(ctx, P.ink, 3, 10, 23, 5); rect(ctx, P.w4, 4, 11, 21, 3);                                                                      // the frame
-  rect(ctx, P.w2, 4, 14, 21, 1); rect(ctx, P.w5, 4, 11, 21, 1);
-  for (let i = 0; i < 21; i++) rect(ctx, i % 6 < 3 ? pal[0] : pal[1], 4 + i, 11, 1, 3);                                              // the cushion
-  for (let i = 4; i < 25; i += 6) { rect(ctx, pal[2], i, 13, 3, 1); }                                                                  // a fold shading each red stripe
-  rect(ctx, pal[2], 4, 13, 21, 1);
-  rect(ctx, P.ink, 3, 9, 23, 1);
-  for (let k = 0; k < 7; k++) {                                                                                                         // the raised back: a frame with slats
-    rect(ctx, P.ink, 2 + k, 9 - k, 8, 1); rect(ctx, P.ink, 2 + k, 9 - k, 1, 2); rect(ctx, k % 2 ? P.w3 : P.w4, 3 + k, 9 - k, 6, 1);
-    if (k % 2 === 0) dot(ctx, P.w1, 4 + k, 9 - k);                                                                                      // the grain
+  const c = canvas(32, 26), ctx = c.getContext('2d');
+  const thick = (x0, y0, x1, y1, col, w) => { const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)); for (let k = 0; k <= n; k++) { const x = Math.round(x0 + ((x1 - x0) * k) / n), y = Math.round(y0 + ((y1 - y0) * k) / n); rect(ctx, col, x, y, w, w); } };
+  const legs = [[4, 20, 1, 25], [19, 20, 27, 25], [27, 18, 20, 25]];                                 // the front leg and the crossed pair behind
+  for (const [x0, y0, x1, y1] of legs) thick(x0 - 1, y0 - 1, x1 - 1, y1 - 1, INK, 4);
+  for (const [x0, y0, x1, y1] of legs) { thick(x0, y0, x1, y1, WOOD, 2); thick(x0, y0, x1, y1, WOOD_LIT, 1); }
+  // the sling seat: stripes across, from the front crossbar to the back, sagging a little
+  for (let i = 4; i <= 20; i++) { const sag = Math.round(Math.sin(((i - 4) / 16) * Math.PI) * 1.5); rect(ctx, INK, i, 15 + sag, 1, 1); rect(ctx, ((i >> 1) % 2) ? CREAM : RED, i, 16 + sag, 1, 3); rect(ctx, ((i >> 1) % 2) ? CREAM_DK : RED_DK, i, 19 + sag, 1, 1); rect(ctx, INK, i, 20 + sag, 1, 1); }
+  // the back: striped fabric between two wooden rails, slanting up to the right
+  for (let t = 0; t <= 16; t++) {
+    const xr = 20 + Math.round((10 * t) / 16), y = 19 - t;
+    rect(ctx, INK, xr + 2, y, 1, 1); rect(ctx, WOOD, xr, y, 2, 1); rect(ctx, WOOD_LIT, xr, y, 1, 1);                       // the right rail
+    for (let k = 1; k <= 7; k++) rect(ctx, (k >> 1) % 2 ? CREAM : RED, xr - k, y, 1, 1);                                     // the fabric, stripes running along it
+    rect(ctx, RED_DK, xr - 7, y, 1, 1);
+    rect(ctx, WOOD, xr - 9, y, 2, 1); rect(ctx, WOOD_LIT, xr - 9, y, 1, 1); rect(ctx, INK, xr - 10, y, 1, 1);               // the left rail
+    if (t === 0 || t === 16) rect(ctx, INK, xr - 9, y + (t === 0 ? 1 : -1), 12, 1);                                           // the ends of the fabric
   }
-  rect(ctx, P.ink, 2, 3, 8, 1); rect(ctx, P.w5, 3, 3, 3, 1);
-  rect(ctx, P.ink, 5, 7, 6, 3); rect(ctx, P.cream, 6, 7, 4, 2); dot(ctx, P.cream2, 9, 8);                                              // a pillow at the head
+  rect(ctx, INK, 28, 2, 4, 3); rect(ctx, WOOD, 29, 3, 2, 1);                                                                // the head of the back
+  rect(ctx, INK, 1, 17, 6, 6); rect(ctx, WOOD, 2, 18, 4, 4); rect(ctx, WOOD_LIT, 2, 18, 4, 1); rect(ctx, WOOD_DK, 2, 21, 4, 1);   // the crossbar at the front, lit on top
+  for (const [x, y] of [[30, 3], [23, 22], [3, 19]]) rect(ctx, '#3a3a48', x, y, 2, 2);                                      // the bolts
+  return c;
+}
+
+/** A small wooden side table with a coconut drink (a striped straw and an orange slice), 14 x 16, as in the reference. */
+export function sideTable() {
+  const c = canvas(14, 16), ctx = c.getContext('2d');
+  for (const x of [2, 10]) { rect(ctx, INK, x, 10, 3, 6); rect(ctx, WOOD, x + 1, 10, 1, 5); rect(ctx, WOOD_LIT, x, 10, 1, 5); }              // the legs
+  rect(ctx, INK, 1, 8, 12, 4); rect(ctx, WOOD, 2, 8, 10, 3); rect(ctx, WOOD_LIT, 2, 8, 10, 1); rect(ctx, WOOD_DK, 2, 10, 10, 1);          // the top
+  rect(ctx, INK, 3, 3, 8, 6); rect(ctx, '#7a4a28', 4, 4, 6, 4); rect(ctx, '#9a6a3c', 4, 4, 2, 3); rect(ctx, P.cream, 4, 3, 6, 1);                 // the coconut: shell and white rim
+  rect(ctx, '#d8a868', 5, 3, 4, 1);
+  for (let k = 0; k < 6; k++) { rect(ctx, INK, 8 + (k >> 1), 6 - k - 1, 2, 1); rect(ctx, k % 2 ? P.cream : RED, 8 + (k >> 1), 5 - k, 1, 1); }  // the straw
+  rect(ctx, INK, 2, 1, 4, 4); rect(ctx, '#f0902e', 3, 2, 2, 2); dot(ctx, '#ffd060', 3, 2);                                                      // the orange slice on the rim
+  return c;
+}
+
+/** A small tuft of beach grass, 9 x 7. */
+export function tuft() {
+  const c = canvas(9, 7), ctx = c.getContext('2d');
+  for (const [x, h, col] of [[1, 4, P.g1], [3, 6, P.g2], [4, 7, P.g3], [5, 5, P.g2], [7, 4, P.g1]]) { rect(ctx, P.gOut, x, 7 - h - 1, 1, 1); rect(ctx, col, x, 7 - h, 1, h); }
+  rect(ctx, P.g0, 2, 6, 5, 1);
   return c;
 }
 
@@ -237,6 +270,9 @@ export const SCATTER = [
   { kind: 'castle', x: 29, y: 24, dx: 2, dy: 12 },
   { kind: 'bucket', x: 31, y: 23, dx: 4, dy: 12 },
   { kind: 'ball', x: 34, y: 28, dx: 8, dy: 11 },
+  { kind: 'table', x: 31, y: 6, dx: 1, dy: 15 }, { kind: 'table', x: 40, y: 13, dx: 1, dy: 15 }, { kind: 'table', x: 43, y: 25, dx: 1, dy: 15 },   // side tables with a drink beside some deck chairs
+  { kind: 'tuft', x: 31, y: 7, dx: 6, dy: 14 }, { kind: 'tuft', x: 43, y: 7, dx: 4, dy: 14 }, { kind: 'tuft', x: 35, y: 32, dx: 3, dy: 13 },
+  { kind: 'shell', x: 33, y: 7, dx: 6, dy: 6 }, { kind: 'shell', x: 43, y: 26, dx: 9, dy: 8 }, { kind: 'starfish', x: 42, y: 7, dx: 5, dy: 9 }, { kind: 'starfish', x: 35, y: 33, dx: 8, dy: 5 },
   ...[6, 13, 21, 26, 31].map((y) => ({ kind: 'weed', x: shallowFrom(y) + 4, y, dx: 0, dy: 0 })),         // on the wet sand at the waterline
   { kind: 'prints', x: 30, y: 17, dx: 0, dy: 0 }, { kind: 'prints', x: 28, y: 18, dx: 0, dy: 0 },
 ];

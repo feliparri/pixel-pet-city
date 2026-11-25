@@ -28,7 +28,7 @@ export function drawWave(ctx, cam, view, wave, n, now, shore, rows) {
   ctx.fillStyle = '#0c2f5e';                                                              // 1. the trough: clearly darker water ahead of the front (north-east of it), two tiles wide
   for (const i of links) {
     const s = body[i], t = body[i + 1], a0 = project(cam, s.x + 2, s.y - 2), a1 = project(cam, t.x + 2, t.y - 2), b0 = project(cam, s.x + 30, s.y - 30), b1 = project(cam, t.x + 30, t.y - 30);
-    if (!a0 || !a1 || !b0 || !b1) continue;
+    if (!a0 || !a1 || !b0 || !b1 || Math.min(s.a, t.a) < 0.35) continue;                    // (no thin ghost strips where the wave dies on the shallows)
     ctx.globalAlpha = 0.62 * Math.min(s.a, t.a) * dim;
     quad([[a0.x, a0.y], [a1.x, a1.y], [b1.x, b1.y], [b0.x, b0.y]]);
   }
@@ -66,7 +66,7 @@ export function drawWave(ctx, cam, view, wave, n, now, shore, rows) {
   ctx.fillStyle = '#eaf9fd';                                                              // 3. the foam sheet on the back slope and behind the broken part
   for (const i of links) {
     const s = body[i], t = body[i + 1];
-    if (!s.broken || !t.broken || !behind[i] || !behind[i + 1]) continue;
+    if (!s.broken || !t.broken || !behind[i] || !behind[i + 1] || Math.min(s.a, t.a) < 0.35) continue;
     const b0 = project(cam, s.x - 26, s.y + 26), b1 = project(cam, t.x - 26, t.y + 26);
     if (!b0 || !b1) continue;
     ctx.globalAlpha = 0.55 * Math.min(s.a, t.a) * dim;

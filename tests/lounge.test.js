@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isLounger, isRestSpot, restLift, lying, loungeAt, LOUNGER, TOWEL, LIE_LIFT } from '../src/lounge.js';
+import { isLounger, isRestSpot, restLift, lying, loungeAt, LOUNGER, TOWEL, LIE_LIFT, RECLINE_LIFT } from '../src/lounge.js';
+import { reclinePlace, breath, LEAN, SLOUCH } from '../src/art/recline.js';
+import { BOARD_HALF } from '../src/sea-draw.js';
 import { AREAS, TILES, isWalkable, isLand, tileAt } from '../src/map.js';
 import { Walker } from '../src/walker.js';
 import { findPath } from '../src/path.js';
@@ -27,7 +29,7 @@ test('towels are resting spots too: open sand, walkable, in the ground rule of a
   assert.ok(towels.length >= 4);
   assert.equal(TILES[TOWEL].solid, false);
   for (const [x, y] of towels) { assert.ok(isRestSpot(x, y) && !isLounger(x, y) && isLand(x, y, 'beach')); assert.equal(restLift(x, y), 0); }
-  for (const [x, y] of spots) { assert.ok(isRestSpot(x, y)); assert.equal(restLift(x, y), LIE_LIFT); }
+  for (const [x, y] of spots) { assert.ok(isRestSpot(x, y)); assert.equal(restLift(x, y), RECLINE_LIFT); }
   assert.equal(isRestSpot(46, 17), false);
 });
 
@@ -95,7 +97,7 @@ test('the tall palms and the big umbrellas: palms 1.6 to 2 times the old height 
   const [pw, ph] = size('palm'), [uw, uh] = size('umbrella');
   assert.ok(ph / 48 >= 1.6 && ph / 48 <= 2, `palm ${pw} x ${ph}`);
   assert.deepEqual([uw / 24, uh / 32], [1.5, 1.5]);
-  assert.deepEqual(size('lounger'), [28, 18]);
+  assert.deepEqual(size('lounger'), [32, 26]);
   const bake = readFileSync(new URL('../src/art/bake.js', import.meta.url), 'utf8');
   assert.ok(bake.includes(`y: y + 16 - ${ph}`) && bake.includes(`y: y + 16 - ${uh}`), 'the props stand on their tile with the new heights');
 });
@@ -107,4 +109,32 @@ test('a resting pet (on a lounger or a towel) is drawn as the board draws a slee
     assert.ok(src.includes('lieScale') && src.includes('zzzAt') && src.includes('restLift') && src.includes("lie ? 'blink'"), f);
     assert.equal(src.includes('rotate(flip'), false, 'no turned sprite any more');
   }
+});
+
+test('the sunbathing pose: the body leans back row by row and slouches, the feet stay put, and the breath is slow and small', () => {
+  const fy = 30;
+  assert.deepEqual(reclinePlace(fy, fy), { y: fy, dx: 0 }, 'the feet do not move');
+  let prevDx = 0, prevY = fy + 1;
+  for (let y = fy; y >= 0; y--) { const p = reclinePlace(y, fy); assert.ok(p.dx >= prevDx && p.y <= prevY, `row ${y}`); prevDx = p.dx; prevY = p.y; }
+  assert.equal(reclinePlace(0, fy).dx, Math.round(fy * LEAN));
+  assert.ok(reclinePlace(0, fy).y > 0 && reclinePlace(0, fy).y === Math.round(fy * (1 - SLOUCH)), 'shorter than standing');
+  assert.ok(LEAN > 0.3 && LEAN < 0.6);
+  for (let t = 0; t < 9000; t += 100) assert.ok(breath(t) >= 0.97 - 1e-9 && breath(t) <= 1 + 1e-9);
+  assert.equal(breath(0), 1);
+});
+
+test('a deck chair is a sunbathing spot, a towel keeps the sleeping pose; both renderers choose by the tile and the sunbathing has no Zzz', () => {
+  for (const f of ['../src/hd2d/pets.js', '../src/render.js']) {
+    const src = readFileSync(new URL(f, import.meta.url), 'utf8');
+    assert.ok(src.includes('reclineSprite') && src.includes('isLounger(e.walker.tx') && src.includes('lie && !rec'), f);
+  }
+  const rec = readFileSync(new URL('../src/art/recline.js', import.meta.url), 'utf8');
+  assert.equal(/zzz/i.test(rec.replace(/Zzz\)\./, '')) && rec.includes('zzzAt'), false);
+  assert.ok(rec.includes('look.items[0]'), 'a hat takes the place of the sunglasses');
+});
+
+test('the longboard is 1.6 to 2 times the old 26 px, in the water, in the icon and for the wipeout', () => {
+  assert.ok((BOARD_HALF * 2) / 26 >= 1.6 && (BOARD_HALF * 2) / 26 <= 2, `${BOARD_HALF * 2} px`);
+  const pets = readFileSync(new URL('../src/hd2d/pets.js', import.meta.url), 'utf8');
+  assert.ok(pets.includes('cx + 26 * s'), 'the floating board is further from the pet');
 });
