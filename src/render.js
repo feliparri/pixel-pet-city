@@ -19,6 +19,7 @@ import { drawChicken, CHICKEN_SIZE } from './art/chicken.js';
 import { ball as drawBall } from './art/places.js';
 import { drawHeld } from './art/treat.js';
 import { drawProp } from './art/crowd-props.js';
+import { drawFlare } from './art/flare.js';
 import { drawCrab, drawBird, drawButterfly, drawFirefly, drawDuck, drawRing, drawSpray } from './art/life.js';
 import { drawAnimal, plotTile, COW_SIZE, SHEEP_SIZE } from './art/farm.js';
 import { ghostFrames } from './art/halloween.js';
@@ -86,7 +87,7 @@ export const headFrame = (e, now, id) => {
  * opts: { area (name), cam {x, y}, entities [{ id, name, look, walker, emote?, jumpAt?, fx?, gone? }], me, now, amb {tint, night}, sprites, font, marker?, fade? }.
  * Returns the bubbles to draw at the final size: [{ x, y, e }] (an emote) or [{ x, y, text }] (a line) in view pixels. `talk`: [{ x, y, text }] lines in map px.
  */
-export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now, amb = NO_LIGHT, sprites, font, marker = null, fade = 0, chicken = null, dark = null, life = null, ball = null, talk = null, farm = null, seasons = null, gifts = null, ghosts = null, zoom = 1, petZoom = zoom, snow = null, weather = null, wave = null }) {
+export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now, amb = NO_LIGHT, sprites, font, marker = null, fade = 0, chicken = null, dark = null, life = null, ball = null, talk = null, farm = null, seasons = null, gifts = null, ghosts = null, zoom = 1, petZoom = zoom, snow = null, weather = null, wave = null, fire = null }) {
   const area = getArea(areaName), baked = bakeArea(area);
   sctx.setTransform(zoom, 0, 0, zoom, 0, 0);                                    // everything below is in game px; the pets are drawn in their own (smaller) px
   sctx.imageSmoothingEnabled = false;
@@ -149,7 +150,7 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
   for (const e of all) {
     const p = e.walker.pos();
     const k = e.walker.moving ? Math.min(1, e.walker.t / e.walker.stepMs()) : 0;
-    const ride = e.surf === 1, wiped = e.surf === 2, water = e.npc ? null : waterOf(areaName, e.walker) || (ride || wiped ? 'deep' : null), paddle = e.surf === 3 && !!water && !ride && !wiped, swim = water === 'deep' && !ride && !paddle, lie = !e.npc && !water && lying(areaName, e.walker, e.rest), rl = lie ? restLift(e.walker.tx, e.walker.ty, areaName) : 0, rec = lie && isLounger(e.walker.tx, e.walker.ty, areaName);      // swimming: the lower part is under the surface and the pet bobs; a surfer stands on its board
+    const ride = e.surf === 1, wiped = e.surf === 2, water = e.npc ? null : waterOf(areaName, e.walker) || (ride || wiped ? 'deep' : null), paddle = e.surf === 3 && !!water && !ride && !wiped, swim = water === 'deep' && !ride && !paddle, lie = !e.npc && !water && lying(areaName, e.walker, e.rest), sit = !!e.sit && !e.walker.moving && !water && !lie && !ride, rl = lie ? restLift(e.walker.tx, e.walker.ty, areaName) : 0, rec = lie && isLounger(e.walker.tx, e.walker.ty, areaName);      // swimming: the lower part is under the surface and the pet bobs; a surfer stands on its board
     const hop = e.walker.moving && !swim && !ride && !paddle ? Math.round(Math.abs(Math.sin(k * Math.PI)) * 3) : 0;
     const air = jumpLift(now, e.jumpAt);                                                                      // a jump (Space): the pet rises, its shadow stays
     const swell = !e.npc && wave && e.surf !== 1 && waterOf(areaName, e.walker) ? swellLift(wave, p.x, p.y, shallowFrom) * 0.4 : 0;      // a passing swell lifts what floats, a little (the flat view has no height)
@@ -172,13 +173,14 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
           else if (ride) { const R = poseSprite(e.sprites || sprites, e.look, 'surf'); small(px, by - lift, () => { drawBoard(sctx, 0, -1, 1, { squash: 0.5, night: amb.night, slope: 0.2 }); sctx.save(); sctx.transform(1, 0, -0.1, 1, 0, 0); sctx.drawImage(R.canvas, -R.ax, -R.h - 2); sctx.restore(); drawRideSpray(sctx, 0, -1, 1, { now, night: amb.night, slope: 0.2, squash: 0.5 }); }); }      // surfing: the pet's own head over the hand-drawn body on the tilted board
           else small(px, by - lift, () => {
             if (ride || paddle) { drawBoard(sctx, 0, -1, 1, { squash: 0.5, night: amb.night }); sctx.translate(0, -2); if (paddle) sctx.scale(1, 0.82); }
+            if (sit) { sctx.translate(0, 1); sctx.scale(1, 0.84); }
             if (lie) { const q = lieScale(now); sctx.translate(0, -rl); sctx.scale(q.sx, q.sy); }      // on a lounger: lying flat on the seat, as the board draws a sleeping pet
             if (swim) { const sub = wiped ? { sink: 9, cut: 12 } : SUBMERGE; sctx.beginPath(); sctx.rect(-CELL, -2 * CELL, 2 * CELL, 2 * CELL - sub.cut + 1 + sub.sink - 5); sctx.clip(); sctx.translate(0, sub.sink - 4 + Math.round(Math.sin(now / (wiped ? 110 : 320) + e.id.charCodeAt(0)) * (wiped ? 2 : 1))); }      // only what is above the water
             drawPet(sctx, e.sprites || sprites, e.look, -CELL / 2, -CELL + 2 - hop - air, { frame: lift > 0 ? 'happy' : lie ? 'blink' : headFrame(e, now, e.id), flip: e.walker.d === 'left', flap, now });
           });
         }
         if (e.treatView && !water && !lie && !ride && !wiped) small(px, by - lift - air, () => drawHeld(sctx, e.treatView.idx, e.treatView.eating, e.treatView.k, e.walker.d === 'left', now, CELL));      // a treat from the Kiosco in its hand
-        if (e.propView && !water && !lie && !ride && !wiped) small(px, by - lift - air, () => drawProp(sctx, e.propView, e.walker.d === 'left', now, CELL));      // what a pet of the crowd works with or plays with (src/crowd.js)
+        if (e.propView && !water && !lie && !ride && !wiped) small(px, by - lift - air - (sit ? 4 : 0), () => drawProp(sctx, e.propView, e.walker.d === 'left', now, CELL));      // what a pet of the crowd works with or plays with (src/crowd.js)
         if (lie && !rec) small(px, by - rl, () => { for (const z of zzzAt(now, CELL)) sctx.drawImage(zzzSprite(), 0, 0, 12, 14, z.x, z.y, 12 * z.k, 14 * z.k); });      // the two Zzz
         if (wiped) small(px, by, () => drawBoard(sctx, 26, 1, 1, { squash: 0.5, night: amb.night, tilt: Math.sin(now / 200) }));
         if (water) small(px, by - (swim ? 1 : 0), () => drawWake(sctx, 0, 0, 1, { depth: water, moving: ride || e.walker.moving, d: ride ? 'right' : e.walker.d, paddle, squash: 0.5, now, night: amb.night, seed: e.id.charCodeAt(0) }));
@@ -199,6 +201,7 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
     } });
   }
   if (ball && areaName === 'town') items.push({ sortY: ball.y * TILE + 3, order: 1, draw: () => drawBall(sctx, Math.round(ball.x * TILE - cam.x), Math.round(ball.y * TILE - cam.y)) });   // the football
+  if (fire && areaName === 'beach') items.push({ sortY: fire.y * TILE + TILE + 1, order: 1, draw: () => { sctx.save(); sctx.translate(Math.round(fire.x * TILE + TILE / 2 - cam.x), Math.round(fire.y * TILE + 14 - cam.y)); drawFlare(sctx, fire.k, now, amb.night); sctx.restore(); } });      // a stoked bonfire (src/bonfire.js)
   if (life) {                                                                  // birds, the duck and the farm animals stand in the scene, sorted with the pets
     for (const c of life.crabs || []) items.push({ sortY: c.y, order: 0, draw: () => drawCrab(sctx, Math.round(c.x - cam.x), Math.round(c.y - cam.y), c.frame, c.claws) });
     for (const b of life.birds) items.push({ sortY: b.y, order: 0, draw: () => drawBird(sctx, Math.round(b.x - cam.x), Math.round(b.y - cam.y), b.kind, b.frame, b.flip, b.air) });
@@ -358,7 +361,7 @@ export function createRenderer({ canvas, sprites, font, minH = MIN_VIEW_H, minW 
     const mp = state.me.walker.pos();
     const gameInset = { top: Math.ceil(inset.top * box.dpr / scale), bottom: Math.ceil(inset.bottom * box.dpr / scale) };      // css px -> game px
     cam = cameraFor(mp.x * TILE + TILE / 2, mp.y * TILE + TILE / 2, a.w * TILE, a.h * TILE, viewW, viewH, gameInset);
-    const bubbles = drawScene(ctx, { area: areaName, cam, vw: viewW, vh: viewH, entities: state.others, me: state.me, now, amb: state.amb, sprites, font, marker: state.marker, fade: state.fade || 0, chicken: state.chicken || null, dark: state.dark || null, life: state.life || null, ball: state.ball || null, talk: state.talk || null, farm: state.farm || null, seasons: state.seasons || null, gifts: state.gifts || null, ghosts: state.ghosts || null, snow: state.snow || null, weather: state.weather || null, wave: state.wave || null, zoom: scale, petZoom: petScale });
+    const bubbles = drawScene(ctx, { area: areaName, cam, vw: viewW, vh: viewH, entities: state.others, me: state.me, now, amb: state.amb, sprites, font, marker: state.marker, fade: state.fade || 0, chicken: state.chicken || null, dark: state.dark || null, life: state.life || null, ball: state.ball || null, talk: state.talk || null, farm: state.farm || null, seasons: state.seasons || null, gifts: state.gifts || null, ghosts: state.ghosts || null, snow: state.snow || null, weather: state.weather || null, wave: state.wave || null, fire: state.fire || null, zoom: scale, petZoom: petScale });
     ctx.setTransform(1, 0, 0, 1, 0, 0);                                         // the bubbles are drawn at the final size
     for (const b of bubbles) drawBubble(ctx, b, scale, canvas.width, scale);
   }

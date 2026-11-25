@@ -80,7 +80,8 @@ export const CUES = {
   sip: [note(W.TRI, 900, 520, 70, 80), note(W.NOISE, 3500, 1500, 90, 40), note(W.REST, 0, 0, 50, 0), note(W.TRI, 760, 420, 80, 70), note(W.NOISE, 3200, 1200, 80, 40)],   // a drink through a straw
   yum: [note(W.SQ25, 784, 784, 60, 120), note(W.SQ25, 988, 988, 60, 120), note(W.SQ25, 1319, 1319, 150, 120)],                                                                // the treat is finished: a happy little tune
 };
-const GAIN = { step: 0.08, jump: 0.5, land: 0.55, talk: 0.5, door: 0.6, confirm: 0.5, pick: 0.55, reward: 0.6, whoosh: 0.45, wipe: 0.5, splash: 0.4, munch: 0.5, sip: 0.5, yum: 0.55, ride: 0.18 };
+CUES.crackle = [note(W.NOISE, 3800, 1200, 50, 100), note(W.REST, 0, 0, 30, 0), note(W.NOISE, 3000, 900, 35, 90), note(W.REST, 0, 0, 20, 0), note(W.NOISE, 3600, 800, 60, 100), note(W.NOISE, 2400, 600, 90, 70)];      // the bonfire flares up: wood crackling
+const GAIN = { crackle: 0.55, step: 0.08, jump: 0.5, land: 0.55, talk: 0.5, door: 0.6, confirm: 0.5, pick: 0.55, reward: 0.6, whoosh: 0.45, wipe: 0.5, splash: 0.4, munch: 0.5, sip: 0.5, yum: 0.55, ride: 0.18 };
 export const HEAR_TILES = 9;                                     // another pet's steps are heard from this many tiles, fading to nothing
 export const peerGain = (dist) => (dist >= HEAR_TILES ? 0 : 0.05 * (1 - dist / HEAR_TILES) ** 2);
 
@@ -100,6 +101,8 @@ export function createPetSounds({ sound, rand = Math.random }) {
       lastPeer.set(who, now);
       return play(stepSamples(groundOf(area, x, y, wx), variant()), g * (0.85 + 0.3 * rand()));
     },
+    /** A soft cue another pet caused, heard from this many tiles away (a fire flaring is heard further than a step). */
+    peerCue(name, dist, range = 14) { const g = dist >= range ? 0 : 0.5 * (1 - dist / range) ** 2; return g > 0 && !!CUES[name] && play(cueSamples(name), g); },
     peerJump(dist) { const g = peerGain(dist); return g > 0 && play(cueSamples('jump'), g); },
     cue(name) { return !!CUES[name] && play(cueSamples(name), GAIN[name] ?? 0.5); },
     /** The ride's hiss (a looping bed that fades in and out with `on`); called every frame of a ride, with false when it is over. */

@@ -24,6 +24,8 @@ import { createLife, createFarmLife, createBeachLife, stepLife, lifeFrame, farmL
 import { inArea } from './presence.js';
 import { SLOTS } from './protocol.js';
 import { createCrowd } from './crowd.js';
+import { bonfireAt, seatFacing, sitCode, fromSit, roastAt, fireLevel, FIRE_MS, BURN_CHANCE } from './bonfire.js';
+import { BEACH as BEACH_MAP } from './map.js';
 import { createNpcs, showSpans, nearShopkeeper, shopGreeting, SHOPKEEPER, SHOP_SAY_MS, nearStore, clerkGreeting } from './npcs.js';
 import config from '../config.js';
 import { isConfigured } from './config-check.js';
@@ -71,7 +73,9 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   const self = { id: net.id, name: me.name, look: me.look, stats: me.stats || null, act: 'idle', walker: new Walker(sx, sy), emote: null, jumpAt: null, area: 'town' };
   const treat = createTreat();                                     // a treat from the Kiosco in the pet's hand (src/kiosk.js): this screen's state, the others see its code in the position
   let treatSeen = 0, eatCue = 0;                                    // the code last sent with the position, and the next bite's sound
-  function sendPos(x, y, d, area, surf = 0, rest = 0) { net.sendPos(x, y, d, area, surf, rest, treatSeen); }
+  function sendPos(x, y, d, area, surf = 0, rest = 0) { net.sendPos(x, y, d, area, surf, rest, treatSeen, sitSeen); }
+  const takenSeats = () => { const set = new Set(crowd.seats); for (const o of others.values()) { const sv = o.area === 'beach' && fromSit(o.sit); if (sv) set.add(sv.seat); } return set; };      // seats held by peers and by the crowd (never more than two of those)
+  let seat = -1, sitGo = null, roast = null, fireFrom = 0, fireUntil = 0, nextSitAct = 'roast', sitSeen = 0;      // the bonfire circle (src/bonfire.js): the seat the pet is on (-1 none), the seat it is walking to, the toast in progress, the stoked fire's window, what A does next
   let resting = false, restGo = null;                              // lying on a lounger or a towel (src/lounge.js): a choice (A at the spot), never automatic; restGo: the spot the pet is walking onto to lie there
   const surf = createSurf();                                       // surfing at the beach's break (src/surf.js): idle, riding a wave, or wiped out
   const hasBoard = () => tools().includes(BOARD), paddling = (x, y) => hasBoard() && !!waterAt(x, y, self.area);      // with the board, the pet is on it as soon as it is in the water
@@ -150,6 +154,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       const o = others.get(ev.id);
       if (!o) return;
       o.treat = ev.treat || 0;                                                                // a Kiosco treat in its hand (src/kiosk.js)
+      o.sit = ev.sit || 0;                                                                   // seated at the bonfire, 6 to 10 while toasting (src/bonfire.js)
       o.rest = ev.rest || 0;                                                                  // lying on a lounger or a towel (the pet chose to)
       o.surf = ev.surf || 0;                                                                  // riding (1) or wiped out (2): drawn with a board; a ride is walked at the wave's own pace
       o.walker.stepOverride = o.surf === 1 ? (waveAt(devNpcT === null ? events.serverNow() : devNpcT) || { rideMs: RIDE_MS }).rideMs : null;      // a ride is walked at the pace of the wave of the clock (a bigger one is quicker)
@@ -159,6 +164,9 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     } else if (ev.type === 'emote') {
       const o = others.get(ev.id);
       if (o) o.emote = { e: ev.e, until: performance.now() + EMOTE_MS };
+    } else if (ev.type === 'fire') {                                 // a pet stoked the bonfire: it burns high for a while for everyone on the beach
+      const o = others.get(ev.id), now = performance.now();
+      if (o && o.area === 'beach') { fireFrom = now; fireUntil = now + FIRE_MS; if (self.area === 'beach' && !suspended) pets.peerCue('crackle', Math.hypot(BEACH_MAP.bonfire.x - self.walker.tileX, BEACH_MAP.bonfire.y - self.walker.tileY)); }
     } else if (ev.type === 'jump') {
       const o = others.get(ev.id);
       if (o) { o.jumpAt = performance.now(); if (o.area === self.area && !suspended) pets.peerJump(Math.hypot(o.walker.tileX - self.walker.tileX, o.walker.tileY - self.walker.tileY)); }
@@ -211,7 +219,13 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       w.snap(sx, sy, 'down'); sendPos(sx, sy, 'down', 'town'); fadeT0 = t;
     }
     if (!w.busy) w.run = false;
-    if (held.length) restGo = null;                               // any move cancels walking onto a resting spot, and gets a lying pet up
+    if (held.length) { restGo = null; sitGo = null; }                // any move cancels walking onto a resting spot or a seat, and gets a lying pet up
+    if (seat >= 0 && (held.length || w.busy || self.fx || self.area !== 'beach')) { seat = -1; roast = null; sendRest(); }      // up from the bonfire
+    if (sitGo && !w.busy && !self.fx) {                            // arrived at the seat it was sent to: it sits, facing the fire
+      const [sx, sy] = sitGo.target;
+      if (w.tileX === sx && w.tileY === sy && self.area === 'beach' && !takenSeats().has(sitGo.seat)) { seat = sitGo.seat; w.face(seatFacing(seat)); sendRest(); }
+      sitGo = null;
+    }
     if (resting && (held.length || w.busy || self.fx || self.area !== 'beach')) standUp();
     if (restGo && !w.busy && !self.fx) {                           // arrived on the spot it was sent to: it lies down
       const [rx, ry] = restGo;
@@ -251,6 +265,10 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     if (code !== treatSeen) { treatSeen = code; sendRest(); }                               // the others see it with the position
     if (tp && tp.eating && !tp.done) { if (t >= eatCue) { pets.cue(TREATS[tp.idx].act === 'drink' ? 'sip' : 'munch'); eatCue = t + 760; } } else eatCue = 0;
     self.treatView = tp && !tp.done ? { idx: tp.idx, eating: tp.eating, k: tp.k } : null;
+    if (roast) { const r = roastAt(roast.since, t, net.id); if (r.done) { roast = null; pets.cue(r.burnt ? 'wipe' : 'yum'); selfSay = { text: r.burnt ? '¡Se quemó!' : '¡Qué rico!', until: t + 1800 }; if (!r.burnt) doEmote('smile'); } }
+    const sc = sitCode(seat, !!roast); if (sc !== sitSeen) { sitSeen = sc; sendRest(); }
+    self.sit = sitSeen;
+    self.propView = roast ? { kind: 'stick', tone: roastAt(roast.since, t, net.id).tone, t, k: 0 } : null;
     self.rest = resting;
     self.surf = surfFlag(surf, self.area === 'beach' && hasBoard() && !!waterOf(self.area, w));
     w.update(dt);
@@ -262,9 +280,10 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     if (t - ambAt > 2000) { ambAt = t; state.amb = ambientAt(hourNow(location.search)); }
     state.area = self.area;
     state.swim = zoomTarget(waterOf(self.area, w));
+    { const lv = performance.now(); state.fire = self.area === 'beach' && fireUntil > lv ? { x: BEACH_MAP.bonfire.x, y: BEACH_MAP.bonfire.y, k: fireLevel(fireFrom, fireUntil, lv) } : null; }
     state.wave = self.area === 'beach' ? waveAt(devNpcT === null ? events.serverNow() : devNpcT) : null;      // the wave of the clock, for the foam                 // the camera eases out while the pet is in the sea (src/sea.js)
     state.fade = 1 - (t - fadeT0) / FADE_MS;
-    for (const o of others.values()) { o.walker.update(dt); const tc = fromCode(o.treat); o.treatView = tc ? { idx: tc.idx, eating: tc.eating, k: (t / 2400) % 1 } : null; }      // another pet's treat, from its position's code (it eats it on its own clock)
+    for (const o of others.values()) { o.walker.update(dt); const tc = fromCode(o.treat); o.treatView = tc ? { idx: tc.idx, eating: tc.eating, k: (t / 2400) % 1 } : null; const sv = fromSit(o.sit); if (sv) { o.walker.d = o.walker.moving ? o.walker.d : seatFacing(sv.seat); o.propView = sv.roasting ? { kind: 'stick', tone: Math.floor((t / 1500) % 3) === 2 ? 1 : Math.floor((t / 1500) % 2), t, k: 0 } : null; } else if (o.propView) o.propView = null; }      // another pet's treat, from its position's code (it eats it on its own clock)
     state.others = inArea(others.values(), self.area).filter((o) => games.canSee(o.id));      // in a game: only the players, and their names, are drawn
     const vision = games.seekerVision();                         // the seeker sees only a circle of light, and not what hides in bushes
     state.dark = vision ? { full: vision.full, r: GAME_RULES.hide.lightRadius * 16 } : null;
@@ -324,6 +343,8 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     if (self.area === 'town' && !farmAction && !w.busy && !self.fx && !modal && !mv.closed) farmAction = pondAction(self.area, w.tileX, w.tileY, tools());      // beside the park's pond: A fishes (with the rod)
     if (self.area === 'beach' && !farmAction && !w.busy && !self.fx && !modal && !mv.closed && surf.mode === 'idle') farmAction = surfAction(utc, w.tileX, w.tileY, tools()) || loungeAt(w.tileX, w.tileY, 'beach', resting, (x, y) => crowd.taken(x, y));      // at the break: A catches the wave (with the board), or what is missing
     if (self.area === 'beach' && (!farmAction || farmAction.id === 'hint') && !w.busy && !self.fx && !modal && !mv.closed && surf.mode === 'idle') { const ka = kioskAt(w.tileX, w.tileY, 'beach'); if (ka) farmAction = ka; }      // in front of the Kiosco's counter: A opens its menu
+    if (self.area === 'beach' && seat >= 0 && !w.busy && !self.fx && !modal && !mv.closed) farmAction = { id: 'fire', label: nextSitAct === 'roast' ? 'Tostar malvavisco' : 'Avivar el fuego', target: 'bonfire' };      // seated: A toasts a marshmallow, then stokes the fire, then toasts again
+    else if (self.area === 'beach' && (!farmAction || farmAction.id === 'hint') && !w.busy && !self.fx && !modal && !mv.closed && surf.mode === 'idle') { const ba = bonfireAt(w.tileX, w.tileY, 'beach', takenSeats()); if (ba && (!farmAction || ba.id === 'sit')) farmAction = ba; }      // by the fire: "Sentarse", or "La fogata está llena"
     const talkTo = !w.busy && !self.fx && !modal && !mv.closed && !claiming && missions && missions.enabled() ? talkTarget() : null;
     nearTalkId = talkTo ? talkTo.id : null;
     const atStore = self.area === 'farm' && !w.busy && !self.fx && !modal && !mv.closed && nearStore(w.tileX, w.tileY);
@@ -516,6 +537,17 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     if (farmAction.id === 'store') { pets.cue('door'); onStore(); return true; }
     if (farmAction.id === 'kiosk') { pets.cue('door'); onKiosk(); return true; }
     if (farmAction.id === 'surf') { catchWave(); return true; }
+    if (farmAction.id === 'sit') {                                                             // walk onto the seat and sit there (src/bonfire.js)
+      const w = self.walker, [rx, ry] = farmAction.target;
+      if (w.tileX === rx && w.tileY === ry) { seat = farmAction.seat; w.face(seatFacing(seat)); sendRest(); } else { sitGo = { target: [rx, ry], seat: farmAction.seat }; w.setPath([[rx, ry]]); }
+      return true;
+    }
+    if (farmAction.id === 'fire') {
+      const t = performance.now();
+      if (nextSitAct === 'roast') { if (!roast) { roast = { since: t }; pets.cue('pick'); } nextSitAct = 'stoke'; }
+      else { fireFrom = t; fireUntil = t + FIRE_MS; net.sendFire(); pets.cue('crackle'); nextSitAct = 'roast'; }
+      return true;
+    }
     if (farmAction.id === 'lounge') {                                                          // lie down on the spot beside the pet, or on the one it stands on (src/lounge.js)
       const w = self.walker, [rx, ry] = farmAction.target;
       if (w.tileX === rx && w.tileY === ry) { resting = true; restGo = null; sendRest(); } else { restGo = [rx, ry]; w.setPath([[rx, ry]]); }

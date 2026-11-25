@@ -80,6 +80,7 @@ export function createPetPainter(sprites) {
     const lie = !e.npc && !water && lying(area, e.walker, e.rest);                                  // it chose to lie down (A at a lounger or a towel) and stands still there: lying flat
     const rl = lie ? restLift(e.walker.tx, e.walker.ty, area) : 0;                                    // a lounger's seat is above the ground, a towel is not
     const rec = lie && isLounger(e.walker.tx, e.walker.ty, area);                                    // on a deck chair: sunbathing (reclining), not sleeping
+    const sit = !!e.sit && !e.walker.moving && !water && !lie && !ride;                              // seated at the bonfire (src/bonfire.js): the standing art, a little shorter and lower, facing the fire
     const hop = e.walker.moving && !swim && !ride && !paddle ? Math.round(Math.abs(Math.sin(k * Math.PI)) * 3) : 0;
     const bob = wiped ? Math.round(Math.sin(now / 110 + e.id.charCodeAt(0)) * 2) : swim ? Math.round(Math.sin(now / 320 + e.id.charCodeAt(0))) : 0;
     const dip = wiped ? { sink: 9, cut: 12 } : SUBMERGE, stand = ride ? RIDE_LIFT : 0;
@@ -121,10 +122,11 @@ export function createPetPainter(sprites) {
             c.drawImage(g, 0, 0, R.w, R.h, cx - R.ax * s + sway * s, cy - (rl + R.ay * b) * s, R.w * s, R.h * b * s);
           }
           else if (lie) { const q = lieScale(now); c.drawImage(src, 0, 0, L.w, L.h, cx - L.feetX * s * q.sx + sway * s, cy - (rl + L.feetY * q.sy) * s, L.w * s * q.sx, L.h * s * q.sy); }      // lying flat on the seat, as the board draws a sleeping pet (squashed, eyes shut)
+          else if (sit) c.drawImage(src, 0, 0, L.w, L.h, cx - L.feetX * s + sway * s, cy - (L.feetY * 0.84 - 1) * s, L.w * s, L.h * 0.84 * s);
           else c.drawImage(src, 0, 0, L.w, L.h, cx - L.feetX * s + sway * s, cy - (L.feetY + air + lift + stand) * s, L.w * s, L.h * s);
         }
         if (e.treatView && !water && !lie && !ride && !wiped) { c.save(); c.translate(cx + sway * s, cy - (air + lift) * s); c.scale(s, s); drawHeld(c, e.treatView.idx, e.treatView.eating, e.treatView.k, e.walker.d === 'left', now, CELL); c.restore(); }      // a treat from the Kiosco in its hand
-        if (e.propView && !water && !lie && !ride && !wiped) { c.save(); c.translate(cx + sway * s, cy - (air + lift) * s); c.scale(s, s); drawProp(c, e.propView, e.walker.d === 'left', now, CELL); c.restore(); }      // what a pet of the crowd works with or plays with (src/crowd.js)
+        if (e.propView && !water && !lie && !ride && !wiped) { c.save(); c.translate(cx + sway * s, cy - (air + lift + (sit ? 4 : 0)) * s); c.scale(s, s); drawProp(c, e.propView, e.walker.d === 'left', now, CELL); c.restore(); }      // what a pet of the crowd works with or plays with (src/crowd.js)
         if (wiped) { drawBoard(c, cx + 26 * s, cy + s, s, { squash: Math.max(0.3, cam.sin) * 0.6, night: n, tilt: Math.sin(now / 200) }); drawWake(c, cx, cy - s, s * 1.3, { depth: 'deep', moving: false, d: 'down', squash: Math.max(0.3, cam.sin) * 0.6, now: now * 2, night: n, seed: 3 }); }
         if (water) drawWake(c, cx, cy - (ride ? RIDE_LIFT * 0.85 : swim ? 1 : 0) * s, s, { depth: water, moving: ride || e.walker.moving, d: ride ? 'right' : e.walker.d, paddle, squash: Math.max(0.3, cam.sin) * 0.6, now, night: n, seed: e.id.charCodeAt(0) });      // rings and foam on the water instead of the ground shadow
         if (lie && !rec) for (const z of zzzAt(now, CELL)) c.drawImage(zzzSprite(), 0, 0, 12, 14, Math.round(cx + z.x * s), Math.round(cy + (z.y - rl) * s), Math.round(12 * z.k * s), Math.round(14 * z.k * s));      // the two Zzz drifting up from its head

@@ -11,11 +11,14 @@ import { hashSeed, mulberry32 } from './life.js';
 import { isLand, isWalkable, waterAt, doorAt } from './map.js';
 import { WAVE, SIZES, waveSize, rideDecide } from './surf.js';
 import { isRestSpot } from './lounge.js';
-import { farmTile } from './npc-world.js';
+import { farmTile, townHour } from './npc-world.js';
+import { SEATS, MAX_NPC_SEATS, seatFacing, sitCode } from './bonfire.js';
 import { createVariants } from './npcs.js';
 import { PROP_MS } from './art/crowd-props.js';
 
 export const BOUNDS = { beach: 10, farm: 8 };       // the most a phone is asked to draw of the crowd in one area
+/** Is it evening in the town (21:00 to 02:00 Chile time)? Two of the crowd then sit at the bonfire. */
+export const eveningAt = (utc) => { const h = townHour(utc); return h >= 21 || h < 2; };
 export const WIPE_MS = 1500;                        // a surfer's wipeout lasts as long as the player's (src/surf.js)
 const SWIM_MS = 440, PADDLE_MS = 330, STROLL_MS = 420, WORK_MS = 430;      // a step of each kind of mover
 const RALLY_MS = 3600;                              // a volleyball rally: the ball goes over the net and back
@@ -158,10 +161,10 @@ export const BEACH_CAST = [
   { id: 'rulo', name: 'Rulo', role: 'sun', look: look('seal', 2, ['beanie', '', '', '']), spot: [46, 29] },
   { id: 'tula', name: 'Tula', role: 'sun', look: look('frog', 1, ['', 'sunglasses', '', '']), spot: [54, 29] },
   { id: 'nano', name: 'Nano', role: 'swim', look: look('bear', 2, ['', '', '', '']), variant: V('nano', 30, 1.2), zone: { x: [16, 30], y: [13, 24] } },
-  { id: 'coco', name: 'Coco', role: 'swim', look: look('raccoon', 1, ['', 'sunglasses', '', '']), variant: V('coco', 200), zone: { x: [16, 30], y: [35, 41] } },
+  { id: 'coco', name: 'Coco', role: 'swim', look: look('raccoon', 1, ['', 'sunglasses', '', '']), night: 2, variant: V('coco', 200), zone: { x: [16, 30], y: [35, 41] } },
   { id: 'pipa', name: 'Pipa', role: 'surf', look: look('frog', 2, ['beanie', '', '', '']), spot: [9, 12], phase: 0 },
   { id: 'duna', name: 'Duna', role: 'surf', look: look('cat', 3, ['', '', '', '']), spot: [10, 26], phase: 1 },
-  { id: 'paco', name: 'Paco', role: 'stroll', look: look('elephant', 2, ['', 'sunglasses', '', '']), variant: V('paco', -50), points: [[50, 22], [52, 26], [55, 32], [50, 34]] },
+  { id: 'paco', name: 'Paco', role: 'stroll', look: look('elephant', 2, ['', 'sunglasses', '', '']), night: 0, variant: V('paco', -50), points: [[50, 22], [52, 26], [55, 32], [50, 34]] },
   { id: 'lalo', name: 'Lalo', role: 'volley', look: look('bear', 1, ['', '', '', '']), variant: V('lalo', 120), spot: [55, 10], d: 'down', side: 'a' },
   { id: 'zoe', name: 'Zoe', role: 'volley', look: look('raccoon', 2, ['', '', '', 'cape']), variant: V('zoe', -20), spot: [55, 12], d: 'up', side: 'b' },
 ];
@@ -178,6 +181,7 @@ export const FARM_CAST = [
   { id: 'gus', name: 'Gus', role: 'work', look: look('bear', 2, ['beanie', '', '', '']), variant: V('gus', 20, 1.2), act: 'harvest', prop: 'sickle', ms: 14000, spots: [[36, 23, 'up'], [33, 23, 'up']] },
 ];
 export const CAST = { beach: BEACH_CAST, farm: FARM_CAST };
+const SEAT_OF = { paco: 0, coco: 3 };                        // the crowd's two evening seats at the bonfire (the others are for players)
 
 const PLANS = { sun: sunPlan, swim: swimPlan, stroll: strollPlan, volley: volleyPlan, work: workPlan, carry: carryPlan };
 const plans = new Map();
@@ -245,6 +249,10 @@ export function surfPose(m, utc) {
 
 /** What member `m` is doing at UTC time `utc`: { x0, y0, x, y, k, moving, d, stepMs, surf, rest, holds, prop: { kind, k, ... }, treat, jumpPhase }; all pure. */
 export function poseOf(m, utc) {
+  if (m.night !== undefined && eveningAt(utc)) {                 // in the evening: on a seat of the bonfire circle (at most MAX_NPC_SEATS of the crowd), toasting now and then
+    const [x, y] = SEATS[SEAT_OF[m.id]], roasting = Math.floor(utc / 6000 + m.night) % 2 === 0;
+    return { x0: x, y0: y, x, y, k: 0, moving: false, d: seatFacing(SEAT_OF[m.id]), stepMs: 400, surf: 0, rest: 0, holds: null, prop: roasting ? { kind: 'stick', tone: Math.floor(utc / 2500) % 2, t: utc, k: 0 } : null, treat: null, jumpPhase: null, sit: sitCode(SEAT_OF[m.id], roasting) };
+  }
   if (m.role === 'surf') { const p = surfPose(m, utc); return { ...p, rest: 0, holds: null, prop: null, treat: null, jumpPhase: null }; }
   const pl = planOf(m), off = m.role === 'volley' ? 0 : Math.floor(seeded(`${m.id}:off`)() * pl.period), p = planPose(pl, utc + off), s = p.seg;
   let prop = null;
@@ -266,7 +274,7 @@ export function poseOf(m, utc) {
 /** The beach's and the farm's crowd: `update(area, utcMs, now)` places the members of that area and returns entities as render.js and hd2d/pets.js draw them (the same objects every call). */
 export function createCrowd({ sprites, variants = createVariants() }) {
   const made = new Map();                                                                     // area -> [{ m, e }], built the first time the area is visited (the variants' recolour is lazy too)
-  let held = new Set();
+  let held = new Set(), seats = new Set();
   const build = (area) => {
     const list = CAST[area].map((m) => {
       const ok = m.look.items.every((it) => !it || (sprites.catalogue && sprites.catalogue[it]));
@@ -280,19 +288,22 @@ export function createCrowd({ sprites, variants = createVariants() }) {
   return {
     /** The spots held right now by the beach's members (lying, or on their way back to lie), as a Set of "x,y". */
     get held() { return held; },
+    /** The bonfire seats (indices of SEATS) the crowd holds right now. */
+    get seats() { return seats; },
     /** Is the lounger or towel at (x, y) taken by a member of the crowd right now? */
     taken: (x, y) => held.has(`${x},${y}`),
     update(area, utc, now) {
       if (!CAST[area]) return [];
-      const list = made.get(area) || build(area), nowHeld = new Set();
+      const list = made.get(area) || build(area), nowHeld = new Set(), nowSeats = new Set();
       for (const { m, e } of list) {
         const p = poseOf(m, utc), w = e.walker;
         w.fx = p.x0; w.fy = p.y0; w.tx = p.x; w.ty = p.y; w.moving = p.moving; w.stepOverride = p.stepMs; w.t = p.k * p.stepMs; w.d = p.d;
-        e.surf = p.surf || 0; e.rest = p.rest; e.treatView = p.treat; e.propView = p.prop;
+        e.surf = p.surf || 0; e.rest = p.rest; e.sit = p.sit || 0; e.treatView = p.treat; e.propView = p.prop;
         e.jumpAt = p.jumpPhase !== null && p.jumpPhase >= 0 && p.jumpPhase < 400 ? now - p.jumpPhase : null;
         if (p.holds) nowHeld.add(`${p.holds[0]},${p.holds[1]}`);
+        if (p.sit) nowSeats.add((p.sit - 1) % SEATS.length);
       }
-      if (area === 'beach') held = nowHeld;
+      if (area === 'beach') { held = nowHeld; seats = nowSeats; }
       return list.map(({ e }) => e);
     },
   };

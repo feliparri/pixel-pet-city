@@ -6,7 +6,7 @@ import { drawWave } from './wave.js';
 import { createRenderer, drawBubble, MIN_VIEW_H, VIEW_H } from '../render.js';
 import { drawText, textWidth, textCanvas } from '../font.js';
 import { badge, bobY, BADGE } from '../art/icons.js';
-import { cameraFor, PHONE_OUT, followFocus, followMargin, snapFocus, sortBackToFront, screenToTile, standAt, project, groundRow } from './camera.js';
+import { cameraFor, PHONE_OUT, followFocus, followMargin, snapFocus, sortBackToFront, screenToTile, standAt, project, groundRow, petScaleOf } from './camera.js';
 import { groundMult, approach } from './light.js';
 import { buildWorld, bakeGround, visibleWater, drawGround, standingItems, drawGlows, fountainItem, paintFarm, decorItems, drawDecorGlows, drawGhosts } from './scene.js';
 import { createFx } from './fx.js';
@@ -16,6 +16,7 @@ import { createGlLayer } from './gl.js';
 import { createGovernor, encodeLevel, decodeLevel } from './quality.js';
 import { createPetPainter } from './pets.js';
 import { createThings } from './things.js';
+import { drawFlare } from '../art/flare.js';
 import { SHOWS, RISE, FALL, tiltAt, showCamera, horizonY } from '../show/timeline.js';
 import { makeStars, drawSky, pixelUnit, LAND } from '../show/sky.js';
 import { drawChristmas } from '../show/draw-christmas.js';
@@ -174,6 +175,10 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
     if (gifts) items.push(...decorItems(world, cam, n, view, gifts));
     const ent = { cam, n, now, world, me: state.me, view, area: areaName, wave: state.wave || null, wash: flashes.length ? (wx) => burstTint(flashes, wx) : null };
     items.push(...things.items(state, ent, now));
+    if (state.fire && areaName === 'beach') {                               // a stoked bonfire (src/bonfire.js): taller flames, sparks and a stronger glow over the baked ring
+      const wx = state.fire.x * TILE + TILE / 2, wy = state.fire.y * TILE + 14, g = project(cam, wx, wy);
+      if (g) { const sc = petScaleOf(cam), fx = Math.round(g.x), fy = Math.round(g.y); items.push({ depth: g.depth, order: 1, draw: (c) => { c.save(); c.translate(fx, fy); c.scale(sc, sc); drawFlare(c, state.fire.k, now, n); c.restore(); } }); }
+    }
     for (const e of [state.me, ...state.others]) { const it = painter.item(e, ent); if (it) items.push(it); }
     const ov = { labels: [], bubbles: [], hits: [] };
     if (!skip.has('cosas')) {

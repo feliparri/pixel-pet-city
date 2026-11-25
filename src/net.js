@@ -28,16 +28,16 @@ export function createNet({ wire, catalogue, onEvent = () => {}, now = () => Dat
   const peers = new Map();                 // id -> { name, look, x, y, d, seen }
   let limiter = createRateLimiter(now);
   let conn = null, code = null, hello = null, heartbeat = null, posTimer = null;
-  let lastPos = null, sentPos = null, sentAt = -Infinity, lastEmoteAt = -Infinity, lastJumpAt = -Infinity;
+  let lastPos = null, sentPos = null, sentAt = -Infinity, lastEmoteAt = -Infinity, lastJumpAt = -Infinity, lastFireAt = -Infinity;
   let lastHelloReply = -Infinity;
   let opening = false, early = [];           // messages that arrive while the wire is still opening wait for it (the replies need it)
 
   const send = (msg) => { if (conn) conn.send(msg); };
-  const posFields = (p) => ({ x: p.x, y: p.y, d: p.d, area: p.area, ...(p.surf ? { surf: p.surf } : {}), ...(p.rest ? { rest: 1 } : {}), ...(p.treat ? { treat: p.treat } : {}) });
+  const posFields = (p) => ({ x: p.x, y: p.y, d: p.d, area: p.area, ...(p.surf ? { surf: p.surf } : {}), ...(p.rest ? { rest: 1 } : {}), ...(p.treat ? { treat: p.treat } : {}), ...(p.sit ? { sit: p.sit } : {}) });
 
   function flushPos() {
     posTimer = null;
-    if (!lastPos || (sentPos && sentPos.x === lastPos.x && sentPos.y === lastPos.y && sentPos.d === lastPos.d && sentPos.area === lastPos.area && (sentPos.surf || 0) === (lastPos.surf || 0) && (sentPos.rest || 0) === (lastPos.rest || 0) && (sentPos.treat || 0) === (lastPos.treat || 0))) return;
+    if (!lastPos || (sentPos && sentPos.x === lastPos.x && sentPos.y === lastPos.y && sentPos.d === lastPos.d && sentPos.area === lastPos.area && (sentPos.surf || 0) === (lastPos.surf || 0) && (sentPos.rest || 0) === (lastPos.rest || 0) && (sentPos.treat || 0) === (lastPos.treat || 0) && (sentPos.sit || 0) === (lastPos.sit || 0))) return;
     sentPos = { ...lastPos };
     sentAt = now();
     send({ t: 'pos', id, ...sentPos });
@@ -58,12 +58,12 @@ export function createNet({ wire, catalogue, onEvent = () => {}, now = () => Dat
         peers.set(m.id, p);
       }
       p.name = m.name; p.look = m.look; p.stats = m.stats; p.act = m.act; p.seen = t;
-      if (m.pos) { p.x = m.pos.x; p.y = m.pos.y; p.d = m.pos.d; p.area = m.pos.area; p.surf = m.pos.surf || 0; p.rest = m.pos.rest || 0; p.treat = m.pos.treat || 0; }        // a heartbeat carries the position: it reinstates a dropped peer where it is
+      if (m.pos) { p.x = m.pos.x; p.y = m.pos.y; p.d = m.pos.d; p.area = m.pos.area; p.surf = m.pos.surf || 0; p.rest = m.pos.rest || 0; p.treat = m.pos.treat || 0; p.sit = m.pos.sit || 0; }        // a heartbeat carries the position: it reinstates a dropped peer where it is
       if (fresh) {
         onEvent({ type: 'join', peer: { id: m.id, ...p } });
         if (t - lastHelloReply > 500) { lastHelloReply = t; send(hello); }     // tell the newcomer who is here ...
         if (sentPos) send({ t: 'pos', id, ...sentPos });                        // ... and where
-      } else if (m.pos) onEvent({ type: 'pos', id: m.id, surf: 0, rest: 0, treat: 0, ...m.pos });
+      } else if (m.pos) onEvent({ type: 'pos', id: m.id, surf: 0, rest: 0, treat: 0, sit: 0, ...m.pos });
       return;
     }
     const p = peers.get(m.id);
@@ -73,8 +73,9 @@ export function createNet({ wire, catalogue, onEvent = () => {}, now = () => Dat
     }
     p.seen = t;
     if (m.t === 'bye') { dropPeer(m.id); return; }
-    if (m.t === 'pos') { p.x = m.x; p.y = m.y; p.d = m.d; p.area = m.area; p.surf = m.surf || 0; p.rest = m.rest || 0; p.treat = m.treat || 0; onEvent({ type: 'pos', id: m.id, x: m.x, y: m.y, d: m.d, area: m.area, surf: m.surf || 0, rest: m.rest || 0, treat: m.treat || 0 }); } else if (m.t === 'emote') onEvent({ type: 'emote', id: m.id, e: m.e });
+    if (m.t === 'pos') { p.x = m.x; p.y = m.y; p.d = m.d; p.area = m.area; p.surf = m.surf || 0; p.rest = m.rest || 0; p.treat = m.treat || 0; p.sit = m.sit || 0; onEvent({ type: 'pos', id: m.id, x: m.x, y: m.y, d: m.d, area: m.area, surf: m.surf || 0, rest: m.rest || 0, treat: m.treat || 0, sit: m.sit || 0 }); } else if (m.t === 'emote') onEvent({ type: 'emote', id: m.id, e: m.e });
     else if (m.t === 'jump') onEvent({ type: 'jump', id: m.id });
+    else if (m.t === 'fire') onEvent({ type: 'fire', id: m.id });
     else if (GAME_TYPES.has(m.t)) onEvent({ type: 'game', m });
   }
 
@@ -125,8 +126,8 @@ export function createNet({ wire, catalogue, onEvent = () => {}, now = () => Dat
     setActivity(a) { if (hello && ACTIVITIES.includes(a)) hello.a = a; },
 
     /** The tile this pet is walking to, in `area`. Sent at most every POS_INTERVAL_MS and only when it changed. */
-    sendPos(x, y, d, area = 'town', surf = 0, rest = 0, treat = 0) {
-      lastPos = { x, y, d, area, ...(surf ? { surf } : {}), ...(rest ? { rest: 1 } : {}), ...(treat ? { treat } : {}) };
+    sendPos(x, y, d, area = 'town', surf = 0, rest = 0, treat = 0, sit = 0) {
+      lastPos = { x, y, d, area, ...(surf ? { surf } : {}), ...(rest ? { rest: 1 } : {}), ...(treat ? { treat } : {}), ...(sit ? { sit } : {}) };
       if (!conn) return;
       const wait = sentAt + POS_INTERVAL_MS - now();
       if (wait <= 0) { if (posTimer) { timers.clearTimeout(posTimer); } flushPos(); } else if (!posTimer) posTimer = timers.setTimeout(flushPos, wait);
@@ -144,6 +145,14 @@ export function createNet({ wire, catalogue, onEvent = () => {}, now = () => Dat
       if (!conn || now() - lastJumpAt < JUMP_MS) return false;
       lastJumpAt = now();
       send({ t: 'jump', id });
+      return true;
+    },
+
+    /** This pet stoked the bonfire (src/bonfire.js). Returns false when it cannot be sent. */
+    sendFire() {
+      if (!conn || now() - lastFireAt < 1000) return false;
+      lastFireAt = now();
+      send({ t: 'fire', id });
       return true;
     },
 

@@ -3,7 +3,7 @@
 // the same call. `p` is { kind, k }: `k` (0..1) is how far through the prop's own loop it is (a swing, a pour, a toss), so the motion is a pure function of the clock.
 
 /** How long one loop of each prop's motion lasts, ms: the crowd turns the clock into `k` with these (a prop that does not move has 1). */
-export const PROP_MS = { hoe: 1500, sickle: 1300, can: 2600, crate: 1, hay: 1, sack: 2200, basket: 3200, ball: 1 };
+export const PROP_MS = { stick: 1, hoe: 1500, sickle: 1300, can: 2600, crate: 1, hay: 1, sack: 2200, basket: 3200, ball: 1 };
 export const PROP_KINDS = Object.keys(PROP_MS);
 
 const smooth = (x) => { const c = Math.min(1, Math.max(0, x)); return c * c * (3 - 2 * c); };
@@ -58,6 +58,14 @@ export function drawProp(ctx, p, flip, now, cell = 32) {
       ctx.translate(dir * 8, -cell * 0.36);
       rect(ctx, '#8b6a3a', -3, -3, 7, 9); rect(ctx, '#c8a468', -2, -2, 5, 7); rect(ctx, '#8b6a3a', -2, -4, 3, 1);
       if (k < 0.5) { const f = k / 0.5; for (let i = 0; i < 5; i++) { const g = Math.min(1, f + i * 0.04); dot(ctx, i % 2 ? '#f1d98a' : '#e8c458', dir * (5 + g * (7 + i * 3)), -3 + g * (6 + i) - Math.sin(g * Math.PI) * 4); } }
+      break;
+    }
+    case 'stick': {                                                                             // a toasting stick held out to the fire with a marshmallow on the end: white, then golden, then (now and then) black. `tone` 0..2, `k` through the toast
+      ctx.translate(dir * 9, -cell * 0.38);
+      const bob = Math.sin((p.t || 0) / 160) * 0.6;
+      rect(ctx, '#8a5a2b', dir > 0 ? 0 : -14, -1 + bob, 14, 1);
+      const col = ['#fbf6ec', '#e8b84a', '#2a2420'][p.tone || 0];
+      rect(ctx, col, dir * 14 - (dir < 0 ? 4 : 0) - 1, -3 + bob, 4, 4); rect(ctx, (p.tone || 0) === 0 ? '#ffffff' : (p.tone === 1 ? '#f4d36a' : '#4a403a'), dir * 14 - (dir < 0 ? 4 : 0), -3 + bob, 2, 1);
       break;
     }
     case 'basket': {                                                                            // a wicker basket at the hip; a fruit drops into it from above on every pick
