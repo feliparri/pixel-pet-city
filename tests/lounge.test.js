@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { isLounger, isRestSpot, restLift, lying, loungeAt, LOUNGER, TOWEL, LIE_LIFT, RECLINE_LIFT } from '../src/lounge.js';
-import { reclinePlace, breath, LEAN, SLOUCH } from '../src/art/recline.js';
 import { BOARD_HALF } from '../src/sea-draw.js';
 import { AREAS, TILES, isWalkable, isLand, tileAt } from '../src/map.js';
 import { Walker } from '../src/walker.js';
@@ -111,26 +110,12 @@ test('a resting pet (on a lounger or a towel) is drawn as the board draws a slee
   }
 });
 
-test('the sunbathing pose: the body leans back row by row and slouches, the feet stay put, and the breath is slow and small', () => {
-  const fy = 30;
-  assert.deepEqual(reclinePlace(fy, fy), { y: fy, dx: 0 }, 'the feet do not move');
-  let prevDx = 0, prevY = fy + 1;
-  for (let y = fy; y >= 0; y--) { const p = reclinePlace(y, fy); assert.ok(p.dx >= prevDx && p.y <= prevY, `row ${y}`); prevDx = p.dx; prevY = p.y; }
-  assert.equal(reclinePlace(0, fy).dx, Math.round(fy * LEAN));
-  assert.ok(reclinePlace(0, fy).y > 0 && reclinePlace(0, fy).y === Math.round(fy * (1 - SLOUCH)), 'shorter than standing');
-  assert.ok(LEAN > 0.3 && LEAN < 0.6);
-  for (let t = 0; t < 9000; t += 100) assert.ok(breath(t) >= 0.97 - 1e-9 && breath(t) <= 1 + 1e-9);
-  assert.equal(breath(0), 1);
-});
-
 test('a deck chair is a sunbathing spot, a towel keeps the sleeping pose; both renderers choose by the tile and the sunbathing has no Zzz', () => {
   for (const f of ['../src/hd2d/pets.js', '../src/render.js']) {
     const src = readFileSync(new URL(f, import.meta.url), 'utf8');
-    assert.ok(src.includes('reclineSprite') && src.includes('isLounger(e.walker.tx') && src.includes('lie && !rec'), f);
+    assert.ok(src.includes("poseSprite(e.sprites || sprites, e.look, 'recline')") && src.includes('isLounger(e.walker.tx') && src.includes('lie && !rec'), f);
+    assert.ok(src.includes("poseSprite(e.sprites || sprites, e.look, 'surf')"), `${f} draws the surf stance while riding`);
   }
-  const rec = readFileSync(new URL('../src/art/recline.js', import.meta.url), 'utf8');
-  assert.equal(/zzz/i.test(rec.replace(/Zzz\)\./, '')) && rec.includes('zzzAt'), false);
-  assert.ok(rec.includes('look.items[0]'), 'a hat takes the place of the sunglasses');
 });
 
 test('the longboard is 1.6 to 2 times the old 26 px, in the water, in the icon and for the wipeout', () => {

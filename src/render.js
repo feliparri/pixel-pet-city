@@ -28,7 +28,7 @@ import { waterOf, SUBMERGE } from './sea.js';
 import { waveStrokes, waveBody } from './surf.js';
 import { drawWake, drawBoard } from './sea-draw.js';
 import { lying, restLift, isLounger } from './lounge.js';
-import { reclineSprite, breath } from './art/recline.js';
+import { poseSprite, breath } from './art/poses.js';
 import { lieScale, zzzAt, zzzSprite } from './art/sleep.js';
 
 export const VIEW_W = 224;              // the portrait reference view; a box taller than wide is fitted to it (and the dev previews use it)
@@ -174,7 +174,8 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
         }
         if (!(fx && flickers(e.fx.id, e.fx.phase, now - e.fx.t0))) {
           const flap = (e.walker.moving || lift > 0) && Math.floor(now / 140) % 2 === 1;
-          if (rec) { const R = reclineSprite(e.sprites || sprites, e.look); small(px, by - rl, () => { sctx.scale(1, breath(now)); sctx.drawImage(R.canvas, -R.feetX, -R.feetY); }); }      // sunbathing on a deck chair
+          if (rec) { const R = poseSprite(e.sprites || sprites, e.look, 'recline'); small(px, by - rl, () => { sctx.scale(1, breath(now)); sctx.drawImage(R.canvas, -R.ax, -R.ay); }); }      // sunbathing on a deck chair
+          else if (ride) { const R = poseSprite(e.sprites || sprites, e.look, 'surf'); small(px, by - lift, () => { drawBoard(sctx, 0, -1, 1, { squash: 0.5, night: amb.night }); sctx.drawImage(R.canvas, -R.ax, -R.ay - 2); }); }      // surfing: the hand-drawn stance on the board
           else small(px, by - lift, () => {
             if (ride || paddle) { drawBoard(sctx, 0, -1, 1, { squash: 0.5, night: amb.night }); sctx.translate(0, -2); if (paddle) sctx.scale(1, 0.82); }
             if (lie) { const q = lieScale(now); sctx.translate(0, -rl); sctx.scale(q.sx, q.sy); }      // on a lounger: lying flat on the seat, as the board draws a sleeping pet
