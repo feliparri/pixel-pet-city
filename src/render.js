@@ -27,7 +27,7 @@ import { paintSky, drawWeatherTop } from './weather-fx.js';
 import { waterOf, SUBMERGE } from './sea.js';
 import { waveStrokes, waveBody } from './surf.js';
 import { drawWake, drawBoard } from './sea-draw.js';
-import { lying, LIE_LIFT } from './lounge.js';
+import { lying, restLift } from './lounge.js';
 import { lieScale, zzzAt, zzzSprite } from './art/sleep.js';
 
 export const VIEW_W = 224;              // the portrait reference view; a box taller than wide is fitted to it (and the dev previews use it)
@@ -155,7 +155,7 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
   for (const e of all) {
     const p = e.walker.pos();
     const k = e.walker.moving ? Math.min(1, e.walker.t / e.walker.stepMs()) : 0;
-    const ride = e.surf === 1, wiped = e.surf === 2, water = e.npc ? null : waterOf(areaName, e.walker) || (ride || wiped ? 'deep' : null), paddle = e.surf === 3 && !!water && !ride && !wiped, swim = water === 'deep' && !ride && !paddle, lie = !e.npc && !water && lying(areaName, e.walker);      // swimming: the lower part is under the surface and the pet bobs; a surfer stands on its board
+    const ride = e.surf === 1, wiped = e.surf === 2, water = e.npc ? null : waterOf(areaName, e.walker) || (ride || wiped ? 'deep' : null), paddle = e.surf === 3 && !!water && !ride && !wiped, swim = water === 'deep' && !ride && !paddle, lie = !e.npc && !water && lying(areaName, e.walker, e.rest), rl = lie ? restLift(e.walker.tx, e.walker.ty, areaName) : 0;      // swimming: the lower part is under the surface and the pet bobs; a surfer stands on its board
     const hop = e.walker.moving && !swim && !ride && !paddle ? Math.round(Math.abs(Math.sin(k * Math.PI)) * 3) : 0;
     const air = jumpLift(now, e.jumpAt);                                                                      // a jump (Space): the pet rises, its shadow stays
     const bx = Math.round(p.x * TILE + TILE / 2 - cam.x), by = Math.round(p.y * TILE + TILE - cam.y);       // the feet
@@ -175,12 +175,12 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
           const flap = (e.walker.moving || lift > 0) && Math.floor(now / 140) % 2 === 1;
           small(px, by - lift, () => {
             if (ride || paddle) { drawBoard(sctx, 0, -1, 1, { squash: 0.5, night: amb.night }); sctx.translate(0, -2); if (paddle) sctx.scale(1, 0.82); }
-            if (lie) { const q = lieScale(now); sctx.translate(0, -LIE_LIFT); sctx.scale(q.sx, q.sy); }      // on a lounger: lying flat on the seat, as the board draws a sleeping pet
+            if (lie) { const q = lieScale(now); sctx.translate(0, -rl); sctx.scale(q.sx, q.sy); }      // on a lounger: lying flat on the seat, as the board draws a sleeping pet
             if (swim) { const sub = wiped ? { sink: 9, cut: 12 } : SUBMERGE; sctx.beginPath(); sctx.rect(-CELL, -2 * CELL, 2 * CELL, 2 * CELL - sub.cut + 1 + sub.sink - 5); sctx.clip(); sctx.translate(0, sub.sink - 4 + Math.round(Math.sin(now / (wiped ? 110 : 320) + e.id.charCodeAt(0)) * (wiped ? 2 : 1))); }      // only what is above the water
             drawPet(sctx, e.sprites || sprites, e.look, -CELL / 2, -CELL + 2 - hop - air, { frame: lift > 0 ? 'happy' : lie ? 'blink' : headFrame(e, now, e.id), flip: e.walker.d === 'left', flap, now });
           });
         }
-        if (lie) small(px, by - LIE_LIFT, () => { for (const z of zzzAt(now, CELL)) sctx.drawImage(zzzSprite(), 0, 0, 12, 14, z.x, z.y, 12 * z.k, 14 * z.k); });      // the two Zzz
+        if (lie) small(px, by - rl, () => { for (const z of zzzAt(now, CELL)) sctx.drawImage(zzzSprite(), 0, 0, 12, 14, z.x, z.y, 12 * z.k, 14 * z.k); });      // the two Zzz
         if (wiped) small(px, by, () => drawBoard(sctx, 15, 1, 1, { squash: 0.5, night: amb.night, tilt: Math.sin(now / 200) }));
         if (water) small(px, by - (swim ? 1 : 0), () => drawWake(sctx, 0, 0, 1, { depth: water, moving: ride || e.walker.moving, d: ride ? 'right' : e.walker.d, paddle, squash: 0.5, now, night: amb.night, seed: e.id.charCodeAt(0) }));
         labels.push({ text: e.name, x: px - Math.floor(textWidth(font, e.name) / 2), y: by + 2 - lift, colour: e === me ? '#f8d040' : e.npc ? '#a8e6cf' : '#f4f6fa' });

@@ -104,7 +104,7 @@ export function validateMessage(raw, catalogue) {
       if (!look) return null;
       const out = { t: 'hello', id: m.id, name: sanitizeName(m.name), look, stats: validateStats(m.s), act: ACTIVITIES.includes(m.a) ? m.a : 'idle' };
       const area = m.area === undefined ? DEFAULT_AREA : m.area;                  // a heartbeat may carry the position: kept only when it is a real tile
-      if (m.x !== undefined && isArea(area) && Number.isInteger(m.x) && Number.isInteger(m.y) && isWalkable(m.x, m.y, area) && DIRS.includes(m.d)) out.pos = { x: m.x, y: m.y, d: m.d, area, ...(m.surf === 1 || m.surf === 2 || m.surf === 3 ? { surf: m.surf } : {}) };
+      if (m.x !== undefined && isArea(area) && Number.isInteger(m.x) && Number.isInteger(m.y) && isWalkable(m.x, m.y, area) && DIRS.includes(m.d)) out.pos = { x: m.x, y: m.y, d: m.d, area, ...(m.surf === 1 || m.surf === 2 || m.surf === 3 ? { surf: m.surf } : {}), ...(m.rest === 1 ? { rest: 1 } : {}) };
       return out;
     }
     case 'pos':
@@ -113,6 +113,7 @@ export function validateMessage(raw, catalogue) {
       if (!isArea(area) || !Number.isInteger(m.x) || !Number.isInteger(m.y) || !isWalkable(m.x, m.y, area) || !DIRS.includes(m.d)) return null;
       const pos = { t: 'pos', id: m.id, x: m.x, y: m.y, d: m.d, area };
       if (m.surf === 1 || m.surf === 2 || m.surf === 3) pos.surf = m.surf;                  // optional: 1 riding a wave, 2 wiped out, 3 paddling on its board; an older client never sends it and ignores it (unknown fields are stripped)
+      if (m.rest === 1) pos.rest = 1;                                          // optional: the pet lies down on a lounger or a towel (src/lounge.js); an older client ignores it
       return pos;
     }
     case 'jump':

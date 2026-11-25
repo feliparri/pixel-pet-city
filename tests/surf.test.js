@@ -253,3 +253,18 @@ test('the wave body for the renderers: samples along the same diagonal as the cl
   assert.ok(near.every((s) => s.a < 1), 'it fades on the shallows');
   assert.equal(waveBody({ id: 1, age: 7100, k: -25, peel: 3 }, 1, 34, 16, () => 20).length, 0);
 });
+
+test('net: a rest change is sent even on the same tile and a peer hears it', async () => {
+  const sent = [];
+  const timers = { setInterval: () => 1, clearInterval() {}, setTimeout: (fn) => { fn(); return 1; }, clearTimeout() {} };
+  let clock = 1000;
+  const wire = { name: 'fake', async open() { return { send: (m) => sent.push(m), close() {} }; } };
+  const net = createNet({ wire, catalogue: {}, now: () => (clock += 200), timers });
+  await net.join('FOCA-LUNA-42', { name: 'A', look: { species: 'frog', stage: 1, items: ['', '', '', ''] } });
+  sent.length = 0;
+  net.sendPos(32, 6, 'down', 'beach', 0, 0);
+  net.sendPos(32, 6, 'down', 'beach', 0, 1);
+  net.sendPos(32, 6, 'down', 'beach', 0, 1);
+  net.sendPos(32, 6, 'down', 'beach', 0, 0);
+  assert.deepEqual(sent.filter((m) => m.t === 'pos').map((m) => m.rest || 0), [0, 1, 0]);
+});

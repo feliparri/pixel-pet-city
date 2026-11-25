@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isLounger, lying, loungeAt, LOUNGER, LIE_LIFT } from '../src/lounge.js';
+import { isLounger, isRestSpot, restLift, lying, loungeAt, LOUNGER, TOWEL, LIE_LIFT } from '../src/lounge.js';
 import { AREAS, TILES, isWalkable, isLand, tileAt } from '../src/map.js';
 import { Walker } from '../src/walker.js';
 import { findPath } from '../src/path.js';
@@ -20,33 +20,63 @@ test('the beach has a few loungers on open sand, walkable, and none anywhere els
   assert.ok(findPath(46, 17, spots[0][0], spots[0][1], 'beach').length > 0, 'reachable');
 });
 
-test('the prompt: Recostarse beside a lounger, not on it, not elsewhere, not outside the beach', () => {
-  const [lx, ly] = spots[0];
-  const beside = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => [lx + dx, ly + dy]).find(([x, y]) => isWalkable(x, y, 'beach') && !isLounger(x, y));
-  const a = loungeAt(beside[0], beside[1]);
-  assert.deepEqual([a.id, a.label], ['lounge', 'Recostarse']);
-  assert.ok(isLounger(a.target[0], a.target[1]));
-  assert.equal(loungeAt(lx, ly), null, 'already on it');
-  assert.equal(loungeAt(46, 17), null);
-  assert.equal(loungeAt(beside[0], beside[1], 'town'), null);
+const towels = [];
+for (let y = 0; y < AREAS.beach.h; y++) for (let x = 0; x < AREAS.beach.w; x++) if (tileAt(x, y, 'beach') === TOWEL) towels.push([x, y]);
+
+test('towels are resting spots too: open sand, walkable, in the ground rule of a lounger but at ground level', () => {
+  assert.ok(towels.length >= 4);
+  assert.equal(TILES[TOWEL].solid, false);
+  for (const [x, y] of towels) { assert.ok(isRestSpot(x, y) && !isLounger(x, y) && isLand(x, y, 'beach')); assert.equal(restLift(x, y), 0); }
+  for (const [x, y] of spots) { assert.ok(isRestSpot(x, y)); assert.equal(restLift(x, y), LIE_LIFT); }
+  assert.equal(isRestSpot(46, 17), false);
 });
 
-test('lying comes from the tile and the walker: still on a lounger lies, any step gets it up; remote pets the same', () => {
-  const [lx, ly] = spots[0];
+test('the prompt: Recostarse on or beside a lounger or a towel, Levantarse while lying, nothing elsewhere or outside the beach', () => {
+  for (const [lx, ly] of [spots[0], towels[0]]) {
+    const beside = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => [lx + dx, ly + dy]).find(([x, y]) => isWalkable(x, y, 'beach') && !isRestSpot(x, y));
+    const a = loungeAt(beside[0], beside[1]);
+    assert.deepEqual([a.id, a.label], ['lounge', 'Recostarse']);
+    assert.ok(isRestSpot(a.target[0], a.target[1]));
+    const on = loungeAt(lx, ly);
+    assert.deepEqual([on.id, on.label, on.target], ['lounge', 'Recostarse', [lx, ly]], 'on the spot, not lying: the prompt to lie down');
+    const up = loungeAt(lx, ly, 'beach', true);
+    assert.deepEqual([up.id, up.label], ['getup', 'Levantarse']);
+    assert.equal(loungeAt(beside[0], beside[1], 'town'), null);
+  }
+  assert.equal(loungeAt(46, 17), null);
+});
+
+test('lying is a choice: standing still on a spot is not lying; with the flag it lies, any step gets it up; remote pets the same, from the flag', () => {
+  const [lx, ly] = spots[0], [tx, ty] = towels[0];
   const w = new Walker(lx - 1, ly);
-  assert.equal(lying('beach', w), false);
   w.stepToward(lx, ly);
-  assert.equal(lying('beach', w), false, 'still walking onto it');
   w.update(1000);
-  assert.equal(lying('beach', w), true, 'arrived and stands still');
+  assert.equal(lying('beach', w, 0), false, 'still on the lounger, no choice made');
+  assert.equal(lying('beach', w, undefined), false);
+  assert.equal(lying('beach', w, 1), true, 'it chose to');
   w.stepToward(lx, ly - 1);
-  assert.equal(lying('beach', w), false, 'a move gets it up');
+  assert.equal(lying('beach', w, 1), false, 'a move gets it up');
   w.update(1000);
-  assert.equal(lying('beach', w), false, 'and it is not lying on the sand');
+  assert.equal(lying('beach', w, 1), false, 'and the flag does nothing off a spot');
+  const onTowel = new Walker(tx, ty);
+  assert.equal(lying('beach', onTowel, 0), false);
+  assert.equal(lying('beach', onTowel, 1), true);
+  assert.equal(lying('town', onTowel, 1), false);
   const remote = new Walker(lx, ly); remote.hurry = true;
-  assert.equal(lying('beach', remote), true);
-  assert.equal(lying('town', remote), false);
+  assert.equal(lying('beach', remote, 0), false, 'a remote pet standing on a lounger is not lying until it says so');
+  assert.equal(lying('beach', remote, 1), true);
   assert.equal(validateMessage({ t: 'pos', id: 'abcdefgh', x: lx, y: ly, d: 'down', area: 'beach' }).x, lx, 'a pet on a lounger is a valid position');
+});
+
+test('pos carries an optional rest flag: only 1 is kept, unknown values are dropped, an old reader sees a normal pos', () => {
+  const id = 'abcdefgh', [lx, ly] = spots[0];
+  const pos = (extra) => validateMessage({ t: 'pos', id, x: lx, y: ly, d: 'down', area: 'beach', ...extra });
+  assert.equal(pos({ rest: 1 }).rest, 1);
+  for (const bad of [0, 2, '1', true, null, {}, -1]) assert.equal('rest' in pos({ rest: bad }), false, String(bad));
+  assert.equal('rest' in pos({}), false);
+  assert.deepEqual(pos({ rest: 1, surf: 3 }).surf, 3, 'the two optional fields are independent');
+  const hello = validateMessage({ t: 'hello', id, name: 'A', look: { species: 'frog', stage: 1, items: ['', '', '', ''] }, x: lx, y: ly, d: 'down', area: 'beach', rest: 1 }, {});
+  assert.equal(hello.pos.rest, 1, 'the heartbeat keeps a resting pet resting');
 });
 
 test('with a board, paddling in deep water is quicker than swimming for every species, and nothing changes elsewhere', () => {
@@ -70,11 +100,11 @@ test('the tall palms and the big umbrellas: palms 1.6 to 2 times the old height 
   assert.ok(bake.includes(`y: y + 16 - ${ph}`) && bake.includes(`y: y + 16 - ${uh}`), 'the props stand on their tile with the new heights');
 });
 
-test('a pet on a lounger is drawn as the board draws a sleeping pet (ported from the device), in both renderers', () => {
+test('a resting pet (on a lounger or a towel) is drawn as the board draws a sleeping pet (ported from the device), in both renderers', () => {
   assert.ok(LIE_LIFT > 0 && LIE_LIFT <= 6);
   for (const f of ['../src/hd2d/pets.js', '../src/render.js']) {
     const src = readFileSync(new URL(f, import.meta.url), 'utf8');
-    assert.ok(src.includes('lieScale') && src.includes('zzzAt') && src.includes('LIE_LIFT') && src.includes("lie ? 'blink'"), f);
+    assert.ok(src.includes('lieScale') && src.includes('zzzAt') && src.includes('restLift') && src.includes("lie ? 'blink'"), f);
     assert.equal(src.includes('rotate(flip'), false, 'no turned sprite any more');
   }
 });

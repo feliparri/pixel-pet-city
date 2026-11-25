@@ -67,6 +67,7 @@ function spawnFor(id) {
 export function startTown({ canvas, stage, pad = null, sprites, font, net, me, entrance = null, stars = { add() {} }, canasta = createCanasta(), farmMemory = createFarmMemory(), tools = () => [], onStore = () => {}, missions = null, onHud = () => {}, onShow = () => {}, onShop = () => {}, insets = () => ({ top: 0, bottom: 0 }), onFarm = () => {}, onFarmDone = () => {}, onFarmAction = () => {}, onFish = () => {} }) {
   const [sx, sy] = spawnFor(net.id);
   const self = { id: net.id, name: me.name, look: me.look, stats: me.stats || null, act: 'idle', walker: new Walker(sx, sy), emote: null, jumpAt: null, area: 'town' };
+  let resting = false, restGo = null;                              // lying on a lounger or a towel (src/lounge.js): a choice (A at the spot), never automatic; restGo: the spot the pet is walking onto to lie there
   const surf = createSurf();                                       // surfing at the beach's break (src/surf.js): idle, riding a wave, or wiped out
   const hasBoard = () => tools().includes(BOARD), paddling = (x, y) => hasBoard() && !!waterAt(x, y, self.area);      // with the board, the pet is on it as soon as it is in the water
   self.walker.tileMult = (x, y) => paceFactor(self.area, x, y, self.look.species, hasBoard());      // the sea slows the pet (the seal swims faster than it walks), src/sea.js
@@ -121,7 +122,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   const giftWorld = createGiftWorld({ room: net.code || net.id, storage: (() => { try { return localStorage; } catch { return null; } })() });      // the seasonal gifts of the room (src/gift-world.js)
   let giftBusy = new Set(), giftHinted = false, giftCapDay = null, giftRetry = new Map(), giftScanAt = -Infinity, selfSay = null;      // giftBusy: ids being opened; giftHinted: the "travel with your pet" hint was shown; giftCapDay: the town day the server said the cap was reached; giftRetry: id -> when to try again
   let racing = false, slowUntil = 0, lastTile = null;          // the obstacle race: a pet that steps onto an obstacle walks slower for RACE.slowMs
-  self.walker.onStep = (x, y, d) => { net.sendPos(x, y, d, self.area, surfFlag(surf, paddling(x, y))); if (!self.fx && !suspended && surf.mode !== 'ride') pets.step(self.area, x, y, self.walker.run, wxLv); stepGift(x, y); };      // a step onto or next to a seasonal gift opens it
+  self.walker.onStep = (x, y, d) => { net.sendPos(x, y, d, self.area, surfFlag(surf, paddling(x, y)), resting ? 1 : 0); if (!self.fx && !suspended && surf.mode !== 'ride') pets.step(self.area, x, y, self.walker.run, wxLv); stepGift(x, y); };      // a step onto or next to a seasonal gift opens it
   net.sendPos(sx, sy, 'down', 'town');
 
   const addPeer = (p) => {
@@ -141,6 +142,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     else if (ev.type === 'pos') {
       const o = others.get(ev.id);
       if (!o) return;
+      o.rest = ev.rest || 0;                                                                  // lying on a lounger or a towel (the pet chose to)
       o.surf = ev.surf || 0;                                                                  // riding (1) or wiped out (2): drawn with a board; a ride is walked at the wave's own pace
       o.walker.stepOverride = o.surf === 1 ? RIDE_MS : null;
       if (!o.placed || o.area !== ev.area || Math.abs(o.walker.tileX - ev.x) + Math.abs(o.walker.tileY - ev.y) > REMOTE_SNAP) { o.walker.snap(ev.x, ev.y, ev.d); o.placed = true; o.area = ev.area; } else o.walker.goTo(ev.x, ev.y, ev.d, o.area);
@@ -201,6 +203,13 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       w.snap(sx, sy, 'down'); net.sendPos(sx, sy, 'down', 'town'); fadeT0 = t;
     }
     if (!w.busy) w.run = false;
+    if (held.length) restGo = null;                               // any move cancels walking onto a resting spot, and gets a lying pet up
+    if (resting && (held.length || w.busy || self.fx || self.area !== 'beach')) standUp();
+    if (restGo && !w.busy && !self.fx) {                           // arrived on the spot it was sent to: it lies down
+      const [rx, ry] = restGo;
+      restGo = null;
+      if (w.tileX === rx && w.tileY === ry && self.area === 'beach') { resting = true; sendRest(); }
+    }
     if (!w.busy && held.length && !self.fx && surf.mode === 'idle') {                    // a held arrow key keeps walking (not while surfing: the wave carries the pet)
       w.run = runs(shift || padRun || stickRun, mv);
       const d = held[held.length - 1];
@@ -228,6 +237,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       }
     } else if (surf.mode === 'wipe' && wipeOver(surf, t)) net.sendPos(w.tileX, w.tileY, w.d, self.area, surfFlag(surf, paddling(w.tileX, w.tileY)));      // free again
     pets.ride(surf.mode === 'ride' && !suspended);
+    self.rest = resting;
     self.surf = surfFlag(surf, self.area === 'beach' && hasBoard() && !!waterOf(self.area, w));
     w.update(dt);
     if (!w.busy && !self.fx) {                                    // arrived on a door: go through it
@@ -296,7 +306,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       farmAction = !w.busy && !self.fx && !modal && !mv.closed ? actionAt('farm', w.tileX, w.tileY, w.d, { basket: canasta, mem: farmMemory, room: net.code || net.id, nowMs: devNpcT === null ? events.serverNow() : devNpcT, tools: tools() }) : null;
     } else { state.farm = null; farmAction = null; }
     if (self.area === 'town' && !farmAction && !w.busy && !self.fx && !modal && !mv.closed) farmAction = pondAction(self.area, w.tileX, w.tileY, tools());      // beside the park's pond: A fishes (with the rod)
-    if (self.area === 'beach' && !farmAction && !w.busy && !self.fx && !modal && !mv.closed && surf.mode === 'idle') farmAction = surfAction(utc, w.tileX, w.tileY, tools()) || loungeAt(w.tileX, w.tileY);      // at the break: A catches the wave (with the board), or what is missing
+    if (self.area === 'beach' && !farmAction && !w.busy && !self.fx && !modal && !mv.closed && surf.mode === 'idle') farmAction = surfAction(utc, w.tileX, w.tileY, tools()) || loungeAt(w.tileX, w.tileY, 'beach', resting);      // at the break: A catches the wave (with the board), or what is missing
     const talkTo = !w.busy && !self.fx && !modal && !mv.closed && !claiming && missions && missions.enabled() ? talkTarget() : null;
     nearTalkId = talkTo ? talkTo.id : null;
     const atStore = self.area === 'farm' && !w.busy && !self.fx && !modal && !mv.closed && nearStore(w.tileX, w.tileY);
@@ -465,6 +475,9 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     selfSay = { text: SAY[why], until: t + 1500 };
     net.sendPos(w.tileX, w.tileY, w.d, self.area, surfFlag(surf));
   }
+  /** The position again with the rest flag as it is now (the others draw the pet lying or standing). */
+  function sendRest() { const w = self.walker; net.sendPos(w.tileX, w.tileY, w.d, self.area, surfFlag(surf, paddling(w.tileX, w.tileY)), resting ? 1 : 0); }
+  function standUp() { if (!resting) return; resting = false; sendRest(); }
   function endRide(why, t) {
     const w = self.walker;
     w.stepOverride = null;
@@ -480,7 +493,12 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     if (!farmAction || farmAction.id === 'hint') return false;
     if (farmAction.id === 'store') { pets.cue('door'); onStore(); return true; }
     if (farmAction.id === 'surf') { catchWave(); return true; }
-    if (farmAction.id === 'lounge') { self.walker.setPath([farmAction.target]); return true; }      // onto the lounger: a pet that stands still on one lies on it (src/lounge.js)
+    if (farmAction.id === 'lounge') {                                                          // lie down on the spot beside the pet, or on the one it stands on (src/lounge.js)
+      const w = self.walker, [rx, ry] = farmAction.target;
+      if (w.tileX === rx && w.tileY === ry) { resting = true; restGo = null; sendRest(); } else { restGo = [rx, ry]; w.setPath([[rx, ry]]); }
+      return true;
+    }
+    if (farmAction.id === 'getup') { standUp(); return true; }
     if (farmAction.id === 'fish') { pets.cue('confirm'); onFish(); return true; }
     if (farmAction.id === 'talk') { talk(farmAction.target); return true; }
     const res = perform(farmAction, { basket: canasta, mem: farmMemory, tools: tools() });
@@ -529,6 +547,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   }
   function onPointer(ev) {
     if (suspended || ev.button > 0 || self.fx || self.gone || modal || surf.mode !== 'idle') return;      // surfing: the wave decides where the pet goes
+    restGo = null;
     const tile = renderer.pointToTile(ev.clientX, ev.clientY);
     if (!tile) return;
     talkGo = null;
@@ -610,7 +629,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       /** development only (?dev=1&npct=<ms>): moves the pinned villagers' clock. */
       setClock(ms) { if (devNpcT !== null && Number.isFinite(ms)) devNpcT = ms; },
       npcs: () => npcsHere.map((n) => { const p = n.walker.pos(); return { id: n.id, name: n.name, x: p.x, y: p.y, asleep: n.asleep, say: n.say }; }),
-      warp(area, x, y) { self.area = area; self.walker.snap(x, y, 'down'); net.sendPos(x, y, 'down', area); fadeT0 = performance.now(); },
+      warp(area, x, y) { resting = false; restGo = null; self.area = area; self.walker.snap(x, y, 'down'); net.sendPos(x, y, 'down', area); fadeT0 = performance.now(); },
       /** For testing the surf: what the surf state is, and A at the break. */
       surf: () => ({ mode: surf.mode, why: surf.why }),
       catchWave: () => { catchWave(); return surf.mode; },
