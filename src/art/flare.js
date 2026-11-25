@@ -23,3 +23,17 @@ export function drawFlare(ctx, k, now, night = 0) {
   }
   ctx.restore();
 }
+
+/** The volleyball in flight (src/volley.js), origin on the ground under it: a small shadow that stays down, the ball `lift` px above it. */
+export function drawVolleyBall(ctx, lift, now) {
+  ctx.fillStyle = 'rgba(24,28,44,0.3)'; ctx.fillRect(-3, -1, 6, 2);
+  const y = -Math.round(lift), spin = Math.floor(now / 90) % 4;
+  rect(ctx, '#f4f6fa', -2, y - 4, 5, 5); rect(ctx, '#f4f6fa', -3, y - 3, 7, 3);
+  rect(ctx, '#e8b84a', spin === 0 || spin === 2 ? -1 : 1, y - 4, 1, 5); rect(ctx, '#7aa2d8', spin < 2 ? 1 : -2, y - 3, 1, 3);
+}
+/** A ring on the sand where the ball will land, for the player who has to return it: it fills as the ball comes down (`k` 0..1). */
+export function drawLanding(ctx, k, now) {
+  ctx.fillStyle = `rgba(255,236,160,${0.25 + 0.35 * k})`;
+  ctx.fillRect(-7, -2, 14, 1); ctx.fillRect(-7, 1, 14, 1); ctx.fillRect(-8, -1, 1, 2); ctx.fillRect(7, -1, 1, 2);
+  if (k > 0.5 && Math.floor(now / 120) % 2) ctx.fillRect(-4, -1, 8, 2);
+}

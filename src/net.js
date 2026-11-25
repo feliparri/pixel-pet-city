@@ -76,6 +76,7 @@ export function createNet({ wire, catalogue, onEvent = () => {}, now = () => Dat
     if (m.t === 'pos') { p.x = m.x; p.y = m.y; p.d = m.d; p.area = m.area; p.surf = m.surf || 0; p.rest = m.rest || 0; p.treat = m.treat || 0; p.sit = m.sit || 0; onEvent({ type: 'pos', id: m.id, x: m.x, y: m.y, d: m.d, area: m.area, surf: m.surf || 0, rest: m.rest || 0, treat: m.treat || 0, sit: m.sit || 0 }); } else if (m.t === 'emote') onEvent({ type: 'emote', id: m.id, e: m.e });
     else if (m.t === 'jump') onEvent({ type: 'jump', id: m.id });
     else if (m.t === 'fire') onEvent({ type: 'fire', id: m.id });
+    else if (m.t === 'vb') onEvent({ type: 'vb', m });
     else if (GAME_TYPES.has(m.t)) onEvent({ type: 'game', m });
   }
 
@@ -153,6 +154,13 @@ export function createNet({ wire, catalogue, onEvent = () => {}, now = () => Dat
       if (!conn || now() - lastFireAt < 1000) return false;
       lastFireAt = now();
       send({ t: 'fire', id });
+      return true;
+    },
+
+    /** A volleyball message (src/volley.js, validated by protocol.js on the way in). Returns false when it cannot be sent. */
+    sendVb(msg) {
+      if (!conn || !msg || typeof msg.op !== 'string') return false;
+      send({ t: 'vb', id, ...msg });
       return true;
     },
 

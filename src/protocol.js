@@ -100,6 +100,26 @@ export const newPeerId = () => {
 const isSit = (v) => Number.isInteger(v) && v >= 1 && v <= 10;
 const isTreat = (v) => Number.isInteger(v) && v >= 1 && v <= 8;
 
+/**
+ * The volleyball message (src/volley.js): { t: 'vb', id, op, ... }. op 'ask' (looking for a rival), 'accept' (w: the asker), 'fly' (a flight: by 'a' authority or 'g' guest, fx fy start tile, x y landing tile, m ms, n seq, w the
+ * other player), 'hit' (the guest hit ball n from fx fy, w the authority), 'point' (a, b: scores, authority's first, w) and 'end' (w). Every number is a small integer inside the court's map; anything else is dropped.
+ */
+const VB_OPS = ['ask', 'accept', 'fly', 'hit', 'point', 'end'];
+const vbNum = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
+function validateVb(m) {
+  if (!VB_OPS.includes(m.op)) return null;
+  const out = { t: 'vb', id: m.id, op: m.op };
+  if (isId(m.w)) out.w = m.w;
+  if (m.op === 'accept' || m.op === 'hit' || m.op === 'point' || m.op === 'end') if (!out.w) return null;
+  if (m.op === 'fly') {
+    if (!(m.by === 'a' || m.by === 'g') || !vbNum(m.fx, 0, 79) || !vbNum(m.fy, 0, 79) || !vbNum(m.x, 0, 79) || !vbNum(m.y, 0, 79) || !vbNum(m.m, 300, 4000) || !vbNum(m.n, 0, 9999)) return null;
+    Object.assign(out, { by: m.by, fx: m.fx, fy: m.fy, x: m.x, y: m.y, m: m.m, n: m.n });
+  }
+  if (m.op === 'hit') { if (!vbNum(m.fx, 0, 79) || !vbNum(m.fy, 0, 79) || !vbNum(m.n, 0, 9999)) return null; Object.assign(out, { fx: m.fx, fy: m.fy, n: m.n }); }
+  if (m.op === 'point') { if (!vbNum(m.a, 0, 9) || !vbNum(m.b, 0, 9)) return null; Object.assign(out, { a: m.a, b: m.b }); }
+  return out;
+}
+
 export function validateMessage(raw, catalogue) {
   const m = parse(raw);
   if (!m || typeof m !== 'object' || Array.isArray(m) || !isId(m.id)) return null;
@@ -125,6 +145,8 @@ export function validateMessage(raw, catalogue) {
     }
     case 'jump':
       return { t: 'jump', id: m.id };
+    case 'vb':
+      return validateVb(m);
     case 'fire':                                  // the pet stoked the bonfire: everyone on the beach sees it burn higher for FIRE_MS and hears it crackle
       return { t: 'fire', id: m.id };
     case 'emote':
@@ -217,6 +239,7 @@ function validateGameMessage(m) {
 export const LIMITS = {
   pos: { burst: 12, perSec: 12 },     // a walker sends at most ~7 a second; this leaves room for a burst after a lag
   emote: { burst: 3, perSec: 1 },
+  vb: { burst: 6, perSec: 4 },        // a rally sends about one flight every two seconds, plus the points
   fire: { burst: 1, perSec: 0.05 },   // stoking is once in a while
   jump: { burst: 2, perSec: 2.5 },    // a pet jumps at most every 400 ms
   hello: { burst: 4, perSec: 0.5 },   // the heartbeat is every 2 s

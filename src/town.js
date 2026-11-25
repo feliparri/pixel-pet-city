@@ -24,6 +24,7 @@ import { createLife, createFarmLife, createBeachLife, stepLife, lifeFrame, farmL
 import { inArea } from './presence.js';
 import { SLOTS } from './protocol.js';
 import { createCrowd } from './crowd.js';
+import { createVolleyPlay } from './volley-play.js';
 import { bonfireAt, seatFacing, sitCode, fromSit, roastAt, fireLevel, FIRE_MS, BURN_CHANCE } from './bonfire.js';
 import { BEACH as BEACH_MAP } from './map.js';
 import { createNpcs, showSpans, nearShopkeeper, shopGreeting, SHOPKEEPER, SHOP_SAY_MS, nearStore, clerkGreeting } from './npcs.js';
@@ -73,8 +74,10 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   const self = { id: net.id, name: me.name, look: me.look, stats: me.stats || null, act: 'idle', walker: new Walker(sx, sy), emote: null, jumpAt: null, area: 'town' };
   const treat = createTreat();                                     // a treat from the Kiosco in the pet's hand (src/kiosk.js): this screen's state, the others see its code in the position
   let treatSeen = 0, eatCue = 0;                                    // the code last sent with the position, and the next bite's sound
+  const crowd = createCrowd({ sprites });                                   // the beach's and the farm's extras (src/crowd.js): a function of the UTC clock alone, nothing over the net
   function sendPos(x, y, d, area, surf = 0, rest = 0) { net.sendPos(x, y, d, area, surf, rest, treatSeen, sitSeen); }
   const takenSeats = () => { const set = new Set(crowd.seats); for (const o of others.values()) { const sv = o.area === 'beach' && fromSit(o.sit); if (sv) set.add(sv.seat); } return set; };      // seats held by peers and by the crowd (never more than two of those)
+  const volley = createVolleyPlay({ id: net.id, phone: !!pad, crowd, send: (msg) => net.sendVb(msg), cue: (c) => pets.cue(c), say: (text, ms) => { selfSay = { text, until: performance.now() + ms }; }, emote: (e) => doEmote(e), jump: () => { self.jumpAt = performance.now(); net.sendJump(); }, peerTile: (id) => { const o = others.get(id); return o && o.area === 'beach' ? { x: o.walker.tileX, y: o.walker.tileY } : null; } });      // playable volleyball on the court (src/volley.js, src/volley-play.js)
   let seat = -1, sitGo = null, roast = null, fireFrom = 0, fireUntil = 0, nextSitAct = 'roast', sitSeen = 0;      // the bonfire circle (src/bonfire.js): the seat the pet is on (-1 none), the seat it is walking to, the toast in progress, the stoked fire's window, what A does next
   let resting = false, restGo = null;                              // lying on a lounger or a towel (src/lounge.js): a choice (A at the spot), never automatic; restGo: the spot the pet is walking onto to lie there
   const surf = createSurf();                                       // surfing at the beach's break (src/surf.js): idle, riding a wave, or wiped out
@@ -87,7 +90,6 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   const farmLife = createFarmLife(net.code || net.id);
   const beachLife = createBeachLife(net.code || net.id);               // the beach's gulls and crabs (pure functions of the room and the clock)               // and the farm's: the animals walk where the room's clock says
   const renderer = createTownRenderer({ canvas, sprites, font, minH: pad ? MIN_VIEW_H : VIEW_H, minW: pad ? MIN_VIEW_W : VIEW_W, flat: new URLSearchParams(location.search).get('flat') === '1', skip: perfSkip(location.search), gl: glWanted(location.search), onNotice: (text) => games.notify(text) });   // a phone: 1.25 times the tiles it showed (and a whole-number pixel size); a desktop: as many tiles as before
-  const crowd = createCrowd({ sprites });                                   // the beach's and the farm's extras (src/crowd.js): a function of the UTC clock alone, nothing over the net
   const npcs = createNpcs({ seed: net.code || net.id, sprites });           // the villagers: their place and lines come from (room, server time) alone, nothing of them goes over the net
   const search = new URLSearchParams(location.search);
   const meter = search.get('perf') === '1' ? createMeter() : null;      // ?perf=1: a box with what each frame costs on this device (src/perf.js)
@@ -149,7 +151,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
   function onNetEvent(ev) {
     if (!alive) return;
     if (ev.type === 'join') addPeer(ev.peer);
-    else if (ev.type === 'leave') others.delete(ev.id);
+    else if (ev.type === 'leave') { others.delete(ev.id); volley.forget(ev.id); }
     else if (ev.type === 'pos') {
       const o = others.get(ev.id);
       if (!o) return;
@@ -164,6 +166,9 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     } else if (ev.type === 'emote') {
       const o = others.get(ev.id);
       if (o) o.emote = { e: ev.e, until: performance.now() + EMOTE_MS };
+    } else if (ev.type === 'vb') {
+      const o = others.get(ev.m.id);
+      if (o && o.area === 'beach') volley.onMessage(ev.m, performance.now());
     } else if (ev.type === 'fire') {                                 // a pet stoked the bonfire: it burns high for a while for everyone on the beach
       const o = others.get(ev.id), now = performance.now();
       if (o && o.area === 'beach') { fireFrom = now; fireUntil = now + FIRE_MS; if (self.area === 'beach' && !suspended) pets.peerCue('crackle', Math.hypot(BEACH_MAP.bonfire.x - self.walker.tileX, BEACH_MAP.bonfire.y - self.walker.tileY)); }
@@ -345,6 +350,8 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     if (self.area === 'beach' && (!farmAction || farmAction.id === 'hint') && !w.busy && !self.fx && !modal && !mv.closed && surf.mode === 'idle') { const ka = kioskAt(w.tileX, w.tileY, 'beach'); if (ka) farmAction = ka; }      // in front of the Kiosco's counter: A opens its menu
     if (self.area === 'beach' && seat >= 0 && !w.busy && !self.fx && !modal && !mv.closed) farmAction = { id: 'fire', label: nextSitAct === 'roast' ? 'Tostar malvavisco' : 'Avivar el fuego', target: 'bonfire' };      // seated: A toasts a marshmallow, then stokes the fire, then toasts again
     else if (self.area === 'beach' && (!farmAction || farmAction.id === 'hint') && !w.busy && !self.fx && !modal && !mv.closed && surf.mode === 'idle') { const ba = bonfireAt(w.tileX, w.tileY, 'beach', takenSeats()); if (ba && (!farmAction || ba.id === 'sit')) farmAction = ba; }      // by the fire: "Sentarse", or "La fogata está llena"
+    if (self.area === 'beach' && seat < 0 && !w.busy && !self.fx && !modal && !mv.closed) { const vp = volley.prompt(w.tileX, w.tileY, 'beach'); if (vp && (vp.id === 'vhit' || !farmAction || farmAction.id === 'hint')) farmAction = vp; }      // on the court: "Jugar vóley", then "Devolver" while the match lasts
+    { const vf = volley.frame(performance.now(), { x: w.tileX, y: w.tileY }, self.area); state.vball = vf.ball; state.vscore = vf.score; }
     const talkTo = !w.busy && !self.fx && !modal && !mv.closed && !claiming && missions && missions.enabled() ? talkTarget() : null;
     nearTalkId = talkTo ? talkTo.id : null;
     const atStore = self.area === 'farm' && !w.busy && !self.fx && !modal && !mv.closed && nearStore(w.tileX, w.tileY);
@@ -542,6 +549,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
       if (w.tileX === rx && w.tileY === ry) { seat = farmAction.seat; w.face(seatFacing(seat)); sendRest(); } else { sitGo = { target: [rx, ry], seat: farmAction.seat }; w.setPath([[rx, ry]]); }
       return true;
     }
+    if (farmAction.id === 'volley' || farmAction.id === 'vhit') { volley.press(self.walker.tileX, self.walker.tileY, performance.now()); return true; }
     if (farmAction.id === 'fire') {
       const t = performance.now();
       if (nextSitAct === 'roast') { if (!roast) { roast = { since: t }; pets.cue('pick'); } nextSitAct = 'stoke'; }

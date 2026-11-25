@@ -19,7 +19,7 @@ import { drawChicken, CHICKEN_SIZE } from './art/chicken.js';
 import { ball as drawBall } from './art/places.js';
 import { drawHeld } from './art/treat.js';
 import { drawProp } from './art/crowd-props.js';
-import { drawFlare } from './art/flare.js';
+import { drawFlare, drawVolleyBall, drawLanding } from './art/flare.js';
 import { drawCrab, drawBird, drawButterfly, drawFirefly, drawDuck, drawRing, drawSpray } from './art/life.js';
 import { drawAnimal, plotTile, COW_SIZE, SHEEP_SIZE } from './art/farm.js';
 import { ghostFrames } from './art/halloween.js';
@@ -87,7 +87,7 @@ export const headFrame = (e, now, id) => {
  * opts: { area (name), cam {x, y}, entities [{ id, name, look, walker, emote?, jumpAt?, fx?, gone? }], me, now, amb {tint, night}, sprites, font, marker?, fade? }.
  * Returns the bubbles to draw at the final size: [{ x, y, e }] (an emote) or [{ x, y, text }] (a line) in view pixels. `talk`: [{ x, y, text }] lines in map px.
  */
-export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now, amb = NO_LIGHT, sprites, font, marker = null, fade = 0, chicken = null, dark = null, life = null, ball = null, talk = null, farm = null, seasons = null, gifts = null, ghosts = null, zoom = 1, petZoom = zoom, snow = null, weather = null, wave = null, fire = null }) {
+export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now, amb = NO_LIGHT, sprites, font, marker = null, fade = 0, chicken = null, dark = null, life = null, ball = null, talk = null, farm = null, seasons = null, gifts = null, ghosts = null, zoom = 1, petZoom = zoom, snow = null, weather = null, wave = null, fire = null, vball = null, vscore = null }) {
   const area = getArea(areaName), baked = bakeArea(area);
   sctx.setTransform(zoom, 0, 0, zoom, 0, 0);                                    // everything below is in game px; the pets are drawn in their own (smaller) px
   sctx.imageSmoothingEnabled = false;
@@ -202,6 +202,10 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
   }
   if (ball && areaName === 'town') items.push({ sortY: ball.y * TILE + 3, order: 1, draw: () => drawBall(sctx, Math.round(ball.x * TILE - cam.x), Math.round(ball.y * TILE - cam.y)) });   // the football
   if (fire && areaName === 'beach') items.push({ sortY: fire.y * TILE + TILE + 1, order: 1, draw: () => { sctx.save(); sctx.translate(Math.round(fire.x * TILE + TILE / 2 - cam.x), Math.round(fire.y * TILE + 14 - cam.y)); drawFlare(sctx, fire.k, now, amb.night); sctx.restore(); } });      // a stoked bonfire (src/bonfire.js)
+  if (vball && areaName === 'beach') {                                          // the volleyball in flight (src/volley.js): on the ground beneath it, its shadow and, for the one who must return it, the landing ring
+    items.push({ sortY: vball.y * TILE + TILE, order: 1, draw: () => { sctx.save(); if (vball.to && vball.mine) { sctx.translate(Math.round(vball.to[0] * TILE + TILE / 2 - cam.x), Math.round(vball.to[1] * TILE + TILE - 2 - cam.y)); drawLanding(sctx, vball.k, now); sctx.restore(); sctx.save(); } sctx.translate(Math.round(vball.x * TILE + TILE / 2 - cam.x), Math.round(vball.y * TILE + TILE - 2 - cam.y)); drawVolleyBall(sctx, vball.lift, now); sctx.restore(); } });
+  }
+  if (vscore && areaName === 'beach') items.push({ sortY: 9999, order: 2, draw: () => { const sx = Math.round(vscore.x * TILE + TILE / 2 - cam.x), sy = Math.round(vscore.y * TILE - cam.y); labels.push({ text: vscore.text, x: sx - Math.floor(textWidth(font, vscore.text) / 2), y: sy, colour: '#f8d040' }); } });
   if (life) {                                                                  // birds, the duck and the farm animals stand in the scene, sorted with the pets
     for (const c of life.crabs || []) items.push({ sortY: c.y, order: 0, draw: () => drawCrab(sctx, Math.round(c.x - cam.x), Math.round(c.y - cam.y), c.frame, c.claws) });
     for (const b of life.birds) items.push({ sortY: b.y, order: 0, draw: () => drawBird(sctx, Math.round(b.x - cam.x), Math.round(b.y - cam.y), b.kind, b.frame, b.flip, b.air) });
@@ -361,7 +365,7 @@ export function createRenderer({ canvas, sprites, font, minH = MIN_VIEW_H, minW 
     const mp = state.me.walker.pos();
     const gameInset = { top: Math.ceil(inset.top * box.dpr / scale), bottom: Math.ceil(inset.bottom * box.dpr / scale) };      // css px -> game px
     cam = cameraFor(mp.x * TILE + TILE / 2, mp.y * TILE + TILE / 2, a.w * TILE, a.h * TILE, viewW, viewH, gameInset);
-    const bubbles = drawScene(ctx, { area: areaName, cam, vw: viewW, vh: viewH, entities: state.others, me: state.me, now, amb: state.amb, sprites, font, marker: state.marker, fade: state.fade || 0, chicken: state.chicken || null, dark: state.dark || null, life: state.life || null, ball: state.ball || null, talk: state.talk || null, farm: state.farm || null, seasons: state.seasons || null, gifts: state.gifts || null, ghosts: state.ghosts || null, snow: state.snow || null, weather: state.weather || null, wave: state.wave || null, fire: state.fire || null, zoom: scale, petZoom: petScale });
+    const bubbles = drawScene(ctx, { area: areaName, cam, vw: viewW, vh: viewH, entities: state.others, me: state.me, now, amb: state.amb, sprites, font, marker: state.marker, fade: state.fade || 0, chicken: state.chicken || null, dark: state.dark || null, life: state.life || null, ball: state.ball || null, talk: state.talk || null, farm: state.farm || null, seasons: state.seasons || null, gifts: state.gifts || null, ghosts: state.ghosts || null, snow: state.snow || null, weather: state.weather || null, wave: state.wave || null, fire: state.fire || null, vball: state.vball || null, vscore: state.vscore || null, zoom: scale, petZoom: petScale });
     ctx.setTransform(1, 0, 0, 1, 0, 0);                                         // the bubbles are drawn at the final size
     for (const b of bubbles) drawBubble(ctx, b, scale, canvas.width, scale);
   }

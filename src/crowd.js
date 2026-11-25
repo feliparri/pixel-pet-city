@@ -8,7 +8,7 @@
 import { Walker } from './walker.js';
 import { findPath } from './path.js';
 import { hashSeed, mulberry32 } from './life.js';
-import { isLand, isWalkable, waterAt, doorAt } from './map.js';
+import { isLand, isWalkable, waterAt, doorAt, BEACH } from './map.js';
 import { WAVE, SIZES, waveSize, rideDecide } from './surf.js';
 import { isRestSpot } from './lounge.js';
 import { farmTile, townHour } from './npc-world.js';
@@ -159,7 +159,7 @@ const look = (species, stage, items = ['', '', '', '']) => ({ species, stage, it
 export const BEACH_CAST = [
   { id: 'mica', name: 'Mica', role: 'sun', look: look('cat', 2, ['bow', 'sunglasses', '', '']), spot: [46, 10] },
   { id: 'rulo', name: 'Rulo', role: 'sun', look: look('seal', 2, ['beanie', '', '', '']), spot: [46, 29] },
-  { id: 'tula', name: 'Tula', role: 'sun', look: look('frog', 1, ['', 'sunglasses', '', '']), spot: [54, 29] },
+  { id: 'marina', name: 'Marina', role: 'sun', look: look('frog', 1, ['', 'sunglasses', '', '']), spot: [54, 29] },
   { id: 'nano', name: 'Nano', role: 'swim', look: look('bear', 2, ['', '', '', '']), variant: V('nano', 30, 1.2), zone: { x: [16, 30], y: [13, 24] } },
   { id: 'coco', name: 'Coco', role: 'swim', look: look('raccoon', 1, ['', 'sunglasses', '', '']), night: 2, variant: V('coco', 200), zone: { x: [16, 30], y: [35, 41] } },
   { id: 'pipa', name: 'Pipa', role: 'surf', look: look('frog', 2, ['beanie', '', '', '']), spot: [9, 12], phase: 0 },
@@ -292,14 +292,18 @@ export function createCrowd({ sprites, variants = createVariants() }) {
     get seats() { return seats; },
     /** Is the lounger or towel at (x, y) taken by a member of the crowd right now? */
     taken: (x, y) => held.has(`${x},${y}`),
+    /** A match in play (src/volley.js): `rival` = { side: 'n'|'s', x0, y0, x, y, k, d, jumpAt } puts the volley player of that half at that pose (it stepped in as the player's rival) and the other one stands by; the rally stops meanwhile. */
+    rival: null,
     update(area, utc, now) {
       if (!CAST[area]) return [];
       const list = made.get(area) || build(area), nowHeld = new Set(), nowSeats = new Set();
       for (const { m, e } of list) {
-        const p = poseOf(m, utc), w = e.walker;
+        let p = poseOf(m, utc);
+        if (this.rival && m.role === 'volley') p = (m.spot[1] < BEACH.net.y) === (this.rival.side === 'n') ? { ...p, x0: this.rival.x0, y0: this.rival.y0, x: this.rival.x, y: this.rival.y, k: this.rival.k, moving: this.rival.x0 !== this.rival.x || this.rival.y0 !== this.rival.y, d: this.rival.d, prop: null, jumpPhase: null, stepMs: 260 } : { ...p, x0: m.spot[0] - 3, x: m.spot[0] - 3, prop: null, jumpPhase: null };
+        const w = e.walker;
         w.fx = p.x0; w.fy = p.y0; w.tx = p.x; w.ty = p.y; w.moving = p.moving; w.stepOverride = p.stepMs; w.t = p.k * p.stepMs; w.d = p.d;
         e.surf = p.surf || 0; e.rest = p.rest; e.sit = p.sit || 0; e.treatView = p.treat; e.propView = p.prop;
-        e.jumpAt = p.jumpPhase !== null && p.jumpPhase >= 0 && p.jumpPhase < 400 ? now - p.jumpPhase : null;
+        e.jumpAt = this.rival && m.role === 'volley' && this.rival.jumpAt && (m.spot[1] < BEACH.net.y) === (this.rival.side === 'n') ? this.rival.jumpAt : p.jumpPhase !== null && p.jumpPhase >= 0 && p.jumpPhase < 400 ? now - p.jumpPhase : null;
         if (p.holds) nowHeld.add(`${p.holds[0]},${p.holds[1]}`);
         if (p.sit) nowSeats.add((p.sit - 1) % SEATS.length);
       }

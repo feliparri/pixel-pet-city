@@ -16,7 +16,7 @@ import { createGlLayer } from './gl.js';
 import { createGovernor, encodeLevel, decodeLevel } from './quality.js';
 import { createPetPainter } from './pets.js';
 import { createThings } from './things.js';
-import { drawFlare } from '../art/flare.js';
+import { drawFlare, drawVolleyBall, drawLanding } from '../art/flare.js';
 import { SHOWS, RISE, FALL, tiltAt, showCamera, horizonY } from '../show/timeline.js';
 import { makeStars, drawSky, pixelUnit, LAND } from '../show/sky.js';
 import { drawChristmas } from '../show/draw-christmas.js';
@@ -178,6 +178,14 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
     if (state.fire && areaName === 'beach') {                               // a stoked bonfire (src/bonfire.js): taller flames, sparks and a stronger glow over the baked ring
       const wx = state.fire.x * TILE + TILE / 2, wy = state.fire.y * TILE + 14, g = project(cam, wx, wy);
       if (g) { const sc = petScaleOf(cam), fx = Math.round(g.x), fy = Math.round(g.y); items.push({ depth: g.depth, order: 1, draw: (c) => { c.save(); c.translate(fx, fy); c.scale(sc, sc); drawFlare(c, state.fire.k, now, n); c.restore(); } }); }
+    }
+    if (state.vball && areaName === 'beach') {                              // the volleyball in flight and, for whoever must return it, the ring where it lands (src/volley.js)
+      const v = state.vball, gb = project(cam, v.x * TILE + TILE / 2, v.y * TILE + TILE - 2), sc = petScaleOf(cam);
+      if (gb) items.push({ depth: gb.depth, order: 1, draw: (c) => { if (v.mine && v.to) { const gl = project(cam, v.to[0] * TILE + TILE / 2, v.to[1] * TILE + TILE - 2); if (gl) { c.save(); c.translate(Math.round(gl.x), Math.round(gl.y)); c.scale(sc, sc * Math.max(0.3, cam.sin)); drawLanding(c, v.k, now); c.restore(); } } c.save(); c.translate(Math.round(gb.x), Math.round(gb.y)); c.scale(sc, sc); drawVolleyBall(c, v.lift, now); c.restore(); } });
+    }
+    if (state.vscore && areaName === 'beach') {                             // the score over the court, small
+      const gs = project(cam, state.vscore.x * TILE + TILE / 2, state.vscore.y * TILE);
+      if (gs) items.push({ depth: gs.depth + 9999, order: 2, draw: (c, ov) => { if (ov) ov.labels.push({ text: state.vscore.text, x: Math.round(gs.x), y: Math.round(gs.y), colour: '#f8d040' }); } });
     }
     for (const e of [state.me, ...state.others]) { const it = painter.item(e, ent); if (it) items.push(it); }
     const ov = { labels: [], bubbles: [], hits: [] };
