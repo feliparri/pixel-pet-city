@@ -1,24 +1,31 @@
-// The surf wave drawn as pixel particles, in the spirit of odd/refs/surf-ref.png: the face is chunky dashes and specks of several blues (darker at the base, paler at the top, a few light
-// streaks), the crest is a white foam ridge of clustered white and pale-blue pixel blobs that curls over at the peel point with a dark barrel under the lip, spray dots fly off the lip,
-// and whitewater bits tumble behind the broken part. The geometry and the timing are the wave of the clock (src/surf.js waveAt / waveBody / bodyAt): nothing here decides anything. Every
-// particle is placed from the sample's index and the wave's own age (the clock), so every player sees the same pattern and nothing is stored; each is snapped to a whole art pixel of the
-// scene, the count is bounded, only the rows in view are drawn, and the cells are batched by colour into a few fill calls.
-import { waveBody, WAVE_LIFT } from '../surf.js';
+// The surf wave drawn as the pixel-art wave of odd/refs/wave-shape-ref.png: a solid blue body that stands up from the sea, its back (towards the open sea, south-west) rising as a smooth
+// slope with a light-blue outline that steps up pixel by pixel, a few lighter dashes on the water, and at the top the lip curling forward, over the front (towards the shore, north-east),
+// under a big pale-blue and white foam cap that overhangs a dark pocket; a few loose spray pixels fly off the tip. Hard blocks of flat colour, no gradients.
+//
+// How it is made: the wave stands on its front line (y = k + x, the geometry of src/surf.js); across that line, towards the shore, the profile above is extruded vertically on screen, its
+// height at every point of the front being the wave's own (waveBody's bodyAt height times WAVE_LIFT), so it grows towards the peel point and the broken part carries the big foam cap
+// with whitewater behind. The ground points of that sheet (every few world px along the front and across it) are projected and written, nearest first, into a small grid of cells
+// (two art pixels wide, anchored at the screen's origin so every block is snapped to the art pixel grid); each cell column is then emitted as runs, merged sideways, batched into one
+// fill per colour. Nothing here decides anything: the clock gives the geometry, the sample's row and the wave's age give every dash and spray pixel; nothing is stored; the grid
+// covers the rows in view only and the number of rectangles is bounded.
+import { bodyAt, WAVE_LIFT } from '../surf.js';
 import { groundRow, project } from './camera.js';
 import { TILE } from '../map.js';
 
 export { WAVE_LIFT };
-export const MAX_PARTICLES = 3600;
+export const MAX_PARTICLES = 4000;
 
 const hash = (a, b, c = 0) => { let h = Math.imul(a * 73856093 ^ b * 19349663 ^ c * 83492791, 0x45d9f3b); h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d); h ^= h >>> 13; return (h >>> 0) / 4294967295; };
 
-const DAY = { trough: '#0e2f60', trough2: '#173f7c', deep: '#123f78', mid: '#2a82bd', light: '#56bde4', pale: '#a8e8f6', streak: '#d2f4fb', foam: '#ffffff', foam2: '#d4f2fa', foam3: '#a6d6ee', barrel: '#133a74' };
+const DAY = { body: '#1d8fd3', dash: '#38b4f2', edge: '#86d4fb', cap: '#d9f2fe', cap2: '#a7dcf8', barrel: '#0f5c9a', white: '#ffffff' };
+const KEYS = ['', 'body', 'dash', 'edge', 'cap', 'cap2', 'barrel', 'white'];
+const BODY = 1, DASH = 2, EDGE = 3, CAP = 4, CAP2 = 5, BARREL = 6, WHITE = 7;
 const mixHex = (a, b, t) => { const p = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)); const x = p(a), y = p(b); return `rgb(${x.map((v, i) => Math.round(v + (y[i] - v) * t)).join(',')})`; };
 const palettes = new Map();
-const paletteFor = (n) => {                                                              // the colours for a night amount, quantised so they are made once
+const paletteFor = (n) => {                                                              // the colours for a night amount (index by BODY..WHITE), quantised so they are made once
   const q = Math.round(n * 10);
   let p = palettes.get(q);
-  if (!p) { p = {}; for (const [k, v] of Object.entries(DAY)) p[k] = q ? mixHex(v, '#0b1632', 0.5 * (q / 10)) : v; palettes.set(q, p); }
+  if (!p) { p = KEYS.map((k) => (k ? (q ? mixHex(DAY[k], '#0b1632', 0.5 * (q / 10)) : DAY[k]) : '')); palettes.set(q, p); }
   return p;
 };
 
@@ -35,105 +42,182 @@ function bin() {
   };
 }
 
-/** Draws the wave into `ctx`. `n` is the night amount (it darkens the colours), `shore(y)` the first shallow column of a row, `rows` the map's row count. Returns how many particles were drawn. */
-export function drawWave(ctx, cam, view, wave, n, now, shore, rows) {
-  const rt = groundRow(cam, 0), rb = groundRow(cam, view.h - 1);
-  const r0 = Math.max(1, Math.floor((rt ? rt.y : cam.focusY - 700) / TILE) - 1), r1 = Math.min(rows - 2, Math.ceil((rb ? rb.y : cam.focusY + 400) / TILE) + 1);
-  const body = waveBody(wave, r0, r1, TILE, shore);
-  if (!body.length) return 0;
-  const U = pixelOf(cam), C = U * 2, P = paletteFor(n), age = wave.age, id = wave.id, out = bin();
-  const ps = body.map((s) => project(cam, s.x, s.y)), behind = body.map((s) => project(cam, s.x - 13, s.y + 13));
-  const on = (p, m = 80) => p && p.x > -m && p.x < view.w + m && p.y > -m * 3 && p.y < view.h + m * 3;
-  const seed = (i) => Math.round(body[i].y * 2) + id * 977;                               // each sample's own seed: its row and the wave's id
-  const lifts = body.map((s, i) => (ps[i] ? s.h * WAVE_LIFT * ps[i].scale : 0));
-  const keep = (s, i, q) => hash(seed(i), q, 91) <= s.a;                                  // a wave that dies on the shallows thins out into fewer and fewer specks
+const sm = (t) => { const c = t < 0 ? 0 : t > 1 ? 1 : t; return c * c * (3 - 2 * c); };
 
-  for (let i = 0; i < body.length; i++) {                                                  // 1. the trough ahead of the front: dark dashes, thinning out with the distance
-    const s = body[i];
-    if (!ps[i] || !on(ps[i])) continue;
-    for (let d = 0; d < 4; d++) {
-      if (hash(seed(i), d, 1) > [0.95, 0.85, 0.6, 0.35][d] || !keep(s, i, 10 + d)) continue;
-      const p = project(cam, s.x + 3 + d * 6, s.y - 3 - d * 6);
+// The profile across the front, as fractions of the wave's height H. nu = distance towards the shore / H (negative: the back slope, towards the open sea).
+const BACK = 1.7, E0 = 0.1;
+/** The height of the solid body (0..1) at `nu`: a smooth back slope up to the crest, then (capped) a short steep drop to the lower front under the lip, or (not capped) a rounded fall. */
+export function bodyFrac(nu, capped) {
+  if (nu <= -BACK) return 0;
+  if (nu < -0.08) { const r = (nu + BACK) / (BACK - 0.08); return 0.35 * r + 0.65 * sm(r); }
+  if (nu <= E0) return 1;
+  if (capped) return nu < 0.2 ? 1 - 0.45 * (nu - E0) / 0.1 : 0.55 * (1 - sm((nu - 0.2) / 0.22));
+  return 1 - sm((nu - E0) / 0.34);
+}
+/** The foam cap's reach over the front (in nu) for a cap size `ck` (0..1). */
+export const lipReach = (ck) => E0 + 0.42 * ck;
+/** The overhanging cap at `nu` as [bottom, top] fractions of H, or null: it hangs over the front from the crest, thinning to a tip at `e`. */
+export function capSpan(nu, e) {
+  if (nu < 0.05 || nu > e) return null;
+  const q = (nu - 0.05) / (e - 0.05), top = 1 - 0.28 * q * q, bot = 0.55 + (top - 0.55) * Math.pow(q, 1.4);
+  return bot < top - 0.01 ? [bot, top] : null;
+}
+const capThick = (nu, ck) => ck * 0.5 * sm((nu + 1.1) / 0.9);                            // how deep the foam lies on the surface of the crest and the upper back slope
+
+const gridCache = { key: '', grid: null, minTop: null, capTh: null, top: null, bot: null };
+
+/**
+ * Builds and draws the sheet. `env`: proj(wx, wy) -> { x, y, scale } | null, C (cell px, a multiple of the art pixel U), U, vw, vh (the view), wave, shore(y), y0, y1 (rows in view),
+ * hK (height factor on the sample's h), step (world px between lattice points), P (palette), now. Returns how many rectangles were drawn.
+ */
+function sheet(ctx, env) {
+  const { proj, C, U, vw, vh, wave, shore, y0, y1, hK, step: D, P } = env, age = wave.age, id = wave.id;
+  const cols = Math.ceil(vw / C) + 1, R = Math.ceil(vh / C) + 1, key = cols + 'x' + R;
+  if (gridCache.key !== key) { gridCache.key = key; gridCache.grid = new Uint8Array(cols * R); gridCache.minTop = new Int16Array(cols); gridCache.capTh = new Uint8Array(cols); gridCache.top = new Int16Array(cols); gridCache.bot = new Int16Array(cols); }
+  const { grid, minTop, capTh, top, bot } = gridCache;
+  const yStart = y0 * TILE + TILE / 2, nI = Math.floor(((y1 - y0) * TILE) / D) + 1, k16 = wave.k * TILE;
+  const Hs = new Float32Array(nI), ck = new Float32Array(nI), brk = new Uint8Array(nI);
+  let Hmax = 0;
+  for (let i = 0; i < nI; i++) {                                                            // the wave's height and cap at every point of the front
+    const wy = yStart + i * D, row = (wy - TILE / 2) / TILE, b = bodyAt(wave, row - wave.k, shore(Math.min(y1, Math.max(y0, Math.round(row)))));
+    if (!b || b.a < 0.06) continue;
+    Hs[i] = b.h * hK * (0.3 + 0.7 * b.a);
+    ck[i] = b.broken ? 0.85 + 0.15 * b.curl : b.curl > 0.5 ? (b.curl - 0.5) * 1.8 : 0;
+    brk[i] = b.broken ? 1 : 0;
+    if (Hs[i] > Hmax) Hmax = Hs[i];
+  }
+  if (!Hmax) return 0;
+  grid.fill(0); minTop.fill(32767); capTh.fill(0); top.fill(32767); bot.fill(-1);
+  const jMin = -Math.ceil(BACK * Hmax / D), jMax = Math.ceil(0.5 * Hmax / D);
+  const wr = (c, ya, yb, v, onlyEmpty) => {                                                // write the cells [ya, yb) of column c
+    if (c < 0 || c >= cols) return;
+    if (ya < 0) ya = 0; if (yb > R) yb = R;
+    const o = c * R;
+    if (onlyEmpty) { let any = false; for (let r = ya; r < yb; r++) if (!grid[o + r]) { grid[o + r] = v; any = true; if (r < top[c]) top[c] = r; if (r > bot[c]) bot[c] = r; } return any; }
+    if (ya >= yb) return false;
+    grid.fill(v, o + ya, o + yb);
+    if (ya < top[c]) top[c] = ya; if (yb - 1 > bot[c]) bot[c] = yb - 1;
+    return true;
+  };
+  const at = (i, j) => { const wy = yStart + i * D; return proj(wy - k16 + j * D, wy); };                       // the ground point j steps shoreward (east) of the front on the row of point i: the profile lies along the screen's horizontal, as in the reference
+  for (let i = nI - 1; i >= 0; i--) {                                                        // 1. the body, nearest row first: each point writes only what it adds above what is already there
+    if (!Hs[i]) continue;
+    for (let j = jMin; j <= jMax; j++) {
+      const H = Hs[i], nu = j * D / H, hb = bodyFrac(nu, ck[i] > 0.25);
+      if (hb < 0.012) continue;
+      const p = at(i, j);
+      if (!p || p.x < -C * 4 || p.x > vw + C * 4) continue;
+      const w = Math.max(1, Math.ceil(D * p.scale / C)), cx = Math.floor(p.x / C), by = Math.ceil(p.y / C), ty = Math.floor((p.y - hb * H * p.scale) / C);
+      if (by < 0 || ty >= R) continue;
+      const th = ck[i] > 0.25 ? Math.round(capThick(nu, ck[i]) * H * p.scale / C) : 0;
+      for (let c = cx; c < cx + w; c++) {
+        if (c < 0 || c >= cols) continue;
+        const end = Math.min(by, minTop[c]);
+        if (ty < end && wr(c, ty, end, BODY, false)) { minTop[c] = ty; capTh[c] = th > 255 ? 255 : th; }
+      }
+    }
+  }
+  for (let i = nI - 1; i >= 0; i--) {                                                        // 2. the lip: the foam cap overhanging the front, with the dark pocket under it (only where nothing nearer stands)
+    if (!Hs[i] || ck[i] <= 0.25) continue;
+    for (let j = 0; j <= jMax; j++) {
+      const H = Hs[i], nu = j * D / H, e = lipReach(ck[i]);
+      if (nu < 0.05 || nu > e) continue;
+      const p = at(i, j);
       if (!p) continue;
-      out.put(hash(seed(i), d, 2) > 0.5 ? P.trough : P.trough2, p.x - C, p.y, C * (2 + (hash(seed(i), d, 3) > 0.5 ? 1 : 0)), C, U);
+      const cx = Math.floor(p.x / C), w = Math.max(1, Math.ceil(D * p.scale / C)), sp = capSpan(nu, e), body = bodyFrac(nu, true);
+      for (let c = cx; c < cx + w; c++) {
+        if (sp) wr(c, Math.floor((p.y - sp[1] * H * p.scale) / C), Math.ceil((p.y - sp[0] * H * p.scale) / C), CAP, true);
+        if (nu > 0.12 && nu < e - 0.04 && sp) wr(c, Math.ceil((p.y - sp[0] * H * p.scale) / C), Math.ceil((p.y - Math.max(body, 0.04) * H * p.scale) / C), BARREL, true);
+      }
     }
   }
-  for (let i = 0; i < body.length; i++) {                                                  // 2. the face: rows of chunky dashes from the water behind the crest up to the lip, dark to pale
-    const s = body[i], p = ps[i], b = behind[i];
-    if (!p || !b || !on(p)) continue;
-    const top = p.y - lifts[i], nk = Math.max(2, Math.round((b.y - top) / U / 1.5)), sp = ps[i + 1] ? Math.abs(ps[i + 1].x - p.x) : 20, wd = Math.max(C * 3, Math.round(sp / U) * U + C);
-    for (let k = 0; k < nk; k++) {
-      if (!keep(s, i, 20 + k)) continue;
-      const f = (k + 0.5) / nk, v = f + (hash(seed(i), k, 4) - 0.5) * 0.38;
-      const x = b.x + (p.x - b.x) * f + (hash(seed(i), k, 5) - 0.5) * U, y = b.y + (top - b.y) * f;
-      const color = v < 0.2 ? P.deep : v < 0.46 ? P.mid : v < 0.74 ? P.light : P.pale;
-      out.put(color, x - wd / 2, y - U, wd - (hash(seed(i), k, 6) > 0.6 ? U : 0), C - U, U);
-      if (hash(seed(i), k, 7) > 0.84) out.put(P.streak, x - C * 0.5 + (hash(seed(i), k, 8) - 0.5) * C * 2, y - U * 1.5 + C * (hash(seed(i), k, 9) > 0.5 ? 1 : 0), C * 2, U, U);      // a light streak along the face
+  for (let i = 0; i < nI; i += 2) {                                                          // 3. the lighter dashes on the water, anchored to the front's own points
+    if (!Hs[i]) continue;
+    const ab = Math.round((yStart + i * D) / D), sd = ab + id * 977;
+    if (hash(sd, 1, 31) > 0.78) continue;
+    const H = Hs[i], nu = -0.1 - 0.75 * hash(sd, 2, 32), hb = bodyFrac(nu, ck[i] > 0.25), p = at(i, Math.round(nu * H / D));
+    if (!p || hb < 0.12) continue;
+    const c0 = Math.floor(p.x / C), r = Math.floor((p.y - hb * H * p.scale * (0.1 + 0.55 * hash(sd, 3, 33))) / C), len = 3 + Math.floor(hash(sd, 4, 34) * 5);
+    for (let q = 0; q < len; q++) { const c = c0 + q; if (c >= 0 && c < cols && r >= 0 && r < R && grid[c * R + r] === BODY) grid[c * R + r] = DASH; }
+  }
+  for (let c = 0; c < cols; c++) {                                                           // 4. the foam lying on the crest, and the light outline that steps up the silhouette
+    if (bot[c] < 0) continue;
+    const t = top[c], o = c * R, th = capTh[c];
+    for (let r = t; r < t + th && r <= bot[c]; r++) if (grid[o + r] === BODY || grid[o + r] === DASH) grid[o + r] = CAP;
+    if (th > 2 && t + th <= bot[c]) {                                                       // the foam's lower rim, and the shaded teeth of water under it
+      if (grid[o + t + th - 1] === CAP) grid[o + t + th - 1] = CAP2;
+      if (grid[o + t + th] === BODY && (c & 1) === 0) grid[o + t + th] = BARREL;
+      if (t + th + 1 <= bot[c] && grid[o + t + th + 1] === BODY && (c & 3) === 0) grid[o + t + th + 1] = BARREL;
     }
   }
-  for (let i = 0; i < body.length; i++) {                                                  // 3. the foam crest: a ridge of white and pale-blue blobs, hooking over at the peel
-    const s = body[i], p = ps[i];
-    if (!p || !on(p)) continue;
-    const x = p.x, y = p.y - lifts[i], r = (q) => hash(seed(i), q, 11);
-    if (s.curl > 0.55) {                                                                   // the barrel under the lip, and the lip curling over and down
-      out.put(P.barrel, x, y + U, U * 3, U * 3, U);
-      out.put(P.foam, x + U, y - U, U * 3, U, U); out.put(P.foam, x + U * 3, y, U, U * 2, U); out.put(P.foam, x + U * 2, y + U * 2, U, U, U); out.put(P.foam2, x + U * 4, y + U, U, U, U);
-    }
-    if (!keep(s, i, 30)) continue;
-    out.put(P.foam, x - U * 2.5, y - (s.broken ? U : 0), U * (5 + (r(1) > 0.5 ? 2 : 0)), U * 2, U);
-    out.put(P.foam2, x - U * 3.5 + (r(2) - 0.5) * U * 2, y + U * 2, U * 4, U, U);
-    if (s.broken && r(10) > 0.3) out.put(P.foam, x - U * 4, y - U * 2, U * 3, U, U);
-    if (r(3) > 0.35) out.put(P.foam, x - U + (r(4) - 0.5) * U * 3, y - U * 2, U * (1 + (r(5) > 0.5 ? 1 : 0)), U, U);
-    if (r(6) > 0.5) out.put(P.foam3, x + (r(7) - 0.3) * U * 3, y + U * 2, U * 2, U, U);
-    if (r(8) > 0.7) out.put(P.foam, x - U * 3, y + U * 2 + (r(9) > 0.5 ? U : 0), U, U, U);
+  for (let c = 0; c < cols; c++) {
+    if (bot[c] < 0) continue;
+    const t = top[c], o = c * R, drop = Math.max(c > 0 && bot[c - 1] >= 0 ? top[c - 1] : t, c + 1 < cols && bot[c + 1] >= 0 ? top[c + 1] : t), last = Math.min(drop - 1, t + 1);
+    for (let r = t; r <= Math.max(t, last) && r <= bot[c]; r++) { const v = grid[o + r]; if (v === BODY || v === CAP || v === DASH) grid[o + r] = EDGE; }
   }
-  for (let i = 0; i < body.length; i++) {                                                  // 4. spray dots flying off the lip
-    const s = body[i], p = ps[i];
-    if (!p || s.curl < 0.22 || !on(p)) continue;
-    for (let q = 0; q < 5; q++) {
-      const ph = (age / 560 + hash(seed(i), q, 12)) % 1;
-      if (ph > 0.9) continue;
-      const jx = (hash(seed(i), q, 13) - 0.25) * 12, vy = 12 + hash(seed(i), q, 14) * 12;
-      out.put(P.foam, p.x + (jx * ph + 3) * p.scale, p.y - lifts[i] - (vy * ph - 18 * ph * ph) * p.scale, U, U, U);
+  const out = bin(), list = [];
+  let prev = new Map();
+  for (let c = 0; c < cols; c++) {                                                           // 5. every column as runs, merged with the same run of the column to its left
+    const cur = new Map();
+    if (bot[c] >= 0) {
+      const o = c * R;
+      let r = top[c];
+      while (r <= bot[c]) {
+        const v = grid[o + r];
+        if (!v) { r++; continue; }
+        let r1 = r;
+        while (r1 + 1 <= bot[c] && grid[o + r1 + 1] === v) r1++;
+        const below = r1 + 1 <= bot[c] ? grid[o + r1 + 1] : 0;
+        const runs = v === CAP && (below === 0 || below === BARREL) && r1 > r ? [[r, r1 - 1, CAP], [r1, r1, CAP2]] : v === CAP && (below === 0 || below === BARREL) ? [[r, r, CAP2]] : [[r, r1, v]];
+        for (const [a, b, col] of runs) {
+          const k = (col << 20) | (a << 10) | b, f = prev.get(k);
+          if (f && f.c1 === c) { f.c1 = c + 1; cur.set(k, f); } else { const rc = { col, a, b, c0: c, c1: c + 1 }; list.push(rc); cur.set(k, rc); }
+        }
+        r = r1 + 1;
+      }
     }
+    prev = cur;
   }
-  for (let i = 0; i < body.length; i++) {                                                  // 5. whitewater behind the broken part: blobs that drift back and tumble, and a thicker foam right behind the crest
-    const s = body[i];
-    if (!s.broken || !ps[i] || !on(ps[i])) continue;
-    for (let q = 0; q < 7; q++) {
-      if (!keep(s, i, 40 + q)) continue;
-      const ph = (age / 900 + hash(seed(i), q, 15)) % 1;
-      if (ph > 0.92) continue;
-      const off = 5 + ph * 36, p = project(cam, s.x - off, s.y + off);
-      if (!p || !on(p)) continue;
-      const kind = hash(seed(i), q, 16), y = p.y - Math.sin(ph * Math.PI) * 5 * p.scale;
-      if (kind < 0.3) out.put(P.foam, p.x, y, U, U, U); else if (kind < 0.7) out.put(P.foam, p.x, y, U * 3, U, U); else if (kind < 0.9) { out.put(P.foam2, p.x, y, U * 2, U, U); out.put(P.foam, p.x + U, y - U, U, U, U); } else out.put(P.foam3, p.x, y, U * 2, U * 2, U);
-    }
+  for (const rc of list) out.put(P[rc.col], rc.c0 * C, rc.a * C, (rc.c1 - rc.c0) * C, (rc.b - rc.a + 1) * C, U);
+  // 6. the loose spray off the lip, and the whitewater tumbling behind the broken part
+  for (let i = 0; i < nI; i += 3) {
+    if (!Hs[i] || ck[i] <= 0.25) continue;
+    const H = Hs[i], e = lipReach(ck[i]), ab = Math.round((yStart + i * D) / D), sd = ab + id * 977;
     for (let q = 0; q < 3; q++) {
-      const off = 3 + q * 4 + hash(seed(i), q, 17) * 3, p = project(cam, s.x - off, s.y + off);
-      if (p && keep(s, i, 50 + q)) out.put(q === 2 ? P.foam3 : P.foam2, p.x, p.y, U * (2 + (hash(seed(i), q, 18) > 0.5 ? 1 : 0)), U, U);
+      const ph = (age / 640 + hash(sd, q, 12)) % 1;
+      if (ph > 0.88) continue;
+      const p = at(i, Math.round((e + 0.05 + ph * 0.28 + hash(sd, q, 13) * 0.1) * H / D));
+      if (p) out.put(hash(sd, q, 14) > 0.4 ? P[WHITE] : P[CAP], p.x, p.y - (0.78 + 0.5 * ph - 0.35 * ph * ph + hash(sd, q, 15) * 0.15) * H * p.scale, U * (hash(sd, q, 16) > 0.7 ? 2 : 1), U * (hash(sd, q, 16) > 0.7 ? 2 : 1), U);
+    }
+  }
+  for (let i = 0; i < nI; i += 2) {
+    if (!Hs[i] || !brk[i]) continue;
+    const H = Hs[i], ab = Math.round((yStart + i * D) / D), sd = ab + id * 977;
+    for (let q = 0; q < 3; q++) {
+      if (hash(sd, q, 40) > 0.7) continue;
+      const ph = (age / 900 + hash(sd, q, 41)) % 1;
+      if (ph > 0.9) continue;
+      const p = at(i, Math.round((-BACK - 0.02 - ph * 0.45) * H / D));
+      if (p) out.put(hash(sd, q, 42) > 0.45 ? P[CAP] : P[WHITE], p.x, p.y - Math.sin(ph * Math.PI) * 3 * p.scale, U * (hash(sd, q, 43) > 0.5 ? 3 : 2), U, U);
     }
   }
   out.flush(ctx);
   return out.count;
 }
 
-/** The simple version for the flat view: the same particle style in game px (cells of 2 px), drawn into `sctx` already translated to the map (positions are world px minus `cam`). */
-export function drawWaveFlat(sctx, wave, cam, area, shore, now = 0) {
-  const body = waveBody(wave, 1, area.h - 2, TILE, shore);
-  if (!body.length) return 0;
-  const U = 2, out = bin(), P = DAY, id = wave.id, age = wave.age;
-  const seed = (s) => Math.round(s.y * 2) + id * 977;
-  body.forEach((s, i) => {
-    const x = s.x - cam.x, y = s.y - cam.y, lift = Math.max(4, Math.round(s.h * 0.7)), sd = seed(s), keep = (q) => hash(sd, q, 91) <= s.a;
-    if (x < -20 || x > 2000 || y < -20 || y > 2000) return;
-    if (keep(1)) out.put(hash(sd, 1, 2) > 0.5 ? P.trough : P.trough2, x + 4, y - 7, 8, 2, U);
-    const nk = Math.max(2, Math.round(lift / U));
-    for (let k = 0; k < nk; k++) { if (!keep(20 + k)) continue; const f = (k + 0.5) / nk, v = f + (hash(sd, k, 4) - 0.5) * 0.4; out.put(v < 0.3 ? P.deep : v < 0.6 ? P.mid : v < 0.85 ? P.light : P.pale, x - 4, y - f * lift, 6 + (hash(sd, k, 6) > 0.5 ? 2 : 0), U, U); }
-    if (keep(30)) { out.put(P.foam, x - 3, y - lift - (s.broken ? 2 : 0), 6, U, U); if (hash(sd, 3, 11) > 0.4) out.put(P.foam2, x - 5, y - lift + 2, 4, U, U); }
-    if (s.curl > 0.25) { out.put(P.barrel, x, y - lift + 2, 6, 6, U); out.put(P.foam, x + 2, y - lift - 2, 6, U, U); out.put(P.foam, x + 6, y - lift, U, 4, U); }
-    if (s.broken) for (let q = 0; q < 3; q++) { if (!keep(40 + q)) continue; const ph = (age / 900 + hash(sd, q, 15)) % 1; if (ph > 0.92) continue; out.put(hash(sd, q, 16) > 0.5 ? P.foam : P.foam2, x - 5 - ph * 22, y + 4 + ph * 18 - Math.sin(ph * Math.PI) * 3, hash(sd, q, 17) > 0.5 ? 4 : U, U, U); }
-  });
-  out.flush(sctx);
-  return out.count;
+/** Draws the wave into `ctx`. `n` is the night amount (it darkens the colours), `shore(y)` the first shallow column of a row, `rows` the map's row count. Returns how many rectangles were drawn. */
+export function drawWave(ctx, cam, view, wave, n, now, shore, rows) {
+  const rt = groundRow(cam, 0), rb = groundRow(cam, view.h - 1);
+  const y0 = Math.max(1, Math.floor((rt ? rt.y : cam.focusY - 700) / TILE) - 1), y1 = Math.min(rows - 2, Math.ceil((rb ? rb.y : cam.focusY + 400) / TILE) + 1);
+  if (!wave || y1 <= y0) return 0;
+  const U = pixelOf(cam);
+  return sheet(ctx, { proj: (x, y) => project(cam, x, y), C: U * 2, U, vw: view.w, vh: view.h, wave, shore, y0, y1, hK: WAVE_LIFT * 1.5, step: 4, P: paletteFor(n) });
+}
+
+/** The simple version for the flat view: the same silhouette in game px (cells of 2 px), drawn into `sctx` already translated to the map (positions are world px minus `cam`); `view` is the visible size. */
+export function drawWaveFlat(sctx, wave, cam, area, shore, now = 0, view = { w: 400, h: 300 }) {
+  if (!wave) return 0;
+  const y0 = Math.max(1, Math.floor(cam.y / TILE) - 1), y1 = Math.min(area.h - 2, Math.ceil((cam.y + view.h) / TILE) + 1);
+  if (y1 <= y0) return 0;
+  return sheet(sctx, { proj: (x, y) => ({ x: x - cam.x, y: y - cam.y, scale: 1 }), C: 2, U: 2, vw: view.w, vh: view.h, wave, shore, y0, y1, hK: 3.4, step: 2, P: paletteFor(0) });
 }

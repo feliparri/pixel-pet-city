@@ -115,7 +115,7 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
       }
     }
   }
-  if (wave && baked.water.length) drawWaveFlat(sctx, wave, cam, area, shallowFrom);      // the surf wave as pixel particles, simply (src/hd2d/wave.js)
+  if (wave && baked.water.length) drawWaveFlat(sctx, wave, cam, area, shallowFrom, now, { w: vw, h: vh });      // the surf wave as pixel particles, simply (src/hd2d/wave.js)
   if (baked.fountain) for (const [c, dx, dy, w, h] of fountainFrame(frame)) { sctx.fillStyle = c; sctx.fillRect(baked.fountain.x + dx - cam.x, baked.fountain.y + dy - cam.y, w, h); }
 
   if (life) {                                                                  // the spray of the fountain and the rings on the pond
