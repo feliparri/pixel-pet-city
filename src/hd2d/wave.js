@@ -64,6 +64,9 @@ export function capSpan(nu, e) {
 }
 const capThick = (nu, ck) => ck * 0.5 * sm((nu + 1.1) / 0.9);                            // how deep the foam lies on the surface of the crest and the upper back slope
 
+const LUT = { res: 64, plain: null, capped: null };                                         // the body's profile tabulated once (nu from -BACK, 1/64 steps), for the plain and the capped wave
+{ const n = Math.ceil((BACK + 0.6) * LUT.res) + 1; LUT.plain = new Float32Array(n); LUT.capped = new Float32Array(n); for (let k = 0; k < n; k++) { const nu = k / LUT.res - BACK; LUT.plain[k] = bodyFrac(nu, false); LUT.capped[k] = bodyFrac(nu, true); } }
+
 const gridCache = { key: '', grid: null, minTop: null, capTh: null, top: null, bot: null };
 
 /**
@@ -88,28 +91,33 @@ function sheet(ctx, env) {
   }
   if (!Hmax) return 0;
   grid.fill(0); minTop.fill(32767); capTh.fill(0); top.fill(32767); bot.fill(-1);
-  const jMin = -Math.ceil(BACK * Hmax / D), jMax = Math.ceil(0.5 * Hmax / D);
+  const jMax = Math.ceil(0.5 * Hmax / D);
   const wr = (c, ya, yb, v, onlyEmpty) => {                                                // write the cells [ya, yb) of column c
     if (c < 0 || c >= cols) return;
     if (ya < 0) ya = 0; if (yb > R) yb = R;
     const o = c * R;
     if (onlyEmpty) { let any = false; for (let r = ya; r < yb; r++) if (!grid[o + r]) { grid[o + r] = v; any = true; if (r < top[c]) top[c] = r; if (r > bot[c]) bot[c] = r; } return any; }
     if (ya >= yb) return false;
-    grid.fill(v, o + ya, o + yb);
+    for (let r = ya; r < yb; r++) grid[o + r] = v;
     if (ya < top[c]) top[c] = ya; if (yb - 1 > bot[c]) bot[c] = yb - 1;
     return true;
   };
-  const at = (i, j) => { const wy = yStart + i * D; return proj(wy - k16 + j * D, wy); };                       // the ground point j steps shoreward (east) of the front on the row of point i: the profile lies along the screen's horizontal, as in the reference
+  const rp = new Array(nI);                                                                 // the crest's ground point of each row, projected once: along a row the depth is the same, so a point j steps shoreward is just j * step * scale to the right
+  for (let i = 0; i < nI; i++) if (Hs[i]) { const wy = yStart + i * D; rp[i] = proj(wy - k16, wy); }
+  const at = (i, j) => { const r = rp[i]; return r ? { x: r.x + j * D * r.scale, y: r.y, scale: r.scale } : null; };   // the ground point j steps shoreward (east) of the front on the row of point i: the profile lies along the screen's horizontal, as in the reference
   for (let i = nI - 1; i >= 0; i--) {                                                        // 1. the body, nearest row first: each point writes only what it adds above what is already there
-    if (!Hs[i]) continue;
-    for (let j = jMin; j <= jMax; j++) {
-      const H = Hs[i], nu = j * D / H, hb = bodyFrac(nu, ck[i] > 0.25);
+    const r = rp[i];
+    if (!r || r.y < 0 || r.y - Hs[i] * r.scale > vh) continue;
+    const H = Hs[i], capped = ck[i] > 0.25, lut = capped ? LUT.capped : LUT.plain, sc = r.scale, w = Math.max(1, Math.ceil(D * sc / C)), by = Math.ceil(r.y / C);
+    const jlo = -Math.ceil(BACK * H / D), jhi = Math.ceil(0.45 * H / D);
+    for (let j = jlo; j <= jhi; j++) {
+      const nu = j * D / H, hb = lut[Math.round((nu + BACK) * LUT.res)] || 0;
       if (hb < 0.012) continue;
-      const p = at(i, j);
-      if (!p || p.x < -C * 4 || p.x > vw + C * 4) continue;
-      const w = Math.max(1, Math.ceil(D * p.scale / C)), cx = Math.floor(p.x / C), by = Math.ceil(p.y / C), ty = Math.floor((p.y - hb * H * p.scale) / C);
+      const px = r.x + j * D * sc;
+      if (px < -C * 4 || px > vw + C * 4) continue;
+      const cx = Math.floor(px / C), ty = Math.floor((r.y - hb * H * sc) / C);
       if (by < 0 || ty >= R) continue;
-      const th = ck[i] > 0.25 ? Math.round(capThick(nu, ck[i]) * H * p.scale / C) : 0;
+      const th = capped ? Math.round(capThick(nu, ck[i]) * H * sc / C) : 0;
       for (let c = cx; c < cx + w; c++) {
         if (c < 0 || c >= cols) continue;
         const end = Math.min(by, minTop[c]);
@@ -156,9 +164,9 @@ function sheet(ctx, env) {
     for (let r = t; r <= Math.max(t, last) && r <= bot[c]; r++) { const v = grid[o + r]; if (v === BODY || v === CAP || v === DASH) grid[o + r] = EDGE; }
   }
   const out = bin(), list = [];
-  let prev = new Map();
+  let pk = [], pr = [], ck2 = [], cr = [];                                                   // the open runs of the column to the left (key, rect), and of this one
   for (let c = 0; c < cols; c++) {                                                           // 5. every column as runs, merged with the same run of the column to its left
-    const cur = new Map();
+    ck2.length = 0; cr.length = 0;
     if (bot[c] >= 0) {
       const o = c * R;
       let r = top[c];
@@ -167,16 +175,19 @@ function sheet(ctx, env) {
         if (!v) { r++; continue; }
         let r1 = r;
         while (r1 + 1 <= bot[c] && grid[o + r1 + 1] === v) r1++;
-        const below = r1 + 1 <= bot[c] ? grid[o + r1 + 1] : 0;
-        const runs = v === CAP && (below === 0 || below === BARREL) && r1 > r ? [[r, r1 - 1, CAP], [r1, r1, CAP2]] : v === CAP && (below === 0 || below === BARREL) ? [[r, r, CAP2]] : [[r, r1, v]];
-        for (const [a, b, col] of runs) {
-          const k = (col << 20) | (a << 10) | b, f = prev.get(k);
-          if (f && f.c1 === c) { f.c1 = c + 1; cur.set(k, f); } else { const rc = { col, a, b, c0: c, c1: c + 1 }; list.push(rc); cur.set(k, rc); }
+        const below = r1 + 1 <= bot[c] ? grid[o + r1 + 1] : 0, rim = v === CAP && (below === 0 || below === BARREL);
+        for (let part = 0; part < (rim && r1 > r ? 2 : 1); part++) {
+          const a0 = rim && r1 > r && part === 1 ? r1 : r, b0 = rim ? (r1 > r && part === 0 ? r1 - 1 : r1) : r1, col = rim ? (r1 > r && part === 0 ? CAP : CAP2) : v;
+          const k = (col << 20) | (a0 << 10) | b0;
+          let f = null;
+          for (let q = 0; q < pk.length; q++) if (pk[q] === k && pr[q].c1 === c) { f = pr[q]; break; }
+          if (f) f.c1 = c + 1; else { f = { col, a: a0, b: b0, c0: c, c1: c + 1 }; list.push(f); }
+          ck2.push(k); cr.push(f);
         }
         r = r1 + 1;
       }
     }
-    prev = cur;
+    [pk, ck2] = [ck2, pk]; [pr, cr] = [cr, pr];
   }
   for (const rc of list) out.put(P[rc.col], rc.c0 * C, rc.a * C, (rc.c1 - rc.c0) * C, (rc.b - rc.a + 1) * C, U);
   // 6. the loose spray off the lip, and the whitewater tumbling behind the broken part
