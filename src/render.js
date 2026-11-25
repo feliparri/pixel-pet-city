@@ -25,7 +25,8 @@ import { GHOST_SCALE } from './ghosts.js';
 import { drawSnow } from './snow.js';
 import { paintSky, drawWeatherTop } from './weather-fx.js';
 import { waterOf, SUBMERGE } from './sea.js';
-import { waveStrokes, waveBody, swellLift } from './surf.js';
+import { swellLift } from './surf.js';
+import { drawWaveFlat } from './hd2d/wave.js';
 import { drawWake, drawBoard, drawRideSpray } from './sea-draw.js';
 import { lying, restLift, isLounger } from './lounge.js';
 import { poseSprite, breath } from './art/poses.js';
@@ -114,17 +115,7 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
       }
     }
   }
-  if (wave && baked.water.length) {                                           // the surf wave (src/surf.js), simply: a dark trough ahead, a shaded face, a bright lip and white water behind
-    const body = waveBody(wave, 1, area.h - 2, TILE, shallowFrom), r = (x, y, w, h) => sctx.fillRect(Math.round(x - cam.x), Math.round(y - cam.y), w, h);
-    for (const q of body) { sctx.fillStyle = `rgba(23,64,127,${0.4 * q.a})`; r(q.x + 4, q.y - 8, 12, 4); }
-    for (const q of body) {
-      const lift = Math.round(q.h * 0.6);
-      sctx.fillStyle = `rgba(42,127,176,${0.75 * q.a})`; r(q.x - 6, q.y - lift * 0.4, 12, lift * 0.4 + 2);
-      sctx.fillStyle = `rgba(${q.broken ? '111,198,220' : '85,181,210'},${0.8 * q.a})`; r(q.x - 6, q.y - lift * 0.8, 12, lift * 0.4 + 1);
-      sctx.fillStyle = `rgba(${q.broken ? '255,255,255' : '230,249,253'},${q.a})`; r(q.x - 6, q.y - lift - 1, 12, q.curl > 0.3 ? 3 : 2);
-    }
-    for (const q of waveStrokes(wave, 1, area.h - 2, TILE, shallowFrom)) if (q.w === 15 || q.w === 12) { sctx.fillStyle = `rgba(234,247,255,${q.a})`; r(q.x - q.w / 2, q.y - q.h / 2, q.w, q.h); }      // the white water trailing behind the broken part
-  }
+  if (wave && baked.water.length) drawWaveFlat(sctx, wave, cam, area, shallowFrom);      // the surf wave as pixel particles, simply (src/hd2d/wave.js)
   if (baked.fountain) for (const [c, dx, dy, w, h] of fountainFrame(frame)) { sctx.fillStyle = c; sctx.fillRect(baked.fountain.x + dx - cam.x, baked.fountain.y + dy - cam.y, w, h); }
 
   if (life) {                                                                  // the spray of the fountain and the rings on the pond

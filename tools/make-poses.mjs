@@ -65,10 +65,12 @@ function recline(species) {
   ell(g, 16, 21, 6.5, 5, '5', { ring: '2' });                                                    // the belly patch, facing out
   px(g, 13, 19, '5'); px(g, 12, 20, '5');
   if (cat) { for (const [x, y] of [[9, 16], [10, 15], [27, 17], [28, 18]]) px(g, x, y, '9'); }
-  if (seal) {                                                                                      // no legs: the body tapers into a tail and the two rear flippers spread in a V, forward over the seat
-    sausage(g, 15, 25.5, 8.5, 27.2, 3.4, '3', { shade: '2', hi: '4' });
-    tri(g, [[8, 25], [0, 22], [2, 27]], '2'); tri(g, [[8, 28], [0, 31], [2, 26]], '2'); tri(g, [[7, 26], [1, 24], [2, 27]], '3');
-    for (const [x, y] of [[2, 23], [3, 24], [1, 29], [3, 28], [4, 26]]) px(g, x, y, '1');
+  if (seal) {                                                                                      // no legs: the body tapers into a tail and the two rear flippers lie side by side at its tip, pointing forward over the seat
+    sausage(g, 15, 26, 8.5, 27, 3.3, '3', { shade: '2', hi: '4' });
+    line(g, 9, 25, 0, 24, '2', 2); line(g, 9, 28, 0, 28, '2', 2);                                  // the pair, one over the other, both pointing left
+    line(g, 8, 25, 1, 24, '3', 1);
+    for (let x = 1; x <= 9; x++) px(g, x, 26, '1');
+    px(g, 0, 26, '1'); px(g, 0, 29, '1');
   } else {
     sausage(g, 14, 25.5, 6.5, 26.5, 3.2, '3', { shade: '2', hi: '4' }); ell(g, 3.5, 27, 2.8, 2.5, '3', { shade: '2' });      // the far leg, forward, and its foot
     sausage(g, 20, 28, 10.5, 29, 2.9, '3', { shade: '2', hi: '4' }); ell(g, 8, 29, 2.8, 2.1, '3', { shade: '2' });          // the near leg, in front, and its foot
@@ -92,10 +94,12 @@ function surfBody(species) {
   const g = make(30, 17);
   const frog = species === 'frog', seal = species === 'seal', cat = species === 'cat';
   if (cat) { for (const [x0, y0, x1, y1] of [[21, 12, 26, 11], [26, 11, 28, 8], [28, 8, 27, 4]]) line(g, x0, y0, x1, y1, '3', 2); for (const [x, y] of [[25, 11], [28, 7], [27, 5]]) px(g, x, y, '9'); }
-  if (seal) {                                                                                      // no legs: the body tapers into a rounded tail and two rear flippers spread in a V on the board
-    ell(g, 15, 12, 5, 3.6, '3', { shade: '2' });
-    tri(g, [[12, 13], [2, 11], [4, 16]], '2'); tri(g, [[18, 13], [28, 11], [26, 16]], '2'); tri(g, [[12, 12], [4, 11], [6, 14]], '3'); tri(g, [[18, 12], [26, 11], [24, 14]], '3');
-    for (const [x, y] of [[3, 14], [4, 15], [6, 16], [26, 14], [25, 15], [23, 16]]) px(g, x, y, '1');
+  if (seal) {                                                                                      // no legs: the body tapers into a rounded tail and the two rear flippers lie side by side at its tip, pointing to one side
+    ell(g, 14, 12, 5, 3.6, '3', { shade: '2' });
+    line(g, 16, 12, 26, 11, '2', 2); line(g, 16, 14, 27, 14, '2', 2);                              // the pair: one over the other, both pointing right
+    line(g, 17, 12, 25, 11, '3', 1);
+    for (let x = 17; x <= 26; x++) px(g, x, 13, '1');                                              // the line between the two
+    px(g, 27, 12, '1'); px(g, 28, 13, '1'); px(g, 28, 15, '1');
   } else {                                                                                         // legs apart (behind the torso), then the feet
     ell(g, 10.5, 11.5, 3.3, 3.4, '3', { shade: '2', hi: '4' }); ell(g, 19.5, 11.5, 3.3, 3.4, '3', { shade: '2', hi: '4' });
     ell(g, 9, 15.2, 3.6, 1.7, '3', { shade: '2' }); ell(g, 21, 15.2, 3.6, 1.7, '3', { shade: '2' });
