@@ -233,3 +233,23 @@ test('the surfboard and the wipeout are drawn as squares only: the drawing helpe
   drawWake(ctx, 50, 50, 2, { depth: 'shallow', moving: false, d: 'up', squash: 0.5, now: 99, night: 1, seed: 1 });
   assert.ok(ops.length > n + 20);
 });
+
+import { waveBody } from '../src/surf.js';
+test('the wave body for the renderers: samples along the same diagonal as the clock wave, taller where it has broken and curling at the peel point, fading on the shallows', () => {
+  assert.deepEqual(waveBody(null, 1, 34), []);
+  const w = waveAt(at(3000)), b = waveBody(w, 1, 34, 16, () => 20);
+  assert.ok(b.length > 30);
+  for (const s of b) {
+    assert.ok(Math.abs(s.x / 16 - 0.5 - (s.y / 16 - 0.5 - w.k)) < 1e-9, 'on the front: column = row - k');
+    assert.ok(s.a > 0 && s.a <= 1 && s.h > 0 && s.curl >= 0 && s.curl <= 1);
+  }
+  const broken = b.filter((s) => s.broken), swell = b.filter((s) => !s.broken);
+  assert.ok(broken.length > 5 && swell.length > 5);
+  assert.ok(Math.max(...broken.map((s) => s.h)) > Math.max(...swell.map((s) => s.h)), 'the broken part is taller');
+  const peak = b.reduce((m, s) => (s.curl > m.curl ? s : m), b[0]);
+  assert.ok(Math.abs(peak.col - w.peel) < 0.6 && peak.curl > 0.9, 'the lip is thrown at the peel point');
+  assert.ok(b.every((s) => s.broken === (s.col >= w.peel)), 'the same split as the foam');
+  const near = waveBody({ ...w, k: -1 }, 1, 34, 16, () => 20).filter((s) => s.col > 20.4);
+  assert.ok(near.every((s) => s.a < 1), 'it fades on the shallows');
+  assert.equal(waveBody({ id: 1, age: 7100, k: -25, peel: 3 }, 1, 34, 16, () => 20).length, 0);
+});

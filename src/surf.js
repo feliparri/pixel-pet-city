@@ -131,3 +131,24 @@ export function waveStrokes(wave, y0, y1, tile = 16, shore = () => 20) {
   }
   return out;
 }
+
+/**
+ * The body of the wave as samples along its front, for the renderers to give it volume: one per half row between rows y0 and y1 (inclusive), { x, y (world px, centre), a (fade 0..1),
+ * broken, curl (0..1: how close it is to the peel point, where the lip is thrown), h (height of the water above the sea in world px), col }. The geometry is the one of `waveAt` (the
+ * crest at column row - k): only the look is here. Unbroken swell is a gentle bulge that grows towards the peel point; the broken part is taller, with the lip curling at the peel.
+ * `shore(y)` is the first shallow column of a row: the wave flattens and fades as it runs up the shallows.
+ */
+export function waveBody(wave, y0, y1, tile = 16, shore = () => 20) {
+  if (!wave) return [];
+  const out = [], rise = Math.min(1, wave.age / 600);
+  for (let row = y0; row <= y1 + 0.001; row += 0.5) {
+    const col = row - wave.k, sx = shore(Math.min(y1, Math.max(y0, Math.round(row))));
+    if (col < 0.7 || col > sx + 4) continue;
+    const a = Math.min(1, Math.max(0, 1 - Math.max(0, col - sx) / 3.5)) * rise * Math.min(1, (col - 0.7) / 1.5);
+    if (a <= 0) continue;
+    const broken = col >= wave.peel, d = (col - wave.peel) / 2.2, curl = Math.exp(-d * d), swell = Math.exp(-(((col - wave.peel) / 5) ** 2));
+    const h = (broken ? 7 + 3 * curl : 3 + 3 * swell) * (0.55 + 0.45 * Math.min(1, Math.max(0, (sx - col) / 3 + 0.5)));
+    out.push({ x: col * tile + tile / 2, y: row * tile + tile / 2, a, broken, curl, h, col });
+  }
+  return out;
+}

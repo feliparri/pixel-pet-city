@@ -115,3 +115,19 @@ test('a big sea is re-baked row by row, a small pond in one box', () => {
   assert.deepEqual(visibleWater(rects, 30, 50).map((r) => r[1]), [16, 32, 48].filter((y) => y + 16 > 30 && y < 50));
   assert.equal(visibleWater(rects.slice(0, 2), 900, 1000).length, 2, 'a few rectangles are all kept');
 });
+
+import { SCATTER } from '../src/art/beach.js';
+test('the beach scatter lies on open sand, the seaweed on the wet sand, never on a solid tile, and it is sparse', () => {
+  assert.ok(SCATTER.length >= 10 && SCATTER.length <= 24, `${SCATTER.length} things`);
+  const kinds = new Set(SCATTER.map((s) => s.kind));
+  for (const k of ['shell', 'starfish', 'castle', 'bucket', 'ball', 'weed', 'prints']) assert.ok(kinds.has(k), k);
+  for (const s of SCATTER) {
+    const ch = tileAt(s.x, s.y, 'beach');
+    assert.ok(ch === (s.kind === 'weed' ? 'i' : 's'), `${s.kind} at ${s.x},${s.y} is on ${ch}`);
+    assert.ok(isWalkable(s.x, s.y, 'beach'));
+    assert.ok(s.dx >= 0 && s.dx < 16 && s.dy >= 0 && s.dy < 16);
+  }
+  const per = new Map();
+  for (const s of SCATTER) per.set(`${s.x},${s.y}`, (per.get(`${s.x},${s.y}`) || 0) + 1);
+  assert.ok([...per.values()].every((n) => n === 1), 'one thing to a tile');
+});

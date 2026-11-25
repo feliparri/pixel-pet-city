@@ -14,6 +14,7 @@ import { createFrameCache, createShadows, drawShadow } from './framecache.js';
 import { waterOf, SUBMERGE } from '../sea.js';
 import { drawWake, drawBoard } from '../sea-draw.js';
 import { lying, LIE_LIFT } from '../lounge.js';
+const RIDE_LIFT = 5;                                                                              // art px a surfer is raised: on the face of the wave, not at its foot
 import { lieScale, zzzAt, zzzSprite } from '../art/sleep.js';
 
 const PET_RINGS = [[1, 0.16], [8.5 / 11, 0.2], [6 / 11, 0.24]];            // the soft ground shadow: three discs of 11, 8.5 and 6 px
@@ -72,7 +73,7 @@ export function createPetPainter(sprites) {
     const lie = !e.npc && !water && lying(area, e.walker);                                          // standing still on a lounger: lying down
     const hop = e.walker.moving && !swim && !ride && !paddle ? Math.round(Math.abs(Math.sin(k * Math.PI)) * 3) : 0;
     const bob = wiped ? Math.round(Math.sin(now / 110 + e.id.charCodeAt(0)) * 2) : swim ? Math.round(Math.sin(now / 320 + e.id.charCodeAt(0))) : 0;
-    const dip = wiped ? { sink: 9, cut: 12 } : SUBMERGE, stand = ride ? 2 : 0;
+    const dip = wiped ? { sink: 9, cut: 12 } : SUBMERGE, stand = ride ? RIDE_LIFT : 0;
     const air = jumpLift(now, e.jumpAt);
     const fx = e.fx ? entranceState(e.fx.id, e.fx.phase, now - e.fx.t0) : null;                // an arrival or an exit in progress
     const lift = fx ? Math.round(fx.lift * (cy / s + CELL + 24)) : 0;                            // game px above the spot; 1 = just above the top edge
@@ -96,7 +97,7 @@ export function createPetPainter(sprites) {
             tctx.globalCompositeOperation = 'source-atop'; tctx.fillStyle = `rgba(${tint.r | 0},${tint.g | 0},${tint.b | 0},${tint.a})`; tctx.fillRect(0, 0, L.w, L.h);
             src = t;
           }
-          if (ride || paddle) drawBoard(c, cx, cy - s, s, { squash: Math.max(0.3, cam.sin) * 0.6, night: n });                                   // the board under the surfer
+          if (ride || paddle) drawBoard(c, cx, cy - (ride ? RIDE_LIFT : 1) * s, s, { squash: Math.max(0.3, cam.sin) * 0.6, night: n });                                   // the board under the surfer
           if (swim) { const sh = L.feetY - dip.cut; c.drawImage(src, 0, 0, L.w, sh, cx - L.feetX * s + sway * s, cy - (L.feetY + air + lift - dip.sink - bob) * s, L.w * s, sh * s); }      // only what is above the water
           else if (paddle) { const k = 0.8, bobP = Math.round(Math.sin(now / 260 + e.id.charCodeAt(0))); c.drawImage(src, 0, 0, L.w, L.h, cx - L.feetX * s + sway * s, cy - (L.feetY * k + air + lift + 1 + bobP) * s, L.w * s, L.h * k * s); }      // kneeling on the board, a little lower
           else if (lie) { const q = lieScale(now); c.drawImage(src, 0, 0, L.w, L.h, cx - L.feetX * s * q.sx + sway * s, cy - (LIE_LIFT + L.feetY * q.sy) * s, L.w * s * q.sx, L.h * s * q.sy); }      // lying flat on the seat, as the board draws a sleeping pet (squashed, eyes shut)

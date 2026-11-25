@@ -13,7 +13,7 @@ import { drawPet, CELL } from '../sprites.js';
 import { SHOPKEEPER } from '../npcs.js';
 
 let sprites = null;
-const kit = () => sprites || (sprites = { barn: FM.barn(), well: FM.well(), scarecrow: FM.scarecrow(), stallBack: FM.stallBack(), stallFront: FM.stallFront(), fruit: [FM.fruitTree(0), FM.fruitTree(1), FM.fruitTree(2)], palm: [BE.palm(0), BE.palm(1)], umbrella: [0, 1, 2, 3].map((i) => BE.umbrella(i)), lounger: [0, 1, 2].map((i) => BE.lounger(i)), lifeguard: BE.lifeguard(), rocks: [BE.rocks(0), BE.rocks(1)], oak: [oak(1), oak(2)], pine: [pine(1), pine(2)], bush: [bush(0), bush(1)], lamp: lamp(), lampLit: lampLit(), coop: PL.coop(), counter: counter(), nightWindow: nightWindow() });
+const kit = () => sprites || (sprites = { barn: FM.barn(), well: FM.well(), scarecrow: FM.scarecrow(), stallBack: FM.stallBack(), stallFront: FM.stallFront(), fruit: [FM.fruitTree(0), FM.fruitTree(1), FM.fruitTree(2)], palm: [BE.palm(0), BE.palm(1)], umbrella: [0, 1, 2, 3].map((i) => BE.umbrella(i)), lounger: [0, 1, 2].map((i) => BE.lounger(i)), castle: BE.sandcastle(), bucket: BE.bucket(), ball: BE.beachBall(), lifeguard: BE.lifeguard(), rocks: [BE.rocks(0), BE.rocks(1)], oak: [oak(1), oak(2)], pine: [pine(1), pine(2)], bush: [bush(0), bush(1)], lamp: lamp(), lampLit: lampLit(), coop: PL.coop(), counter: counter(), nightWindow: nightWindow() });
 
 /** The outdoor areas: the town (plaza, fountain, houses) and the farm (fields, barn, orchard) share every tile that is the same. */
 function bakeOutdoor(area) {
@@ -79,6 +79,17 @@ function bakeOutdoor(area) {
       case 'b': G.grass(ctx, x, y, tx, ty); shadow(ctx, x + 9, y + 14, 7, 2, 0.28); out.props.push({ x, y: y + 16 - 14, sortY: y + 10, sprite: k.bush[(tx + ty) & 1], hide: { x: tx, y: ty } }); break;
       case 'L': base(); shadow(ctx, x + 11, y + 15, 6, 1.5, 0.3); out.props.push({ x, y: y + 16 - 32, sortY: y + 15, sprite: k.lamp }); out.overlays.push({ x, y: y + 16 - 32, sprite: k.lampLit }); out.glows.push({ kind: 'lamp', x: x + LAMP_GLOW.x, y: y + 16 - 32 + LAMP_GLOW.y, r: 36 }); break;
       default: earth();                                       // grass (or sand on the beach), flowers, and what the houses cover
+    }
+  }
+  if (beach) {                                                                           // sparse small things on the sand: the flat ones in the ground, the upright ones as props
+    BE.scatterGround(ctx);
+    const up = { castle: [k.castle, 14, 12], bucket: [k.bucket, 12, 10], ball: [k.ball, 10, 10] };
+    for (const s of BE.SCATTER) {
+      const u = up[s.kind];
+      if (!u) continue;
+      const px = s.x * TILE + s.dx, py = s.y * TILE + s.dy;
+      shadow(ctx, px + u[1] / 2, py + 1, u[1] / 2 + 1, 2, 0.25);
+      out.props.push({ x: px, y: py - u[2] + 1, sortY: py, sprite: u[0] });
     }
   }
   if (town) { drawFountain(ctx, 22 * TILE, 20 * TILE); out.fountain = { x: 22 * TILE, y: 20 * TILE }; }
