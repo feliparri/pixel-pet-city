@@ -1,9 +1,10 @@
 // Development only (?local=1&dev=1): a stand-in for the trip client's shop that lives in the page, so the shop and the backpack can be tried
-// and photographed without a server. It follows the same rules as trip-buy and trip-buy-tool. ?gold=N sets the gold, ?shop=closed an old board, ?items=14 a board that does not know the town's hats (16 by default), ?gifts=2 gifts already packed,
+// and photographed without a server. It follows the same rules as trip-buy, trip-buy-tool and trip-buy-treat. ?gold=N sets the gold, ?shop=closed an old board, ?items=14 a board that does not know the town's hats (16 by default), ?gifts=2 gifts already packed,
 // ?tools=sickle,bucket the farm tools the pet already owns (none by default); claimMission follows trip-mission (one payment per villager a day, a daily cap, ?earned=N what
 // missions paid already today).
-import { SHOP, GIFT_MAX, shopFrom, shopAfterBuy, shopAfterBuyTool, shopAfterMission, shopAfterGift } from './shop.js';
+import { SHOP, GIFT_MAX, shopFrom, shopAfterBuy, shopAfterBuyTool, shopAfterBuyTreat, shopAfterMission, shopAfterGift } from './shop.js';
 import { TOOLS, isTool, toolKeys } from './tools.js';
+import { TREATS } from './kiosk.js';
 import { DAILY_CAP, parseMission } from './missions.js';
 import { parseDevSeasons } from './seasons.js';
 import { dayOf } from './npc-world.js';
@@ -71,6 +72,16 @@ export function createMockShop(search = '') {
         r = { ok: true, gold: pay, capped: pay < g.reward, gift: g.id, gift_earned: giftPaid, cap: GIFT_DAILY_CAP, gold_left: gold - spent + earned };
       }
       shop = shopAfterGift(shop, r);
+      return r;
+    },
+    async buyTreat(key) {
+      let r;
+      const t = TREATS.find((x) => x.key === key);
+      if (!shop.canSpend) r = { ok: false, error: 'shop_closed' };
+      else if (!t) r = { ok: false, error: 'not_for_sale' };
+      else if (t.price > gold - spent + earned) r = { ok: false, error: 'no_gold', price: t.price, gold_left: gold - spent + earned };
+      else { spent += t.price; r = { ok: true, gold_left: gold - spent + earned }; }
+      shop = shopAfterBuyTreat(shop, r);
       return r;
     },
     async buyTool(key) {

@@ -6,6 +6,7 @@ import { newCode, normalizeCode, isEntrance, DEFAULT_ENTRANCE } from './trip-cod
 import { cleanRadar } from './radar.js';
 import { SHOP, isForSale, boardKnows, knownItems } from './shop.js';
 import { TOOLS, isTool } from './tools.js';
+import { TREATS, isTreat } from './treats.js';
 import { DAILY_CAP, parseMission, townDay } from './missions.js';
 import { slotAccepted, slotStart, walkAccepted, walkSlotStart, parseGiftId, seasonsOn, santaHoldsItem, santaItemFor, GIFT_DAILY_CAP } from './gifts.js';
 import { events, eventSave, eventCancel, seasonSave, seasonClear } from './events.js';
@@ -211,6 +212,27 @@ async function tripBuy(req, deps) {
   const row = await deps.db.updateTrip(trip.id, { status: ['active'], spent: [spent] }, { spent: spent + item.price, bought: [...bought, key], session_seen_at: iso(deps.nowS()) });
   if (!row) return err(409, 'conflict');                                       // another buy or the recall got in first: the client asks again
   return reply(200, { gold_left: pkg.petInfo.gold - row.spent + earned, bought: row.bought });
+}
+
+// ---- trip-buy-treat -----------------------------------------------------------------------------------------------------------
+// The Kiosco: a treat paid with the pet's gold through the same ledger (trip.spent). Nothing is stored (the treat lives in the town for a few seconds and never
+// goes home), so there is no table to write and nothing to undo: the conditional update of the ledger is the whole purchase.
+async function tripBuyTreat(req, deps) {
+  const p = parseJson(req.body);
+  if (p.fail) return p.fail;
+  const s = await webTrip(req, p.v, deps);
+  if (s.fail) return s.fail;
+  const { trip } = s;
+  if (trip.status !== 'active') return err(409, 'trip_over', { status: trip.status });
+  const gold = trip.pet_view?.gold;
+  if (!trip.can_spend || !Number.isInteger(gold)) return err(403, 'shop_closed');
+  const key = p.v.treat;
+  if (!isTreat(key)) return err(400, 'not_for_sale');
+  const spent = trip.spent ?? 0, earned = trip.earned ?? 0, price = TREATS[key].price, left = gold - spent + earned;
+  if (price > left) return err(409, 'no_gold', { gold_left: Math.max(0, left), price });
+  const row = await deps.db.updateTrip(trip.id, { status: ['active'], spent: [spent] }, { spent: spent + price, session_seen_at: iso(deps.nowS()) });
+  if (!row) return err(409, 'conflict');                                       // another buy or the recall got in first: the client asks again
+  return reply(200, { gold_left: gold - row.spent + earned });
 }
 
 // ---- trip-buy-tool ------------------------------------------------------------------------------------------------------------
@@ -433,7 +455,7 @@ async function tripAck(req, deps, device) {
   return now && now.status === 'closed' ? reply(200, { trip_id: trip.trip_id, status: 'closed', replayed: true }) : err(409, 'not_returned', { status: now?.status });
 }
 
-const ROUTES = { 'device-register': deviceRegister, 'trip-claim': tripClaim, 'trip-save': tripSave, 'trip-buy': tripBuy, 'trip-buy-tool': tripBuyTool, 'trip-mission': tripMission, 'trip-gift': tripGift, 'trip-status': tripStatus,
+const ROUTES = { 'device-register': deviceRegister, 'trip-claim': tripClaim, 'trip-save': tripSave, 'trip-buy': tripBuy, 'trip-buy-tool': tripBuyTool, 'trip-buy-treat': tripBuyTreat, 'trip-mission': tripMission, 'trip-gift': tripGift, 'trip-status': tripStatus,
   'trip-start': tripStart, 'trip-recall': tripRecall, 'trip-return': tripReturn, 'trip-ack': tripAck,
   'events': events, 'event-save': eventSave, 'event-cancel': eventCancel,
   'season-save': seasonSave, 'season-clear': seasonClear };

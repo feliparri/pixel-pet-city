@@ -88,6 +88,14 @@ export function shopAfterBuyTool(shop, key, r) {
   return shop;
 }
 
+/** What a finished treat purchase changes in the state (trip-buy-treat answers { gold_left }): the gold, nothing else (a treat is not kept). */
+export function shopAfterBuyTreat(shop, r) {
+  if (r.ok) return { ...shop, gold: int(r.gold_left) ?? shop.gold };
+  if (r.error === 'no_gold' && int(r.gold_left) !== null) return { ...shop, gold: r.gold_left };
+  if (r.error === 'shop_closed') return { ...shop, canSpend: false, gold: null };
+  return shop;
+}
+
 /** What a finished buy request changes in the state: the gold left and the bought list on success; what the error teaches on a refusal. */
 export function shopAfterBuy(shop, key, r) {
   if (r.ok) return { ...shop, gold: int(r.gold_left) ?? shop.gold, bought: keys(r.bought), full: keys(r.bought).length >= GIFT_MAX };

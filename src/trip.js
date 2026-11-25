@@ -4,7 +4,7 @@ import { normalizeTripCode } from './trip-code.js';
 import { parseKeepsake } from './keepsake.js';
 import { validateLook, validateStats, sanitizeName } from './protocol.js';
 import { entranceId } from './entrance.js';
-import { shopFrom, shopAfterBuy, shopAfterBuyTool, shopAfterMission, shopAfterGift, parseBag } from './shop.js';
+import { shopFrom, shopAfterBuy, shopAfterBuyTool, shopAfterBuyTreat, shopAfterMission, shopAfterGift, parseBag } from './shop.js';
 import { toolKeys } from './tools.js';
 
 export const POLL_MS = 5000;
@@ -97,6 +97,16 @@ export function createTripClient({ base, fetch: fetcher = globalThis.fetch, stor
       if (!r.ok && r.error === 'conflict') r = await post('trip-buy-tool', { trip: session.trip, tool: key }, session.token);
       const out = r.ok ? { ok: true, ...r.body } : { ok: false, error: r.error, ...(r.body && Number.isInteger(r.body.price) ? { price: r.body.price } : {}), ...(r.body && Number.isInteger(r.body.gold_left) ? { gold_left: r.body.gold_left } : {}) };
       session.shop = shopAfterBuyTool(session.shop, key, out);
+      return out;
+    },
+
+    /** Buys a Kiosco treat (trip-buy-treat), same rules and retry as buy; the treat is not stored anywhere, only the gold comes off. { ok, gold_left } or { ok: false, error, price?, gold_left? }. */
+    async buyTreat(key) {
+      if (!session) return { ok: false, error: 'bad_session' };
+      let r = await post('trip-buy-treat', { trip: session.trip, treat: key }, session.token);
+      if (!r.ok && r.error === 'conflict') r = await post('trip-buy-treat', { trip: session.trip, treat: key }, session.token);
+      const out = r.ok ? { ok: true, ...r.body } : { ok: false, error: r.error, ...(r.body && Number.isInteger(r.body.price) ? { price: r.body.price } : {}), ...(r.body && Number.isInteger(r.body.gold_left) ? { gold_left: r.body.gold_left } : {}) };
+      session.shop = shopAfterBuyTreat(session.shop, out);
       return out;
     },
 

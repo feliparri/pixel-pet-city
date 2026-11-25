@@ -141,6 +141,12 @@ the pet on later trips; it is **never** part of a return package. `trip-claim` l
 `trip-buy` (`401 bad_session`, `403 shop_closed`, `409 no_gold` with `gold_left` and `price`, `409 trip_over`, `409 conflict`), `400 not_for_sale` (unknown key), `409 owned`
 (with `tools`) and `503 try_again` (the tool could not be saved: the spent gold was given back).
 
+### `trip-buy-treat`
+Request `{ "trip": "<ref>", "treat": "helado|refresco|coco|paleta" }` with the token: the Kiosco of the beach sells treats for the pet's gold (prices in `treats.js`, 3 to 6 gold, mirrored by
+`src/kiosk.js` under a test). The gold goes through the same ledger as `trip-buy` and `trip-buy-tool` (`spent`, conditional on `active` and `spent` unchanged), so two buys cannot
+overspend and the return's gold is lower by the price. A treat is town-only and perishable: nothing is stored (no table, no migration), nothing goes in a return package.
+`200 { "gold_left" }`. Errors as `trip-buy-tool`: `401 bad_session`, `403 shop_closed`, `400 not_for_sale`, `409 no_gold` (with `gold_left` and `price`), `409 trip_over`, `409 conflict` (ask again).
+
 ### `trip-mission`
 Request `{ "trip": "<ref>", "mission": "<day>:<villager>:<type>:<kind or ->:<n>" }` with the token: the pet handed in a villager's mission and is paid real gold. The villagers' mission of
 the day is a function of the room's code, which the server cannot know, so it checks the claim's **shape** (`missions.js parseMission`: a real villager, a template within its limits

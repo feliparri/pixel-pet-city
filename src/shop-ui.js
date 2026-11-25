@@ -5,7 +5,7 @@ import { drawProduce, produceCanvas } from './art/produce.js';
 import { KINDS, NAMES } from './canasta.js';
 import { shopRows, bagList, confirmText, buyErrorText, thanks, CLOSED_TEXT, GOLD_TEXT, SHOP } from './shop.js';
 import { MISSIONS_TITLE, MISSIONS_HINT, MISSIONS_CLOSED } from './missions.js';
-import { KIOSK_TITLE, KIOSK_HINT, treatRows, TREATS } from './kiosk.js';
+import { KIOSK_TITLE, KIOSK_HINT, CLOSED_TEXT as KIOSK_CLOSED, treatRows, TREATS } from './kiosk.js';
 import { drawTreatIcon } from './art/treat.js';
 import { TOOLS, toolRows, confirmToolText, toolErrorText, STORE_TITLE, STORE_HINT, CLERK_THANKS } from './tools.js';
 
@@ -83,27 +83,31 @@ export function createShopUi($, { source, sprites, canasta = () => null, mission
   }
 
   const treatIcon = (idx) => { const c = el('canvas', 'icon'); c.width = c.height = 40; c.setAttribute('aria-hidden', 'true'); drawTreatIcon(c.getContext('2d'), idx, 40); return c; };
-  function paintKiosk() {                                         // the Kiosco: treats paid with the town's stars (the pet's counter in the corner), no trip needed, nothing goes home
-    const stars = kiosk ? kiosk.stars() : 0;
+  function paintKiosk() {                                         // the Kiosco: treats paid with the pet's gold (a board that cannot spend, or no trip, sees it closed); nothing goes home
+    const src = source(), shop = src && src.shop;
+    const open = !!(shop && shop.canSpend);
     $('panel-title').textContent = KIOSK_TITLE;
-    $('panel-gold').textContent = `⭐ ${stars}`; $('panel-gold').hidden = false;
+    $('panel-gold').textContent = open ? GOLD_TEXT(shop.gold) : ''; $('panel-gold').hidden = !open;
+    if (!open && !note.textContent) say(KIOSK_CLOSED, 'bad');
     const list = el('ul', 'shop-list');
-    for (const row of treatRows(stars)) {
-      const li = el('li', `shop-row ${row.afford ? 'open' : 'short'}`);
+    for (const row of treatRows(shop)) {
+      const li = el('li', `shop-row ${row.state}`);
       const info = el('div', 'shop-info');
-      info.append(el('strong', '', row.name), el('span', 'price', `${row.price} ${row.price === 1 ? 'estrella' : 'estrellas'}`));
-      const b = el('button', row.afford ? 'btn small primary' : 'btn small', 'Comprar');
-      b.type = 'button';
+      info.append(el('strong', '', row.name), el('span', 'price', `${row.price} de oro`));
+      const b = el('button', row.enabled ? 'btn small primary' : 'btn small', row.label);
+      b.type = 'button'; b.disabled = !row.enabled || busy || (kiosk && kiosk.holding());
       b.addEventListener('click', () => buyTreat(row.idx));
       li.append(treatIcon(row.idx), info, b);
       list.append(li);
     }
     body.replaceChildren(el('p', 'empty', KIOSK_HINT), list);
   }
-  function buyTreat(idx) {                                        // a treat is cheap: no confirmation; "Te faltan estrellas" when the pet cannot pay
-    if (!kiosk) return;
-    const r = kiosk.buy(idx);
-    if (!r.ok) { say(r.text, 'bad'); paintKiosk(); return; }
+  async function buyTreat(idx) {                                  // a treat is cheap: no confirmation; the server answers with the gold left or a refusal in words
+    if (!kiosk || busy) return;
+    busy = true; paintKiosk();
+    const r = await kiosk.buy(idx, source());
+    busy = false;
+    if (!r.ok) { say(r.text, 'bad'); if (view === 'kiosk') paintKiosk(); return; }
     onTreatBought(TREATS[idx]);
     close();
   }

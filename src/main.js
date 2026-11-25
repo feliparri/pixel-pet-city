@@ -172,7 +172,7 @@ async function enter(code, { transport = mode, arrival = null, solo = false } = 
   stars = visit ? visit.stars : createStars();                  // dev only: a counter that lives for this visit
   const showStars = () => { $('stars-n').textContent = String(stars.get()); };
   showStars();
-  const counter = { add(n) { stars.add(n); showStars(); }, get: () => stars.get(), spend(n) { const ok = stars.spend(n); showStars(); return ok; } };      // the games add stars; the Kiosco spends them (src/kiosk.js)
+  const counter = { add(n) { stars.add(n); showStars(); }, get: () => stars.get() };      // the games add stars; they are earn-only
   canasta = visit ? visit.canasta : (canasta || createCanasta());       // dev only: a basket that lives for this page
   if (!visit && !devFarm) devFarm = farmMemoryFor('dev');
   window.cityDebug = () => ({ town, net, canasta });                    // handy in the console when testing with two tabs
@@ -549,7 +549,7 @@ async function boot() {
     onOpenChange: (open) => { $('play').classList.toggle('modal', open); if (town) town.setModal(open); },
     canasta: () => canasta,
     missionList: () => (town ? town.missions.list() : null),
-    kiosk: { stars: () => (town ? town.kiosk.stars() : 0), buy: (idx) => (town ? town.kiosk.buy(idx) : { ok: false, text: 'Te faltan estrellas' }) },
+    kiosk: { holding: () => !!(town && town.kiosk.holding()), buy: (idx, src) => (town ? town.kiosk.buy(idx, src) : Promise.resolve({ ok: false, text: 'No se pudo comprar. Inténtalo otra vez.' })) },
     onBought: (key, line) => { sound.play('buy'); if (town) { town.wear(key); town.thank(line); paintArcade(); } },
     onToolBought: (key, line) => { sound.play('buy'); if (town) town.thank(line); },
     onTreatBought: () => sound.play('buy'),

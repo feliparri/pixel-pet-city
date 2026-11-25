@@ -2,18 +2,23 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { BEACH, SIGNS, isWalkable } from '../src/map.js';
-import { TREATS, HOLD_MS, EAT_MS, SHORT, FULL_HAND, kioskAt, treatRows, createTreat, giveTreat, treatPhase, fromCode, buyTreat } from '../src/kiosk.js';
+import { TREATS, HOLD_MS, EAT_MS, SHORT, FULL_HAND, CLOSED_TEXT, kioskAt, treatRows, treatErrorText, createTreat, giveTreat, treatPhase, fromCode, buyTreat } from '../src/kiosk.js';
 import { createStars } from '../src/stars.js';
+import { TREATS as SERVER_TREATS } from '../supabase/functions/trip/treats.js';
+import { createMockShop } from '../src/shop-mock.js';
+import { shopFrom, shopAfterBuyTreat } from '../src/shop.js';
 import { validateMessage } from '../src/protocol.js';
 import { createNet } from '../src/net.js';
 import { CUES } from '../src/pet-sounds.js';
 import { treatSprite, drawTreatIcon, drawHeld } from '../src/art/treat.js';
 
-test('the Kiosco sells four treats for the town\'s stars, and nothing else is involved: not tools, no server, no migration', () => {
+test('the Kiosco sells four treats for gold; the pure rules touch no network and no tools; the server list is the same', () => {
   assert.deepEqual(TREATS.map((t) => t.name), ['Helado', 'Refresco', 'Agua de coco', 'Paleta']);
   assert.ok(TREATS.every((t) => Number.isInteger(t.price) && t.price > 0 && ['eat', 'drink'].includes(t.act)));
   const src = readFileSync(new URL('../src/kiosk.js', import.meta.url), 'utf8');
-  assert.ok(!/fetch|supabase|trip\.js|tools\.js/.test(src.replace(/\/\/.*$/gm, '')), 'no network, no tools');
+  assert.ok(!/fetch|supabase|trip\.js|tools\.js|stars/.test(src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')), 'no network, no tools, no stars');
+  assert.deepEqual(Object.fromEntries(TREATS.map((t) => [t.key, [t.price, t.name]])), Object.fromEntries(Object.entries(SERVER_TREATS).map(([k, t]) => [k, [t.price, t.name]])), 'prices mirror the server');
+  assert.ok(TREATS.every((t) => t.price >= 3 && t.price <= 6));
   assert.ok(SIGNS.some((s) => s.area === 'beach' && s.text === 'Kiosco'));
 });
 
@@ -25,24 +30,45 @@ test('A: Kiosco in front of the counter only', () => {
   assert.equal(kioskAt(k.x, k.y + k.h, 'town'), null);
 });
 
-test('stars can be spent: down by the price, saved like any change, refused (and unchanged) when the pet is short', () => {
-  const saved = [], s = createStars({ initial: 5, persist: (n) => saved.push(n) });
-  assert.equal(s.spend(3), true); assert.equal(s.get(), 2); assert.deepEqual(saved, [2]);
-  assert.equal(s.spend(3), false); assert.equal(s.get(), 2, 'not enough: nothing changes'); assert.deepEqual(saved, [2]);
-  for (const bad of [0, -1, 1.5, NaN, '2']) assert.equal(s.spend(bad), false);
-  assert.equal(s.get(), 2);
-  assert.equal(s.add(4), 6);
+test('stars are earn-only now: no spend', () => {
+  const s = createStars({ initial: 5 });
+  assert.equal(s.spend, undefined);
+  assert.equal(s.add(4), 9);
 });
 
-test('buying: pays and fills the hand; "Te faltan estrellas" without enough, nothing spent; a full hand refuses', () => {
-  const s = createStars({ initial: 3 }), t = createTreat();
-  assert.deepEqual(buyTreat(s, t, 2, 0), { ok: false, text: SHORT }, 'a coconut water is 4 stars');
-  assert.equal(s.get(), 3); assert.equal(t.idx, -1);
-  const r = buyTreat(s, t, 0, 1000);
-  assert.equal(r.ok, true); assert.equal(s.get(), 0); assert.equal(t.idx, 0);
-  assert.deepEqual(buyTreat(createStars({ initial: 9 }), t, 1, 2000), { ok: false, text: FULL_HAND });
-  assert.deepEqual(buyTreat(s, createTreat(), 9, 0), { ok: false, text: SHORT });
-  assert.deepEqual(treatRows(2).map((r) => r.afford), [false, true, false, true]);
+const shopOf = (gold, canSpend = true) => shopFrom({ can_spend: canSpend, gold_left: canSpend ? gold : null, bought: [] }, { owned: [], bag: [], tools: [] });
+
+test('the menu: gold prices, a shortfall in gold, closed when the board cannot spend', () => {
+  assert.deepEqual(treatRows(shopOf(4)).map((r) => [r.state, r.label]), [['nogold', 'Te faltan 1 de oro'], ['buy', 'Comprar'], ['nogold', 'Te faltan 2 de oro'], ['buy', 'Comprar']]);
+  assert.ok(treatRows(shopOf(100)).every((r) => r.enabled));
+  for (const closed of [shopOf(0, false), null]) assert.ok(treatRows(closed).every((r) => r.state === 'closed' && !r.enabled && r.label === 'No disponible'));
+  assert.match(CLOSED_TEXT, /placa no puede gastar oro/);
+});
+
+test('buying: the pay function is asked once, the hand fills; a refusal says why and fills nothing; a full hand is not even asked', async () => {
+  const asked = [], t = createTreat();
+  const pay = (r) => (key) => { asked.push(key); return Promise.resolve(r); };
+  assert.deepEqual(await buyTreat(pay({ ok: false, error: 'no_gold', price: 6, gold_left: 4 }), t, 2, 0), { ok: false, text: 'Te faltan 2 de oro para eso.' });
+  assert.equal(t.idx, -1);
+  const r = await buyTreat(pay({ ok: true, gold_left: 1 }), t, 0, 1000);
+  assert.equal(r.ok, true); assert.equal(t.idx, 0); assert.deepEqual(asked, ['coco', 'helado']);
+  assert.deepEqual(await buyTreat(pay({ ok: true }), t, 1, 2000), { ok: false, text: FULL_HAND });
+  assert.deepEqual(asked, ['coco', 'helado'], 'a full hand never reaches the server');
+  assert.deepEqual(await buyTreat(pay({ ok: true }), createTreat(), 9, 0), { ok: false, text: SHORT });
+  assert.deepEqual(await buyTreat(null, createTreat(), 0, 0), { ok: false, text: CLOSED_TEXT });
+  assert.equal(treatErrorText({ error: 'shop_closed' }), CLOSED_TEXT);
+});
+
+test('the dev mock follows the server: gold comes off, a shortfall, a closed shop, an unknown treat', async () => {
+  const m = createMockShop('?gold=8');
+  assert.deepEqual(await m.buyTreat('helado'), { ok: true, gold_left: 3 });
+  assert.equal(m.shop.gold, 3);
+  assert.deepEqual(await m.buyTreat('coco'), { ok: false, error: 'no_gold', price: 6, gold_left: 3 });
+  assert.equal((await m.buyTreat('nope')).error, 'not_for_sale');
+  assert.equal((await m.buyTreat('paleta')).gold_left, 0);
+  assert.equal((await createMockShop('?shop=closed').buyTreat('helado')).error, 'shop_closed');
+  const closed = shopAfterBuyTreat(shopOf(5), { ok: false, error: 'shop_closed' });
+  assert.deepEqual([closed.canSpend, closed.gold], [false, null]);
 });
 
 test('a treat is held about 20 s, the last stretch eaten or drunk, then it is gone (once); its code goes with the position', () => {

@@ -65,7 +65,7 @@ function spawnFor(id) {
  * done }, what the server paid today), claim(m) (hands a mission in: the server pays real gold, src/trip.js claimMission), giftOwner() (who opens the seasonal gifts: the trip's ref),
  * gift(id) (opens a gift: the server pays 10 to 30 gold (20 to 30 for one of Santa's), src/trip.js claimGift) }; onFarm({ action, prompt }) says which action is available (or null) when it changes, onFarmDone(result) reports an action's outcome (the pop) and onFarmAction(event) every action done (missions), onFish() the pet fished at the park's pond (the page opens the fishing layer).
  * Returns { onNetEvent, emote, playExit, games: { play, join, seek, leave, dismiss }, farm: { act }, destroy }. */
-export function startTown({ canvas, stage, pad = null, sprites, font, net, me, entrance = null, stars = { add() {}, get: () => 0, spend: () => false }, canasta = createCanasta(), farmMemory = createFarmMemory(), tools = () => [], onStore = () => {}, onKiosk = () => {}, missions = null, onHud = () => {}, onShow = () => {}, onShop = () => {}, insets = () => ({ top: 0, bottom: 0 }), onFarm = () => {}, onFarmDone = () => {}, onFarmAction = () => {}, onFish = () => {} }) {
+export function startTown({ canvas, stage, pad = null, sprites, font, net, me, entrance = null, stars = { add() {}, get: () => 0 }, canasta = createCanasta(), farmMemory = createFarmMemory(), tools = () => [], onStore = () => {}, onKiosk = () => {}, missions = null, onHud = () => {}, onShow = () => {}, onShop = () => {}, insets = () => ({ top: 0, bottom: 0 }), onFarm = () => {}, onFarmDone = () => {}, onFarmAction = () => {}, onFish = () => {} }) {
   const [sx, sy] = spawnFor(net.id);
   const self = { id: net.id, name: me.name, look: me.look, stats: me.stats || null, act: 'idle', walker: new Walker(sx, sy), emote: null, jumpAt: null, area: 'town' };
   const treat = createTreat();                                     // a treat from the Kiosco in the pet's hand (src/kiosk.js): this screen's state, the others see its code in the position
@@ -674,8 +674,8 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     /** The farm's action available now (for the prompt's own button: a tap on it does it). */
     /** What the water is like now, for the fishing layer (the town is suspended while it is open): { night, christmas }. */
     fishCtx: () => ({ night: ambientAt(hourNow(location.search)).night >= 0.5, christmas: (devSeasons || activeSeasons(devNpcT === null ? events.serverNow() : devNpcT, events.seasons)).has('christmas'), weather: weatherNowLevels() }),
-    /** The Kiosco (src/kiosk.js): the pet's stars, and buying a treat for them (it goes into the pet's hand for a while). */
-    kiosk: { stars: () => stars.get(), holding: () => treat.idx >= 0, buy: (idx) => { const r = buyTreat(stars, treat, idx, performance.now()); if (r.ok) { pets.cue('pick'); self.jumpAt = performance.now(); net.sendJump(); } return r; } },
+    /** The Kiosco (src/kiosk.js): buying a treat with the pet's gold through `source` (the trip client or the dev mock; it goes into the pet's hand for a while). */
+    kiosk: { holding: () => treat.idx >= 0, buy: async (idx, source) => { const r = await buyTreat(source && source.buyTreat ? (key) => source.buyTreat(key) : null, treat, idx, performance.now()); if (r.ok) { pets.cue('pick'); self.jumpAt = performance.now(); net.sendJump(); } return r; } },
     farm: { act: () => farmDo(), get action() { return farmAction; }, memory: farmMemory, basket: canasta },
     /** The rows of the "Misiones" panel for today ({ rows, earned, cap }), or null when the missions are off (no pet's trip, an old board). */
     missions: {

@@ -248,6 +248,41 @@ test('buy tool: two buys at once cannot overspend; a failed save of the tool giv
   assert.equal(w2.row.spent, 0, 'the gold came back');
 });
 
+// ---- trip-buy-treat (the Kiosco) against the real handlers --------------------------------------------------------------------
+test('buy treat: gold comes off the shared ledger, nothing is stored, every refusal has its code', async () => {
+  const t = await start(withGold(plain, 10));
+  const treat = (key) => t.web.call('trip-buy-treat', { trip: t.ref, treat: key });
+  const a = await treat('helado');
+  assert.deepEqual([a.status, a.body], [200, { gold_left: 5 }]);
+  const again = await treat('helado');                                                    // a treat is not an owned thing: it can be bought again
+  assert.deepEqual([again.status, again.body], [200, { gold_left: 0 }]);
+  const no = await treat('paleta');
+  assert.deepEqual([no.status, no.body.error, no.body.gold_left, no.body.price], [409, 'no_gold', 0, 3]);
+  assert.deepEqual([t.row.spent, t.row.bought], [10, []], 'only the ledger moves; the gift list stays empty');
+  assert.equal(t.w.db.tools.size, 0, 'nothing is stored per board');
+  assert.deepEqual([(await treat('plough')).status, (await treat(7)).body.error], [400, 'not_for_sale']);
+  assert.equal((await t.w.web('ab'.repeat(32)).call('trip-buy-treat', { trip: t.ref, treat: 'coco' })).body.error, 'bad_session');
+  assert.equal((await t.w.web().call('trip-buy-treat', { trip: t.ref, treat: 'coco' })).status, 401);
+  await t.board.call('trip-recall', { trip_id: TRIP_ID });
+  assert.deepEqual([(await treat('paleta')).status, (await treat('paleta')).body.error], [409, 'trip_over']);
+  const old = await start(plain, {});
+  assert.deepEqual([(await old.web.call('trip-buy-treat', { trip: old.ref, treat: 'coco' })).status], [403]);
+});
+
+test('buy treat: the return only loses the gold, and the shared ledger refuses an overspend', async () => {
+  const t = await start();
+  await t.web.call('trip-buy-treat', { trip: t.ref, treat: 'coco' });
+  await t.board.call('trip-recall', { trip_id: TRIP_ID });
+  const ret = await t.board.call('trip-return', { trip_id: TRIP_ID });
+  assert.deepEqual(fromBase64(ret.body.package), buildReturn(plain, 1 + parsePackage(plain).pkg.seq, { spent: 6, bought: [] }));
+  const w = await start(withGold(plain, 7));
+  const call = (k) => w.web.call('trip-buy-treat', { trip: w.ref, treat: k });
+  assert.equal((await call('helado')).body.gold_left, 2);
+  const over = await call('refresco');                                                    // the ledger is shared with the shop and the Almacén: no overspending
+  assert.deepEqual([over.status, over.body.error], [409, 'no_gold']);
+  assert.equal(w.row.spent, 5);
+});
+
 // ---- the trip client ---------------------------------------------------------------------------------------------------------------
 const deps = (w) => ({ db: w.db, nowS: () => w.now, randomBytes: (n) => globalThis.crypto.getRandomValues(new Uint8Array(n)), uuid: () => crypto.randomUUID(), townUrl: 'https://town/' });
 const toFetch = (w) => async (url, init) => {
@@ -273,6 +308,11 @@ test('the trip client: claim carries the tools, buyTool updates the state, a sec
   assert.equal(bad.error, 'not_for_sale');
   assert.equal(createTripClient({ base: 'x', fetch: toFetch(w) }).session, null);
   assert.equal((await createTripClient({ base: 'x', fetch: toFetch(w) }).buyTool('bucket')).error, 'bad_session');
+  const g1 = client.shop.gold;                                                            // the Kiosco: only the gold moves, and a conflict is asked once more
+  const treat = await client.buyTreat('coco');
+  assert.deepEqual([treat.ok, treat.gold_left, client.shop.gold, client.shop.tools], [true, g1 - 6, g1 - 6, ['bucket']]);
+  assert.equal((await client.buyTreat('nope')).error, 'not_for_sale');
+  assert.equal((await createTripClient({ base: 'x', fetch: toFetch(w) }).buyTreat('coco')).error, 'bad_session');
 });
 
 test('the surfboard is in both price lists, costs 60, has its icon, and the migration widens the check to every tool', () => {
