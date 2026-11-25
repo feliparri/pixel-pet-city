@@ -15,6 +15,8 @@ import { waterOf, SUBMERGE } from '../sea.js';
 import { drawWake, drawBoard } from '../sea-draw.js';
 import { lying, restLift, isLounger } from '../lounge.js';
 import { poseSprite, breath } from '../art/poses.js';
+import { swellLift } from '../surf.js';
+import { shallowFrom } from '../map.js';
 const RIDE_LIFT = 12;                                                                              // art px a surfer is raised: on the face of the wave, not at its foot
 import { lieScale, zzzAt, zzzSprite } from '../art/sleep.js';
 
@@ -57,14 +59,15 @@ export function createPetPainter(sprites) {
   const animKey = (lay, now) => lay.anim.length ? lay.anim.map(([item, parts]) => parts.map((p) => partAt(item, p, now)).join()).join(';') : '';
 
   /** The depth-sortable item for an entity, or null when it is off screen / gone. `ctx.me` marks the local pet (its name is gold). */
-  function item(e, { cam, n, now, world, me, view, wash = null, area = 'town' }) {
+  function item(e, { cam, n, now, world, me, view, wash = null, area = 'town', wave = null }) {
     if (!e || e.gone) return null;
     const p = e.walker.pos();
     if (p.x === null) return null;
     const wx = p.x * TILE + TILE / 2, wy = p.y * TILE + TILE;
     const g = project(cam, wx, wy);
     if (!g) return null;
-    const s = petScaleOf(cam), cx = Math.round(g.x), cy = Math.round(g.y);
+    const afloat = !e.npc && wave && e.surf !== 1 && waterOf(area, e.walker), swell = afloat ? swellLift(wave, p.x, p.y, shallowFrom) * g.scale : 0;      // a swell passing lifts what floats: it rises up the face, peaks at the crest, slides down the back (src/surf.js swellLift)
+    const s = petScaleOf(cam), cx = Math.round(g.x), cy = Math.round(g.y - swell);
     const { w: SIZE, feetY: FEET_Y } = layoutFor(e.sprites || sprites, e.look);
     if (cx < -SIZE * s || cx > view.w + SIZE * s || cy < 0 || cy > view.h + FEET_Y * s) return null;
     const k = e.walker.moving ? Math.min(1, e.walker.t / e.walker.stepMs()) : 0;

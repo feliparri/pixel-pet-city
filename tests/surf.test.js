@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { WAVE, WAVE_LIFE_MS, waveAt, crestRow, crestOffset, judgeCatch, surfAction, createSurf, surfFlag, press, wipeout, wipeOver, finishRide, rideDecide, waveStrokes,
   CATCH_TILES, PROMPT_AHEAD, PROMPT_BEHIND, WIPE_MS, MAX_LAG, MAX_AHEAD, RIDE_MS, BOARD } from '../src/surf.js';
@@ -267,4 +268,37 @@ test('net: a rest change is sent even on the same tile and a peer hears it', asy
   net.sendPos(32, 6, 'down', 'beach', 0, 1);
   net.sendPos(32, 6, 'down', 'beach', 0, 0);
   assert.deepEqual(sent.filter((m) => m.t === 'pos').map((m) => m.rest || 0), [0, 1, 0]);
+});
+
+import { swellLift, WAVE_LIFT, SWELL, bodyAt } from '../src/surf.js';
+test('swellLift: a pet in the water is lifted by the wall\'s own height profile, smoothly: up the face, peak at the crest, down the long back', () => {
+  const w0 = waveAt(clockAt(12, 17, 0)), at12 = (e) => ({ w: w0, lift: swellLift(w0, 12, 17 + e) });      // one wave, the pet's row moves relative to its crest
+  assert.equal(swellLift(null, 12, 17), 0, 'no wave, no lift');
+  assert.equal(at12(-10).lift, 0, 'far ahead of the crest: flat');
+  assert.equal(at12(12).lift, 0, 'far behind it: flat');
+  const peak = at12(0), wall = bodyAt(peak.w, 12, 20);
+  assert.ok(Math.abs(peak.lift - wall.h * WAVE_LIFT * SWELL.share * wall.a) < 1e-6, 'at the crest: the wall\'s height (WAVE_LIFT) times its share');
+  assert.ok(peak.lift > 10, `${peak.lift} world px`);
+  let prev = 0;
+  for (let e = -SWELL.front; e <= 0.001; e += 0.25) { const l = at12(e).lift; assert.ok(l >= prev - 1e-6, `rises at ${e}`); prev = l; }
+  for (let e = 0; e <= SWELL.back + 0.001; e += 0.25) { const l = at12(e).lift; assert.ok(l <= prev + 1e-6, `falls at ${e}`); prev = l; }
+  const f = (e) => at12(e).lift, step = 0.05;
+  let worst = 0;
+  for (let e = -4; e < 6; e += step) worst = Math.max(worst, Math.abs(f(e + step) - f(e)));
+  assert.ok(worst < peak.lift * 0.12, `smooth: the biggest step is ${worst.toFixed(2)} of ${peak.lift.toFixed(1)}`);
+  assert.ok(f(SWELL.back / 2) > 0 && f(-SWELL.front / 2) > 0 && f(SWELL.back / 2) > f(-SWELL.front / 2) * 0.5, 'the back slope is longer: half way down it is still well up');
+  assert.ok(SWELL.back > SWELL.front);
+});
+
+test('swellLift: it fades where the wave dies on the shallows and does not move anything by day without a wave; the same clock and tile give peers the same lift', () => {
+  const w = waveAt(clockAt(12, 17, 0)), c = () => 20;
+  assert.ok(swellLift(w, 22, 22 + w.k, c) < swellLift(w, 12, 12 + w.k, c), 'lower on the shallows');
+  assert.equal(swellLift(w, 25, 25 + w.k, c), 0, 'gone past the shallows');
+  assert.equal(swellLift(w, 0, 0 + w.k, c), 0, 'nothing on the open sea edge');
+  assert.equal(swellLift(w, 12, 17), swellLift(waveAt(clockAt(12, 17, 0)), 12, 17), 'deterministic: a peer on the same tile and clock gets the same lift');
+  const fractional = swellLift(w, 12.5, 17.5);
+  assert.ok(Number.isFinite(fractional) && fractional >= 0, 'a pet between two tiles');
+  const src = readFileSync(new URL('../src/hd2d/pets.js', import.meta.url), 'utf8'), flat = readFileSync(new URL('../src/render.js', import.meta.url), 'utf8');
+  assert.ok(src.includes('swellLift(wave, p.x, p.y') && src.includes('Math.round(g.y - swell)'), 'the HD-2D pet, its label, board and rings move with it');
+  assert.ok(flat.includes('swellLift(wave, p.x, p.y'), 'the flat view has a simple version');
 });

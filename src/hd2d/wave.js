@@ -2,11 +2,11 @@
 // a wall whose back slope rises from the water behind the crest to a crest lifted about 4.5 times the wave's height, shaded strongly from a dark base to a light top, a thick lit
 // lip, and where it breaks (around the peel point) a lip that clearly overhangs with a dark barrel under it, spray thrown up from it, a foam sheet and tumbling whitewater behind.
 // The geometry and the timing are the wave of the clock (src/surf.js waveAt / waveBody): nothing here decides anything. Only the rows in view are drawn.
-import { waveBody } from '../surf.js';
+import { waveBody, WAVE_LIFT } from '../surf.js';
 import { groundRow, project } from './camera.js';
 import { TILE } from '../map.js';
 
-export const WAVE_LIFT = 4.5;                 // the crest is lifted this many times the sample's height (world px) up the screen
+export { WAVE_LIFT };
 const hash = (a, b) => { let h = Math.imul(a * 73856093 ^ b * 19349663, 0x45d9f3b); h ^= h >>> 15; return (h >>> 0) / 4294967295; };
 
 /** Draws the wave into `ctx`. `n` is the night amount (it dims the water), `now` ms, `shore(y)` the first shallow column of a row, `rows` the map's row count. Returns the samples drawn. */

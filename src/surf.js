@@ -132,6 +132,18 @@ export function waveStrokes(wave, y0, y1, tile = 16, shore = () => 20) {
   return out;
 }
 
+export const WAVE_LIFT = 4.5;                 // the crest is lifted this many times a sample's height (world px) up the screen (src/hd2d/wave.js draws the wall with it)
+
+/** The height of the wave's body (world px, before WAVE_LIFT) and its look at column `col`: { a (fade 0..1), broken, curl, h } or null where there is no wave. `sx` is the first shallow column of the row. */
+export function bodyAt(wave, col, sx) {
+  if (!wave || col < 0.7 || col > sx + 4) return null;
+  const rise = Math.min(1, wave.age / 600), a = Math.min(1, Math.max(0, 1 - Math.max(0, col - sx) / 3.5)) * rise * Math.min(1, (col - 0.7) / 1.5);
+  if (a <= 0) return null;
+  const broken = col >= wave.peel, d = (col - wave.peel) / 2.2, curl = Math.exp(-d * d), swell = Math.exp(-(((col - wave.peel) / 5) ** 2));
+  const h = (broken ? 7 + 3 * curl : 3 + 3 * swell) * (0.55 + 0.45 * Math.min(1, Math.max(0, (sx - col) / 3 + 0.5)));
+  return { a, broken, curl, h };
+}
+
 /**
  * The body of the wave as samples along its front, for the renderers to give it volume: one per half row between rows y0 and y1 (inclusive), { x, y (world px, centre), a (fade 0..1),
  * broken, curl (0..1: how close it is to the peel point, where the lip is thrown), h (height of the water above the sea in world px), col }. The geometry is the one of `waveAt` (the
@@ -140,15 +152,27 @@ export function waveStrokes(wave, y0, y1, tile = 16, shore = () => 20) {
  */
 export function waveBody(wave, y0, y1, tile = 16, shore = () => 20) {
   if (!wave) return [];
-  const out = [], rise = Math.min(1, wave.age / 600);
+  const out = [];
   for (let row = y0; row <= y1 + 0.001; row += 0.5) {
-    const col = row - wave.k, sx = shore(Math.min(y1, Math.max(y0, Math.round(row))));
-    if (col < 0.7 || col > sx + 4) continue;
-    const a = Math.min(1, Math.max(0, 1 - Math.max(0, col - sx) / 3.5)) * rise * Math.min(1, (col - 0.7) / 1.5);
-    if (a <= 0) continue;
-    const broken = col >= wave.peel, d = (col - wave.peel) / 2.2, curl = Math.exp(-d * d), swell = Math.exp(-(((col - wave.peel) / 5) ** 2));
-    const h = (broken ? 7 + 3 * curl : 3 + 3 * swell) * (0.55 + 0.45 * Math.min(1, Math.max(0, (sx - col) / 3 + 0.5)));
-    out.push({ x: col * tile + tile / 2, y: row * tile + tile / 2, a, broken, curl, h, col });
+    const col = row - wave.k, b = bodyAt(wave, col, shore(Math.min(y1, Math.max(y0, Math.round(row)))));
+    if (b) out.push({ x: col * tile + tile / 2, y: row * tile + tile / 2, a: b.a, broken: b.broken, curl: b.curl, h: b.h, col });
   }
   return out;
+}
+
+export const SWELL = { front: 3, back: 5, share: 0.7 };          // a pet is lifted from this many rows ahead of the crest and set down this many rows behind it (a longer back slope), by this share of the wall's height
+const smoother = (t) => { const c = Math.min(1, Math.max(0, t)); return c * c * c * (c * (c * 6 - 15) + 10); };
+
+/**
+ * How high a swell lifts something floating at (x, y) (tiles, fractional while it moves) in world px: the pet rises up the face as the crest comes up from below, peaks at the crest and
+ * slides down the back, as if the wave stood above the sea. It is the wall's own height profile (bodyAt, the one the wall is drawn with, times WAVE_LIFT), eased with a smooth curve
+ * of the offset `e` = row - crest row at its column (negative while the crest is coming). 0 without a wave or off its reach. Draw only: it changes no tile.
+ */
+export function swellLift(wave, x, y, shore = () => 20, { front = SWELL.front, back = SWELL.back, share = SWELL.share } = {}) {
+  if (!wave) return 0;
+  const b = bodyAt(wave, x, shore(Math.min(34, Math.max(1, Math.round(y)))));
+  if (!b) return 0;
+  const e = y - (wave.k + x);
+  const f = e < 0 ? smoother(1 + e / front) : smoother(1 - e / back);
+  return b.h * WAVE_LIFT * share * b.a * f;
 }

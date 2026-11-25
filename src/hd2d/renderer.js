@@ -172,7 +172,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
     if (decor.length) items.push(...decorItems(world, cam, n, view, decor));
     const gifts = state.gifts && state.gifts.length ? state.gifts : null;     // the seasonal gifts lying about (src/gift-world.js), drawn like the decorations
     if (gifts) items.push(...decorItems(world, cam, n, view, gifts));
-    const ent = { cam, n, now, world, me: state.me, view, area: areaName, wash: flashes.length ? (wx) => burstTint(flashes, wx) : null };
+    const ent = { cam, n, now, world, me: state.me, view, area: areaName, wave: state.wave || null, wash: flashes.length ? (wx) => burstTint(flashes, wx) : null };
     items.push(...things.items(state, ent, now));
     for (const e of [state.me, ...state.others]) { const it = painter.item(e, ent); if (it) items.push(it); }
     const ov = { labels: [], bubbles: [], hits: [] };

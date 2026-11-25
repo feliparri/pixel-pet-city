@@ -25,7 +25,7 @@ import { GHOST_SCALE } from './ghosts.js';
 import { drawSnow } from './snow.js';
 import { paintSky, drawWeatherTop } from './weather-fx.js';
 import { waterOf, SUBMERGE } from './sea.js';
-import { waveStrokes, waveBody } from './surf.js';
+import { waveStrokes, waveBody, swellLift } from './surf.js';
 import { drawWake, drawBoard } from './sea-draw.js';
 import { lying, restLift, isLounger } from './lounge.js';
 import { poseSprite, breath } from './art/poses.js';
@@ -159,7 +159,8 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
     const ride = e.surf === 1, wiped = e.surf === 2, water = e.npc ? null : waterOf(areaName, e.walker) || (ride || wiped ? 'deep' : null), paddle = e.surf === 3 && !!water && !ride && !wiped, swim = water === 'deep' && !ride && !paddle, lie = !e.npc && !water && lying(areaName, e.walker, e.rest), rl = lie ? restLift(e.walker.tx, e.walker.ty, areaName) : 0, rec = lie && isLounger(e.walker.tx, e.walker.ty, areaName);      // swimming: the lower part is under the surface and the pet bobs; a surfer stands on its board
     const hop = e.walker.moving && !swim && !ride && !paddle ? Math.round(Math.abs(Math.sin(k * Math.PI)) * 3) : 0;
     const air = jumpLift(now, e.jumpAt);                                                                      // a jump (Space): the pet rises, its shadow stays
-    const bx = Math.round(p.x * TILE + TILE / 2 - cam.x), by = Math.round(p.y * TILE + TILE - cam.y);       // the feet
+    const swell = !e.npc && wave && e.surf !== 1 && waterOf(areaName, e.walker) ? swellLift(wave, p.x, p.y, shallowFrom) * 0.4 : 0;      // a passing swell lifts what floats, a little (the flat view has no height)
+    const bx = Math.round(p.x * TILE + TILE / 2 - cam.x), by = Math.round(p.y * TILE + TILE - cam.y - swell);       // the feet
     if (bx < -20 || bx > vw + 20 || by < 0 || by > vh + 40) continue;                                       // off screen: nothing to draw
     const fx = e.fx ? entranceState(e.fx.id, e.fx.phase, now - e.fx.t0) : null;                              // an arrival or an exit in progress
     const lift = fx ? Math.round(fx.lift * (by + CELL + 24)) : 0;                                             // 1 = just above the top edge
