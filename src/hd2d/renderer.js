@@ -161,7 +161,7 @@ export function createHdRenderer({ canvas, sprites, font, compact = false, onQua
     }
     const tGround = performance.now();
     const reflected = !skip.has('reflejo') && reflector.draw(ctx, { world, cam, view, now, n, sh, sky, scam, u, hy, k, alpha }), tRefl = reflected ? performance.now() : tGround;      // the stars and the show in the water
-    if (state.wave && world.waterRows.size) drawWave(ctx, cam, view, state.wave, n, now, shallowFrom, getArea(areaName).h);      // the surf wave with volume (src/hd2d/wave.js)
+    if (state.wave && world.waterRows.size && !skip.has('ola')) drawWave(ctx, cam, view, state.wave, n, now, shallowFrom, getArea(areaName).h);      // the surf wave with volume (src/hd2d/wave.js)
     things.rings(ctx, state, cam);
     if (state.marker && now < state.marker.until) drawMarker(state.marker);
 

@@ -20,7 +20,7 @@ export function createMeter() {
   };
 }
 
-const PARTS = ['suelo', 'cosas', 'efectos', 'clima', 'textos', 'reflejo'];
+const PARTS = ['suelo', 'cosas', 'efectos', 'clima', 'textos', 'reflejo', 'ola'];
 /** ?perf=1&skip=suelo,efectos: the HD-2D parts to leave out (only with perf=1, so a stray skip never strips the town). */
 export function perfSkip(search) {
   const q = new URLSearchParams(search);

@@ -222,7 +222,7 @@ export function drawWave(ctx, cam, view, wave, n, now, shore, rows) {
   const y0 = Math.max(1, Math.floor((rt ? rt.y : cam.focusY - 700) / TILE) - 1), y1 = Math.min(rows - 2, Math.ceil((rb ? rb.y : cam.focusY + 400) / TILE) + 1);
   if (!wave || y1 <= y0) return 0;
   const U = pixelOf(cam);
-  return sheet(ctx, { proj: (x, y) => project(cam, x, y), C: U * 2, U, vw: view.w, vh: view.h, wave, shore, y0, y1, hK: WAVE_LIFT * 1.5, step: 4, P: paletteFor(n) });
+  return sheet(ctx, { proj: (x, y) => project(cam, x, y), C: U * 3, U, vw: view.w, vh: view.h, wave, shore, y0, y1, hK: WAVE_LIFT * 1.5, step: 6, P: paletteFor(n) });
 }
 
 /** The simple version for the flat view: the same silhouette in game px (cells of 2 px), drawn into `sctx` already translated to the map (positions are world px minus `cam`); `view` is the visible size. */
