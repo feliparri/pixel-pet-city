@@ -4,7 +4,8 @@
 // only accessory kept: it is drawn on the pose's head anchor, exactly as the device anchors a hat on the head of the standing pet; the rest (a face, neck or back item) is left
 // off in these poses, where it would not sit right. The result is a canvas with its anchors, cached per species, stage and hat.
 import { POSES } from './poses-data.js';
-import { STAGES, SLOTS } from '../protocol.js';
+import { STAGES } from '../protocol.js';
+import { drawPet, petLayout } from '../sprites.js';
 
 // The palettes: pixel-pet/common/sprites.c PAL_FROG / PAL_SEAL / PAL_CAT and their elder versions, entries 1..9 and A; B and C are the sunglasses.
 const P = {
@@ -31,6 +32,9 @@ export const STAGE_SCALE = {
 /** Where a hat goes on the standing pet's cell: the head anchor of each stage (pixel-pet/common/pet_looks_data.c), [x, y] per stage baby..elder. */
 export const CELL_HEAD = { frog: [[16, 6], [16, 5], [16, 3], [16, 5]], seal: [[16, 8], [16, 7], [16, 5], [16, 7]], cat: [[16, 8], [16, 7], [16, 5], [16, 7]] };
 
+/** Where the head ends on the standing pet's cell, in rows from the top of the 32 x 32 cell (exclusive), per stage baby..elder: the surfing pet keeps its own head down to here. */
+export const HEAD_ROWS = { frog: [17, 19, 20, 19], seal: [18, 19, 20, 19], cat: [18, 19, 20, 19] };
+
 /** The rows of a pose's text grid. */
 export const rowsOf = (pose) => pose.grid.split('\n').filter((l) => l && !l.startsWith('#'));
 
@@ -50,15 +54,33 @@ const cache = new WeakMap();
 const MARGIN = { top: 16, side: 8 };                       // room for a hat above and beside the head
 
 /**
+ * The surfing pet, facing the viewer: its own head, cut from its standing 'idle' frame (the big open eyes with their highlights, the blush, the mouth) (so the face, the blush and everything worn on the head or the face are exactly the walking
+ * pet's), over a small hand-drawn body (src/art/poses-data.js: the belly patch, both arms out to the sides, short legs apart) in the species' palette, stage-sized. The feet anchor is
+ * the middle of the bottom row, where the board is.
+ */
+function surfSprite(sp, look, make) {
+  const pose = POSES[look.species].surf, [sx, sy] = STAGE_SCALE[look.species][look.stage], elder = look.stage === 3;
+  const L = petLayout(sp.data, look), scratch = make(L.w, L.h);
+  drawPet(scratch.getContext('2d'), sp, look, L.origin.x, L.origin.y, { frame: 'idle' });
+  const headRows = L.origin.y + HEAD_ROWS[look.species][look.stage], body = resample(rowsOf(pose), sx, sy), bw = body[0].length, bh = body.length;
+  const W = Math.max(L.w, bw) + 8, X0 = Math.floor((W - L.w) / 2), bx = X0 + L.feetX - Math.round(pose.head[0] * sx), by = headRows - 1, H = by + bh;
+  const canvas = make(W, H), ctx = canvas.getContext('2d');
+  paintRows(ctx, body, look.species, elder, bx, by);
+  ctx.drawImage(scratch, 0, 0, L.w, headRows, X0, 0, L.w, headRows);
+  return { canvas, w: W, h: H, ax: bx + Math.round(pose.anchor[0] * sx), ay: H - 1, hx: X0 + L.feetX, hy: L.origin.y };
+}
+
+/**
  * The pose picture of a look: { canvas, w, h, ax, ay, hx, hy } with the anchor (ax, ay) (the seat of the sunbathing pet, the feet of the surfing one) and the head anchor (hx, hy), all in canvas px.
  * `sp` the sprites ({ data, parts }), `kind` 'recline' or 'surf'.
  */
 export function poseSprite(sp, look, kind, make = (w, h) => Object.assign(document.createElement('canvas'), { width: w, height: h })) {
   let byKey = cache.get(sp.data);
   if (!byKey) cache.set(sp.data, byKey = new Map());
-  const hat = look.items[0] || '', key = `${look.species}|${look.stage}|${kind}|${hat}`;
+  const hat = look.items[0] || '', key = `${look.species}|${look.stage}|${kind}|${kind === 'surf' ? look.items.join() : hat}`;
   let r = byKey.get(key);
   if (r) return r;
+  if (kind === 'surf') { r = surfSprite(sp, look, make); byKey.set(key, r); return r; }
   const pose = POSES[look.species][kind], [sx, sy] = STAGE_SCALE[look.species][look.stage], elder = look.stage === 3;
   const rows = resample(rowsOf(pose), sx, sy), w = rows[0].length, h = rows.length;
   const W = w + MARGIN.side * 2, H = h + MARGIN.top, canvas = make(W, H), ctx = canvas.getContext('2d');

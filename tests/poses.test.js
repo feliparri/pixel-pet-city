@@ -14,7 +14,7 @@ test('every species has both poses, in the device text-grid format: one width, k
     const pose = POSES[sp][k], rows = rowsOf(pose), w = rows[0].length;
     assert.ok(pose.grid.startsWith(`# ${w}x${rows.length}`), `${sp} ${k}: the header says the size`);
     assert.ok(rows.every((r) => r.length === w && [...r].every((c) => VALID.has(c))), `${sp} ${k}`);
-    assert.ok(w >= 28 && w <= 44 && rows.length >= 28 && rows.length <= 36, `${sp} ${k} is ${w}x${rows.length}: the pets' pixel density`);
+    assert.ok(k === 'surf' ? w === 30 && rows.length === 17 : w >= 28 && w <= 44 && rows.length >= 28 && rows.length <= 36, `${sp} ${k} is ${w}x${rows.length}: the pets' pixel density`);
     const [ax, ay] = pose.anchor, [hx, hy] = pose.head;
     assert.ok(ax >= 0 && ax < w && ay >= 0 && ay < rows.length && hx >= 0 && hx < w && hy >= 0 && hy < rows.length, `${sp} ${k} anchors`);
     assert.ok(rows[ay].slice(Math.max(0, ax - 3), ax + 4).split('').some((c) => c !== '.'), `${sp} ${k}: the anchor is on the body`);
@@ -22,11 +22,18 @@ test('every species has both poses, in the device text-grid format: one width, k
   }
 });
 
-test('each pose has the species\' own identity: the frog\'s eye bumps, the seal\'s white muzzle, the cat\'s ears and stripes; and the sunbathing one wears sunglasses and blush, the surfing one an open eye', () => {
+test('the sunbathing pose has the species\' own identity (the frog\'s eye bumps, the seal\'s white muzzle, the cat\'s ears, stripes and tail), sunglasses and blush; the surfing body has the belly, arms out and legs apart, and no face of its own (the head is the pet\'s)', () => {
   const has = (sp, k, ch) => rowsOf(POSES[sp][k]).some((r) => r.includes(ch));
-  for (const sp of SPECIES) { assert.ok(has(sp, 'recline', 'B') && has(sp, 'recline', 'C'), `${sp} sunglasses`); assert.ok(has(sp, 'recline', '7'), `${sp} blush`); assert.ok(has(sp, 'surf', '7') && has(sp, 'surf', '8') && has(sp, 'surf', '6'), `${sp} surf face`); assert.equal(has(sp, 'surf', 'B'), false, 'no sunglasses while surfing'); }
-  assert.ok(has('cat', 'recline', '9') && has('cat', 'surf', '9'), 'tabby stripes');
-  assert.equal(has('frog', 'recline', '9') || has('seal', 'recline', '9') && false, false, 'the frog has no stripes');
+  for (const sp of SPECIES) {
+    assert.ok(has(sp, 'recline', 'B') && has(sp, 'recline', 'C') && has(sp, 'recline', '7'), `${sp} sunglasses and blush`);
+    const body = rowsOf(POSES[sp].surf), mid = (r) => r.indexOf('.') < 0 || true;
+    assert.ok(has(sp, 'surf', '5') && !has(sp, 'surf', 'B') && !has(sp, 'surf', '8'), `${sp} surf body: a belly, no face`);
+    assert.ok(body[1].trim().length && body[16].replace(/\./g, '').length >= 6, `${sp}: the feet are on the bottom row`);
+    const widest = Math.max(...body.map((r) => r.lastIndexOf(/[^.]/.exec(r) ? [...r].reverse().find((c) => c !== '.') : '.') - r.search(/[^.]/) + 1));
+    assert.ok(widest >= 26, `${sp}: arms out to the sides (${widest} px wide)`);
+  }
+  assert.ok(has('cat', 'recline', '9') && has('cat', 'surf', '9'), 'tabby stripes and a striped tail');
+  assert.equal(has('frog', 'recline', '9'), false, 'the frog has no stripes');
   const top = (sp, k) => rowsOf(POSES[sp][k]).slice(0, 4).join('');
   assert.ok(top('cat', 'recline').includes('7'), 'pink ears at the top of the cat');
   assert.ok(!top('seal', 'recline').includes('7'));
@@ -71,7 +78,7 @@ test('resampling is nearest neighbour: a stage keeps the pixels, only repeated o
 
 // a canvas stand-in that records what is drawn
 const fakeCanvas = (w, h) => { const ops = []; return { width: w, height: h, ops, getContext: () => ({ set fillStyle(v) { ops.push(['style', v]); }, fillRect: (...a) => ops.push(['rect', ...a]), drawImage: (...a) => ops.push(['image', ...a.slice(1)]), save() {}, restore() {}, translate() {}, scale() {} }) }; };
-const sp = { data: { items: { tophat: { worn: { 'frog-adult': { rest: [['hatpart', 4, -10, 0, 0]] } } } }, partSizes: { hatpart: [16, 12] }, partPos: { hatpart: [0, 0] } }, parts: {} };
+const sp = { data: { species: ['frog', 'seal', 'cat'], frames: ['idle', 'blink', 'look', 'chomp', 'happy'], drawOrder: ['head', 'face', 'neck', 'back'], items: { tophat: { worn: { 'frog-adult': { rest: [['hatpart', 4, -10, 0, 0]] } } } }, partSizes: { hatpart: [16, 12] }, partPos: { hatpart: [0, 0] } }, parts: {}, pets: {} };
 
 test('poseSprite builds each species at each stage with its anchors, caches it, and a hat is drawn on the head anchor', () => {
   for (const species of SPECIES) for (let stage = 0; stage < 4; stage++) for (const kind of KINDS) {
@@ -79,7 +86,7 @@ test('poseSprite builds each species at each stage with its anchors, caches it, 
     assert.ok(r.w > 28 && r.h > 28 && r.ax > 0 && r.ay > 0 && r.hx > 0 && r.hy > 0, `${species} ${stage} ${kind}`);
     assert.equal(poseSprite(sp, look, kind, fakeCanvas), r, 'cached');
     const rect = r.canvas.ops.filter((o) => o[0] === 'rect');
-    assert.ok(rect.length > 300, 'painted pixel by pixel');
+    assert.ok(rect.length > (kind === 'surf' ? 150 : 300), 'painted pixel by pixel');
     assert.ok(rect.every((o) => o[1] >= 0 && o[2] >= 0 && o[1] < r.w && o[2] < r.h), 'inside the picture');
   }
   const bare = poseSprite(sp, { species: 'frog', stage: 2, items: ['', '', '', ''] }, 'recline', fakeCanvas);
@@ -88,6 +95,10 @@ test('poseSprite builds each species at each stage with its anchors, caches it, 
   assert.ok(img && !bare.canvas.ops.some((o) => o[0] === 'image'), 'only the hat is drawn from the parts sheet');
   assert.equal(img[img.length - 4] + 0, hat.hx - CELL_HEAD.frog[2][0] + 4, 'the hat part lands on the head anchor like on the standing pet');
   const baby = poseSprite(sp, { species: 'frog', stage: 0, items: ['', '', '', ''] }, 'surf', fakeCanvas), adult = poseSprite(sp, { species: 'frog', stage: 2, items: ['', '', '', ''] }, 'surf', fakeCanvas);
-  assert.ok(baby.w > adult.w && baby.h - 0 <= adult.h, 'the baby is wider and shorter');
+  assert.ok(baby.w >= adult.w && baby.h < adult.h + 6, 'the baby is wider and not taller');
+  const worn = poseSprite(sp, { species: 'frog', stage: 2, items: ['tophat', '', '', ''] }, 'surf', fakeCanvas);
+  assert.notEqual(worn, adult, 'a hat is part of the surfing pet\'s key: the head is the pet\'s own');
+  assert.ok(worn.canvas.ops.some((o) => o[0] === 'image'), 'the head is drawn from the standing frame');
+  assert.equal(adult.ay, adult.h - 1, 'the feet anchor is the bottom row');
   assert.ok(breath(0) === 1 && breath(2100) < 1 && breath(2100) >= 0.97 - 1e-9);
 });

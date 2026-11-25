@@ -12,12 +12,13 @@ import { lightAt } from './light.js';
 import { grade } from './scene.js';
 import { createFrameCache, createShadows, drawShadow } from './framecache.js';
 import { waterOf, SUBMERGE } from '../sea.js';
-import { drawWake, drawBoard } from '../sea-draw.js';
+import { drawWake, drawBoard, drawRideSpray } from '../sea-draw.js';
 import { lying, restLift, isLounger } from '../lounge.js';
 import { poseSprite, breath } from '../art/poses.js';
 import { swellLift } from '../surf.js';
 import { shallowFrom } from '../map.js';
-const RIDE_LIFT = 12;                                                                              // art px a surfer is raised: on the face of the wave, not at its foot
+const RIDE_LIFT = 12;
+const RIDE_SLOPE = 0.2, RIDE_LEAN = 0.1;                                                           // the board's tilt (rows per column, high at the tail) and the rider's lean                                                                              // art px a surfer is raised: on the face of the wave, not at its foot
 import { lieScale, zzzAt, zzzSprite } from '../art/sleep.js';
 
 const PET_RINGS = [[1, 0.16], [8.5 / 11, 0.2], [6 / 11, 0.24]];            // the soft ground shadow: three discs of 11, 8.5 and 6 px
@@ -103,12 +104,15 @@ export function createPetPainter(sprites) {
             tctx.globalCompositeOperation = 'source-atop'; tctx.fillStyle = `rgba(${tint.r | 0},${tint.g | 0},${tint.b | 0},${tint.a})`; tctx.fillRect(0, 0, L.w, L.h);
             src = t;
           }
-          if (ride || paddle) drawBoard(c, cx, cy - (ride ? RIDE_LIFT : 1) * s, s, { squash: Math.max(0.3, cam.sin) * 0.6, night: n });                                   // the board under the surfer
+          if (ride || paddle) drawBoard(c, cx, cy - (ride ? RIDE_LIFT : 1) * s, s, { squash: Math.max(0.3, cam.sin) * 0.6, night: n, slope: ride ? RIDE_SLOPE : 0 });      // while riding the board lies tilted along the wave's diagonal                                   // the board under the surfer
           if (swim) { const sh = L.feetY - dip.cut; c.drawImage(src, 0, 0, L.w, sh, cx - L.feetX * s + sway * s, cy - (L.feetY + air + lift - dip.sink - bob) * s, L.w * s, sh * s); }      // only what is above the water
           else if (paddle) { const k = 0.8, bobP = Math.round(Math.sin(now / 260 + e.id.charCodeAt(0))); c.drawImage(src, 0, 0, L.w, L.h, cx - L.feetX * s + sway * s, cy - (L.feetY * k + air + lift + 1 + bobP) * s, L.w * s, L.h * k * s); }      // kneeling on the board, a little lower
-          else if (ride) {                                                                                    // surfing: the hand-drawn side stance on the board (src/art/poses.js), on the face of the wave
-            const R = poseSprite(e.sprites || sprites, e.look, 'surf'), bobY = Math.round(Math.sin(now / 170 + e.id.charCodeAt(0))), g = frames.graded(`${L.id}|surf`, R.w, R.h, (t) => t.drawImage(R.canvas, 0, 0), n, lightAt(world.lights, wx, wy));
-            c.drawImage(g, 0, 0, R.w, R.h, cx - R.ax * s + sway * s, cy - (RIDE_LIFT + R.ay - 1 + bobY * 0.5) * s, R.w * s, R.h * s);
+          else if (ride) {                                                                                    // surfing: the pet's own head over the hand-drawn body, facing the viewer on the tilted board (src/art/poses.js)
+            const R = poseSprite(e.sprites || sprites, e.look, 'surf'), bobY = Math.round(Math.sin(now / 170 + e.id.charCodeAt(0))) * 0.5, g = frames.graded(`${L.id}|surf`, R.w, R.h, (t) => t.drawImage(R.canvas, 0, 0), n, lightAt(world.lights, wx, wy));
+            c.save(); c.translate(cx + sway * s, cy - (RIDE_LIFT - 1 + bobY) * s); c.transform(1, 0, -RIDE_LEAN, 1, 0, 0);           // leaning into the wave: a slight shear about the feet
+            c.drawImage(g, 0, 0, R.w, R.h, -R.ax * s, -R.h * s, R.w * s, R.h * s);
+            c.restore();
+            drawRideSpray(c, cx, cy - RIDE_LIFT * s, s, { now, night: n, slope: RIDE_SLOPE, squash: Math.max(0.3, cam.sin) * 0.6 });
           }
           else if (rec) {                                                                                     // sunbathing: the hand-drawn pose leaning back in the chair (src/art/poses.js), a slow breath
             const R = poseSprite(e.sprites || sprites, e.look, 'recline'), b = breath(now), g = frames.graded(`${L.id}|recline`, R.w, R.h, (t) => t.drawImage(R.canvas, 0, 0), n, lightAt(world.lights, wx, wy));

@@ -26,7 +26,7 @@ import { drawSnow } from './snow.js';
 import { paintSky, drawWeatherTop } from './weather-fx.js';
 import { waterOf, SUBMERGE } from './sea.js';
 import { waveStrokes, waveBody, swellLift } from './surf.js';
-import { drawWake, drawBoard } from './sea-draw.js';
+import { drawWake, drawBoard, drawRideSpray } from './sea-draw.js';
 import { lying, restLift, isLounger } from './lounge.js';
 import { poseSprite, breath } from './art/poses.js';
 import { lieScale, zzzAt, zzzSprite } from './art/sleep.js';
@@ -176,7 +176,7 @@ export function drawScene(sctx, { area: areaName, cam, vw, vh, entities, me, now
         if (!(fx && flickers(e.fx.id, e.fx.phase, now - e.fx.t0))) {
           const flap = (e.walker.moving || lift > 0) && Math.floor(now / 140) % 2 === 1;
           if (rec) { const R = poseSprite(e.sprites || sprites, e.look, 'recline'); small(px, by - rl, () => { sctx.scale(1, breath(now)); sctx.drawImage(R.canvas, -R.ax, -R.ay); }); }      // sunbathing on a deck chair
-          else if (ride) { const R = poseSprite(e.sprites || sprites, e.look, 'surf'); small(px, by - lift, () => { drawBoard(sctx, 0, -1, 1, { squash: 0.5, night: amb.night }); sctx.drawImage(R.canvas, -R.ax, -R.ay - 2); }); }      // surfing: the hand-drawn stance on the board
+          else if (ride) { const R = poseSprite(e.sprites || sprites, e.look, 'surf'); small(px, by - lift, () => { drawBoard(sctx, 0, -1, 1, { squash: 0.5, night: amb.night, slope: 0.2 }); sctx.save(); sctx.transform(1, 0, -0.1, 1, 0, 0); sctx.drawImage(R.canvas, -R.ax, -R.h - 2); sctx.restore(); drawRideSpray(sctx, 0, -1, 1, { now, night: amb.night, slope: 0.2, squash: 0.5 }); }); }      // surfing: the pet's own head over the hand-drawn body on the tilted board
           else small(px, by - lift, () => {
             if (ride || paddle) { drawBoard(sctx, 0, -1, 1, { squash: 0.5, night: amb.night }); sctx.translate(0, -2); if (paddle) sctx.scale(1, 0.82); }
             if (lie) { const q = lieScale(now); sctx.translate(0, -rl); sctx.scale(q.sx, q.sy); }      // on a lounger: lying flat on the seat, as the board draws a sleeping pet

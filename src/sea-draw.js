@@ -53,12 +53,12 @@ export const BOARD_HALF = 22;           // half the length of the board in art p
  * (cx, cy) is its middle on the surface, `u` the size of an art pixel, `squash` the tilt of the ground (the board gets thinner the lower the camera), `tilt` -1..1 turns one end up
  * for a board that tumbles after a wipeout.
  */
-export function drawBoard(c, cx, cy, u, { squash = 0.6, night = 0, tilt = 0 } = {}) {
+export function drawBoard(c, cx, cy, u, { squash = 0.6, night = 0, tilt = 0, slope = 0 } = {}) {
   const rows = Math.max(4, Math.round(9 * Math.min(1, squash * 1.3))), L = BOARD_HALF, px = Math.max(1, Math.round(u));
   for (let i = -L; i <= L; i++) {
     const nose = i > L * 0.55 ? Math.sqrt(Math.max(0, 1 - ((i - L * 0.55) / (L * 0.45)) ** 2)) : 1;
     const tail = i < -L * 0.45 ? 0.5 + 0.5 * ((i + L) / (L * 0.55)) : 1;
-    const half = Math.max(1, (rows / 2) * Math.min(nose, tail) + 0.5), top = cy - half * u + tilt * i * u * 0.12, h = Math.max(px, Math.round(half * 2 * u));
+    const half = Math.max(1, (rows / 2) * Math.min(nose, tail) + 0.5), top = cy - half * u + tilt * i * u * 0.12 + slope * i * u, h = Math.max(px, Math.round(half * 2 * u));
     const x = Math.round(cx + i * u);
     c.fillStyle = dim('#312439', night); c.fillRect(x, Math.round(top - px), px, h + 2 * px);                   // the outline
     c.fillStyle = dim(i > L * 0.8 ? '#fff6e2' : '#fff0c8', night); c.fillRect(x, Math.round(top), px, h);        // the deck
@@ -66,5 +66,25 @@ export function drawBoard(c, cx, cy, u, { squash = 0.6, night = 0, tilt = 0 } = 
     if (i > -L * 0.7 && i < L * 0.8) { c.fillStyle = dim('#e0485a', night); c.fillRect(x, Math.round(top + h / 2 - px / 2), px, px); }   // the stripe
   }
   c.fillStyle = dim('#312439', night);
-  for (let k = 0; k < 4; k++) c.fillRect(Math.round(cx + (-L + 3 + k) * u), Math.round(cy + rows * 0.5 * u + (k % 2 ? px : 0)), px, px * 2);   // the fin hint at the tail
+  for (let k = 0; k < 4; k++) c.fillRect(Math.round(cx + (-L + 3 + k) * u), Math.round(cy + rows * 0.5 * u + (k % 2 ? px : 0) - slope * L * u), px, px * 2);   // the fin hint at the tail
+}
+
+const hashN = (a, b) => { let h = Math.imul(a * 73856093 ^ b * 19349663, 0x45d9f3b); h ^= h >>> 15; return (h >>> 0) / 4294967295; };
+/**
+ * White spray and foam round a board that is riding a wave: bits flung up from the tail (the high end of the tilted board) and from its edges, redrawn a few times a second.
+ * Same arguments as drawBoard (`slope` the board's tilt); squares only.
+ */
+export function drawRideSpray(c, cx, cy, u, { now = 0, night = 0, slope = 0, squash = 0.6 } = {}) {
+  const L = BOARD_HALF, step = Math.floor(now / 130), px = Math.max(1, Math.round(u));
+  c.fillStyle = `rgba(255,255,255,${0.95 * (1 - 0.4 * night)})`;
+  const tailX = cx - L * u, tailY = cy - slope * L * u, noseX = cx + L * u, noseY = cy + slope * L * u;
+  for (let k = 0; k < 9; k++) {                                                         // the tail: a plume thrown up and back
+    const h = hashN(k, step), g = hashN(k + 40, step);
+    c.fillRect(Math.round(tailX - (1 + g * 7) * u), Math.round(tailY - (h * 9) * u * squash * 1.4), px * (1 + (k % 3 === 0 ? 1 : 0)), px);
+  }
+  for (let k = 0; k < 6; k++) {                                                         // along the lower edge: foam
+    const h = hashN(k + 80, step), x = cx + (-0.9 + (k / 5) * 1.8) * L * u, y = cy + slope * (-0.9 + (k / 5) * 1.8) * L * u;
+    c.fillRect(Math.round(x), Math.round(y + (2.5 + h * 2) * u * squash), px * 2, px);
+  }
+  for (let k = 0; k < 4; k++) { const h = hashN(k + 120, step); c.fillRect(Math.round(noseX + (1 + h * 4) * u), Math.round(noseY - (h * 5) * u * squash), px, px); }   // a few drops at the nose
 }

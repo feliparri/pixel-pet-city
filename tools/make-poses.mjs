@@ -84,35 +84,29 @@ function recline(species) {
   return { grid: g, anchor: [19, 27], head: [22, 4] };
 }
 
-// ---- surfing (30 x 34), a side stance facing right: knees bent, arms out, leaning into the wave ----------------------------------------------------------
-function surf(species) {
-  const g = make(30, 34);
+// ---- surfing: only the small body below the head (30 x 17): the head is the pet's own standing frame, composed at run time (src/art/poses.js) -------------------------------------------
+// Facing the viewer, a short body with the belly patch, both arms out to the sides for balance, short legs apart, standing on the board. Row 0 is where the neck meets the head.
+function surfBody(species) {
+  const g = make(30, 17);
   const frog = species === 'frog', seal = species === 'seal', cat = species === 'cat';
-  if (cat) { for (const [x0, y0, x1, y1] of [[8, 27, 4, 24], [4, 24, 3, 19], [3, 19, 5, 14]]) line(g, x0, y0, x1, y1, '3', 2); for (const [x, y] of [[5, 26], [3, 22], [3, 17]]) px(g, x, y, '9'); }
-  if (frog) { ell(g, 11, 3, 3, 2.6, '3', { shade: '2', hi: '4' }); ell(g, 20, 3, 3, 2.6, '3', { shade: '2', hi: '4' }); }
-  if (cat) { for (const [pts, inner] of [[[[7, 8], [8, 0], [14, 4]], [[9, 5], [9, 2], [12, 4]]], [[[23, 8], [22, 0], [17, 4]], [[21, 5], [21, 2], [18, 4]]]]) { tri(g, pts, '3'); tri(g, inner, '7'); } }
-  // legs: knees bent, feet apart on the board (drawn behind the body)
-  ell(g, 11, 27.5, 3.4, 3, '3', { shade: '2' }); ell(g, 8.5, 30.6, 2.8, 2.6, '3', { shade: '2' }); ell(g, 9, 33, 3.4, 1.4, '3', { shade: '2' });
-  ell(g, 19, 27.5, 3.4, 3, '3', { shade: '2' }); ell(g, 21.5, 30.6, 2.8, 2.6, '3', { shade: '2' }); ell(g, 21, 33, 3.4, 1.4, '3', { shade: '2' });
-  // the back arm out behind and up for balance
-  line(g, 10, 21, 5, 17, '3', 2); ell(g, 4, 16, 2.5, 2.3, '3', { shade: '2' });
-  ell(g, 16, 23, 6.5, 6, '3', { shade: '2', hi: '4' });                                         // the torso, leaning forward
-  ell(g, 18.5, 24, 4.2, 4.2, '5', { ring: '2' });                                                // the belly patch
-  ell(g, 15, 10, 9.5, 8, '3', { shade: '2', hi: '4' });                                         // the head
-  line(g, 21, 22, 26, 24, '3', 2); ell(g, 27, 24.5, 2.5, 2.3, '3', { shade: '2' });             // the front arm out ahead and down
-  if (seal || cat) ell(g, 20, 14, 4.2, 2.8, '5', { ring: '2' });
+  if (cat) { for (const [x0, y0, x1, y1] of [[21, 12, 26, 11], [26, 11, 28, 8], [28, 8, 27, 4]]) line(g, x0, y0, x1, y1, '3', 2); for (const [x, y] of [[25, 11], [28, 7], [27, 5]]) px(g, x, y, '9'); }
+  // legs apart (behind the torso), then the feet
+  ell(g, 10.5, 11.5, 3.3, 3.4, '3', { shade: '2', hi: '4' }); ell(g, 19.5, 11.5, 3.3, 3.4, '3', { shade: '2', hi: '4' });
+  ell(g, 9, 15.2, 3.6, 1.7, '3', { shade: '2' }); ell(g, 21, 15.2, 3.6, 1.7, '3', { shade: '2' });
+  // arms out to the sides: the left down and out, the right up and out, hands open
+  if (seal) { ell(g, 4.5, 6.5, 4.2, 1.9, '2', { shade: null, ring: '1' }); ell(g, 25.5, 2.8, 4.2, 1.9, '2', { shade: null, ring: '1' }); }
+  else { line(g, 9, 3, 3, 5, '3', 2); ell(g, 2, 6, 2.3, 2.1, '3', { shade: '2' }); line(g, 21, 3, 27, 1, '3', 2); ell(g, 28, 1.5, 2.3, 2.1, '3', { shade: '2' }); }
+  ell(g, 15, 5.5, 7.2, 6.3, '3', { shade: '2', hi: '4' });                                       // the torso
+  ell(g, 15, 6.5, 4.4, 4.6, '5', { ring: '2' });                                                 // the belly patch
+  if (cat) { for (const [x, y] of [[10, 3], [11, 2], [20, 3], [19, 2], [10, 9], [20, 9]]) px(g, x, y, '9'); }
+  if (seal) { for (const [x, y] of [[7, 15], [8, 16], [22, 15], [23, 16]]) px(g, x, y, '2'); }
+  if (frog) { for (const [x, y] of [[7, 16], [9, 16], [21, 16], [23, 16]]) px(g, x, y, '2'); }
   outlineAround(g, '1');
-  // the face in three-quarter view: one big eye, a blush and a happy open mouth
-  rect(g, 20, 8, 3, 4, '8'); px(g, 20, 8, '6'); px(g, 21, 11, '9');
-  blushAt(g, 22, 13); blushAt(g, 9, 13);
-  if (frog) { px(g, 16, 15, '8'); px(g, 17, 16, '8'); px(g, 18, 16, '8'); px(g, 19, 16, '8'); px(g, 20, 15, '8'); }
-  if (seal) { rect(g, 22, 13, 2, 1, '8'); px(g, 18, 16, '8'); px(g, 19, 17, '8'); px(g, 20, 16, '8'); }
-  if (cat) { rect(g, 22, 13, 2, 1, '7'); px(g, 18, 16, '8'); px(g, 19, 17, '8'); px(g, 20, 16, '8'); for (const x of [12, 14, 16]) { px(g, x, 3, '9'); px(g, x, 4, '9'); } for (const [x, y] of [[13, 21], [14, 20], [19, 27]]) px(g, x, y, '9'); }
-  return { grid: g, anchor: [14, 33], head: [15, 2] };
+  return { grid: g, anchor: [15, 16], head: [15, 0] };
 }
 
 const out = { frog: {}, seal: {}, cat: {} };
-for (const sp of Object.keys(out)) { out[sp].recline = recline(sp); out[sp].surf = surf(sp); }
+for (const sp of Object.keys(out)) { out[sp].recline = recline(sp); out[sp].surf = surfBody(sp); }
 const text = (p) => `# ${p.grid[0].length}x${p.grid.length}\n${p.grid.map((r) => r.join('')).join('\n')}`;
 let src = `// The beach poses of the playable species, drawn for the poses (not transformed from the standing art), in the text-grid format of the device's art (pixel-pet/art/*.txt:\n// '.' is transparent, the digits are palette indices of the species' own palette, see PALETTES). Each pose has an \`anchor\` (where the pet sits or stands: the seat for the sunbathing,\n// the feet for the surfing) and a \`head\` anchor (the top of the head, where a hat goes). Drawn with tools/make-poses.mjs, then corrected by hand: this file is the source of truth.\n`;
 src += `export const POSES = {\n`;
