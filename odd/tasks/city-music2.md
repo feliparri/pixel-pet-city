@@ -18,7 +18,10 @@ Owner 2026-11-26: "el sonido de lluvia está muy fuerte, bajale un poco, y lo ot
 - [x] MU.1 (a05b258) Rain bed quieter (GAIN.rain in src/ambience.js) plus a test pinning the lower level. Route: delegated (same writer as MU.2).
 - [x] MU.2 (5d58649) Town music rewrite: song structure, chords, bass, arpeggios, lead, noise drums, mood variants (day, night, rain, beach, farm), crossfades. Tests for the pure song data and scheduler. Route: delegated (one writer, several files: city-music.js, maybe sound.js, tests).
 
+- [x] MU.3 (9641926) Owner 2026-11-26 "si hazla con este skill": recompose the town music with the chiptune-composer rules: per mood a fixed 16-bar perfect loop (A 1-4, A' 5-8, B 9-12, A'' 13-16), one chord per bar, hand-written melodies (no generated notes), 4 channels: square 50% lead with rests, pulse 25% 3-note arpeggios, triangle bass root+fifth, noise kick on 1 and 3 and snare/hat on 2 and 4. Keeps the 5 moods, bar-line mood change, scheduler and all silence rules. Route: delegated (one writer: city-song.js, city-music.js, tests).
+
 ## Progress
 - 2026-11-26 Document created.
 - 2026-11-26 MU.1 done (GAIN.rain 0.28 -> 0.14, a05b258): 867 passed (a footsteps test compared against the rain bed; it now compares against one-shot sounds only).
 - 2026-11-26 MU.2 done: src/city-song.js (pure 40-bar song, 5 moods, 12-cycle variation), src/city-music.js (Web Audio lookahead scheduler), sound.audio(); 876 passed, 0 failed; stamp current.
+- 2026-11-26 MU.3 done (9641926): src/city-song.js rewritten as 5 hand-written 16-bar loops (A, A', B, A''; no generated notes), pulse 50%/25% PeriodicWaves built once per context in src/city-music.js, tests rewritten; 876 passed, stamp current.
