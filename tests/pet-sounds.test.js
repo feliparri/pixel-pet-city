@@ -91,7 +91,7 @@ test('pet sounds on the real player: silent while muted and before a gesture, an
   assert.equal(log.started, before);
 });
 
-test('footsteps are dull and quiet: no hiss (the energy sits low), a gain far below the music and the other ambience', async () => {
+test('footsteps are dull and quiet: no hiss (the energy sits low), a gain far below the music and the other one-shot ambience (the rain is a bed, not a one-shot)', async () => {
   const { GAIN: AMB } = await import('../src/ambience.js');
   for (const g of GROUNDS) {
     const a = stepSamples(g, 0);
@@ -103,5 +103,5 @@ test('footsteps are dull and quiet: no hiss (the energy sits low), a gain far be
   }
   const p = createPetSounds({ sound: { ambient: (s, gain) => { p.last = gain; return true; } }, rand: () => 0.5 });
   p.step('town', 3, 3, true, null);
-  assert.ok(p.last < Math.min(AMB.chirp, AMB.cricket, AMB.animal, AMB.rain) / 2, `step gain ${p.last}`);
+  assert.ok(p.last < Math.min(AMB.chirp, AMB.cricket, AMB.animal) / 2, `step gain ${p.last}`);
 });

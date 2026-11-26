@@ -95,6 +95,8 @@ test('ambience: the rain bed follows the rain, the water bed follows the distanc
   a.step(100, { ...day, weather: { rain: 1, storm: 0, snow: 0 }, x: 22, y: 20 });
   const bed = (name) => s.calls.filter((c) => c[0] === 'bed' && c[1] === name).pop();
   assert.equal(bed('rain')[2], GAIN.rain);
+  assert.equal(GAIN.rain, 0.14, 'the rain bed is half as loud as it was (0.28)');
+  assert.ok(GAIN.rain < GAIN.sea && GAIN.thunder === 0.8, 'quieter than the sea; thunder untouched');
   assert.ok(bed('water')[2] > 0 && bed('water')[2] <= GAIN.water);
   a.step(100, { ...day, outdoor: false });
   assert.equal(bed('rain')[2], 0); assert.equal(bed('water')[2], 0);

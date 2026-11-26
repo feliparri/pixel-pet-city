@@ -155,7 +155,7 @@ export function seaLevel(area, x) {
 
 // ---- the scheduler --------------------------------------------------------------------------------------------------------------------------
 /** How loud each thing is (0..1 of the ambient channel's gain): low on purpose, the music and the effects stay in front. */
-export const GAIN = { chirp: 0.35, cricket: 0.22, animal: 0.3, thunder: 0.8, rain: 0.28, water: 0.22, sea: 0.26, gull: 0.3 };
+export const GAIN = { chirp: 0.35, cricket: 0.22, animal: 0.3, thunder: 0.8, rain: 0.14, water: 0.22, sea: 0.26, gull: 0.3 };
 /** The waits between two sounds, ms [min, max]: sparse and random. */
 export const EVERY = { bird: [6000, 16000], farmBird: [5000, 12000], cricket: [3500, 9000], animal: [10000, 26000], gull: [6000, 15000] };
 
