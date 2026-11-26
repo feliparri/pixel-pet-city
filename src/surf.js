@@ -12,10 +12,16 @@
 // the crest (a step north or east lowers its offset by one, just as the crest's climb raises it): the player picks the direction along the wall with up (north, up the
 // wall, a longer ride) and down (east, cutting back to the shore); a ride ends in the shallows. Everything here is plain data in, plain data out; src/town.js drives it
 // and the renderers draw it.
-import { isBreak } from './map.js';
+import { isBreak, BEACH } from './map.js';
 import { needText } from './tools.js';
 
 export const BOARD = 'surfboard';
+
+/** The prompt for a pet standing still in front of the surf stand's counter (the row of tiles south of it): "Tienda de surf"; null anywhere else. */
+export function surfShopAt(x, y, area = 'beach') {
+  const s = BEACH.surfShop;
+  return area === 'beach' && y === s.y + s.h && x >= s.x && x < s.x + s.w ? { id: 'surfshop', label: 'Tienda de surf', target: 'surfshop' } : null;
+}
 export const WAVE = {
   periodMs: 12000,         // a new wave every 12 s (the beach is deeper: a wave takes longer to cross it)
   speed: 8,                // tiles a second the crest climbs at any column (a medium wave; the others are in SIZES)

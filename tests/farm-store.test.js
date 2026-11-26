@@ -319,7 +319,7 @@ test('the surfboard is in both price lists, costs 60, has its icon, and the migr
   assert.deepEqual([TOOLS.surfboard.price, TOOLS.surfboard.name, TOOLS.surfboard.article], [60, 'Tabla de surf', 'una']);
   assert.deepEqual([SERVER_TOOLS.surfboard.price, SERVER_TOOLS.surfboard.name], [60, 'Tabla de surf']);
   assert.ok(PRODUCE.includes('board'));
-  assert.equal(needText('surfboard'), 'Necesitas una Tabla de surf — Almacén');
+  assert.equal(needText('surfboard'), 'Necesitas una Tabla de surf — Tienda de surf');
   assert.ok(toolRows({ canSpend: true, gold: 100, tools: [] }).some((r) => r.key === 'surfboard' && r.state === 'buy'));
   assert.equal(toolRows({ canSpend: true, gold: 50, tools: [] }).find((r) => r.key === 'surfboard').missing, 10);
   const sql = readFileSync(new URL('../supabase/migrations/20261124130000_surfboard_tool.sql', import.meta.url), 'utf8');

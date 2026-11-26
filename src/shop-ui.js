@@ -7,7 +7,7 @@ import { shopRows, bagList, confirmText, buyErrorText, thanks, CLOSED_TEXT, GOLD
 import { MISSIONS_TITLE, MISSIONS_HINT, MISSIONS_CLOSED } from './missions.js';
 import { KIOSK_TITLE, KIOSK_HINT, CLOSED_TEXT as KIOSK_CLOSED, treatRows, TREATS } from './kiosk.js';
 import { drawTreatIcon } from './art/treat.js';
-import { TOOLS, toolRows, confirmToolText, toolErrorText, STORE_TITLE, STORE_HINT, CLERK_THANKS } from './tools.js';
+import { TOOLS, toolRows, confirmToolText, toolErrorText, STORE_TITLE, STORE_HINT, CLERK_THANKS, SURF_THANKS, SURF_SHOP_KEYS, SURF_SHOP_TITLE, SURF_SHOP_HINT } from './tools.js';
 
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 
@@ -62,14 +62,14 @@ export function createShopUi($, { source, sprites, canasta = () => null, mission
 
   const toolIcon = (key) => { const c = produceCanvas(TOOLS[key].icon, 40); c.className = 'icon'; c.setAttribute('aria-hidden', 'true'); return c; };
 
-  function paintStore(src) {                                       // the Almacén (the farm store): tools for the farm, paid with the board's gold
+  function paintStore(src, stand = false) {                        // the Almacén (the farm store): tools for the farm, paid with the board's gold; `stand`: the beach's surf stand, the same panel with just the surfboard
     const shop = src.shop;
-    $('panel-title').textContent = STORE_TITLE;
+    $('panel-title').textContent = stand ? SURF_SHOP_TITLE : STORE_TITLE;
     $('panel-gold').textContent = shop.canSpend ? GOLD_TEXT(shop.gold) : '';
     $('panel-gold').hidden = !shop.canSpend;
     if (!shop.canSpend && !note.textContent) say(CLOSED_TEXT, 'bad');
     const list = el('ul', 'shop-list');
-    for (const row of toolRows(shop)) {
+    for (const row of toolRows(shop, stand ? SURF_SHOP_KEYS : null)) {
       const li = el('li', `shop-row ${row.state}`);
       const info = el('div', 'shop-info');
       info.append(el('strong', '', row.name), el('span', 'price', `${row.price} de oro`));
@@ -79,7 +79,7 @@ export function createShopUi($, { source, sprites, canasta = () => null, mission
       li.append(toolIcon(row.key), info, b);
       list.append(li);
     }
-    body.replaceChildren(el('p', 'empty', STORE_HINT), list);
+    body.replaceChildren(el('p', 'empty', stand ? SURF_SHOP_HINT : STORE_HINT), list);
   }
 
   const treatIcon = (idx) => { const c = el('canvas', 'icon'); c.width = c.height = 40; c.setAttribute('aria-hidden', 'true'); drawTreatIcon(c.getContext('2d'), idx, 40); return c; };
@@ -132,8 +132,8 @@ export function createShopUi($, { source, sprites, canasta = () => null, mission
   }
 
   function paintConfirm() {
-    const tool = view === 'store';
-    $('panel-title').textContent = tool ? STORE_TITLE : 'Tienda';
+    const tool = view === 'store' || view === 'surfshop';
+    $('panel-title').textContent = view === 'surfshop' ? SURF_SHOP_TITLE : tool ? STORE_TITLE : 'Tienda';
     const box = el('div', 'confirm');
     box.append(tool ? toolIcon(confirming) : icon(confirming), el('p', '', tool ? confirmToolText(confirming) : confirmText(confirming)));
     const yes = el('button', 'btn primary', 'Sí, comprar'), no = el('button', 'btn', 'No');
@@ -192,6 +192,7 @@ export function createShopUi($, { source, sprites, canasta = () => null, mission
     else if (view === 'bag') paintBag(src);
     else if (confirming) paintConfirm();
     else if (view === 'store') paintStore(src);
+    else if (view === 'surfshop') paintStore(src, true);
     else paintShop(src);
   }
 
@@ -199,10 +200,10 @@ export function createShopUi($, { source, sprites, canasta = () => null, mission
     const src = source(), key = confirming;
     if (!src || !key || busy) return;
     busy = true; paint(); say('Comprando…');
-    if (view === 'store') {
+    if (view === 'store' || view === 'surfshop') {
       const r = await src.buyTool(key);
       busy = false; confirming = null;
-      if (r.ok) { const line = CLERK_THANKS[sold++ % CLERK_THANKS.length]; say(`🐻 ${line} Ya tienes ${TOOLS[key].article} ${TOOLS[key].name}.`, 'good'); onToolBought(key, line); }
+      if (r.ok) { const lines = view === 'surfshop' ? SURF_THANKS : CLERK_THANKS, line = lines[sold++ % lines.length]; say(`${view === 'surfshop' ? '🏄' : '🐻'} ${line} Ya tienes ${TOOLS[key].article} ${TOOLS[key].name}.`, 'good'); onToolBought(key, line); }
       else say(toolErrorText(r) || buyErrorText(r), 'bad');
       paint();
       return;
@@ -238,5 +239,5 @@ export function createShopUi($, { source, sprites, canasta = () => null, mission
     if (confirming && !busy) { confirming = null; paint(); } else close();
   });
 
-  return { openShop: () => open('shop'), openStore: () => open('store'), openBag: () => open('bag'), openMissions: () => open('missions'), openKiosk: () => open('kiosk'), close, get isOpen() { return view !== null; } };
+  return { openShop: () => open('shop'), openStore: () => open('store'), openSurfShop: () => open('surfshop'), openBag: () => open('bag'), openMissions: () => open('missions'), openKiosk: () => open('kiosk'), close, get isOpen() { return view !== null; } };
 }

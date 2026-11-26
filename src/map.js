@@ -66,6 +66,7 @@ export const TILES = {
   '5': { name: 'hut', solid: true },                                   // a beach cabana (3 x 2 tiles)
   '6': { name: 'bonfire', solid: true },                               // the bonfire ring: it glows at night
   '7': { name: 'kiosk', solid: true },                                 // the Kiosco (4 x 2 tiles): its counter is the row of tiles south of it
+  '8': { name: 'surf shop', solid: true },                             // the surf stand (3 x 2 tiles): its counter is the row of tiles south of it
   // the shop
   '_': { name: 'floor', solid: false },
   'r': { name: 'rug', solid: false },
@@ -354,6 +355,7 @@ export const BEACH = {
   kiosk: { x: 62, y: 17, w: 4, h: 2 },                          // the Kiosco: a pet buys at its counter, standing in the row south of it
   huts: [{ x: 62, y: 5, w: 3, h: 2 }, { x: 62, y: 35, w: 3, h: 2 }],
   bonfire: { x: 49, y: 27 },
+  surfShop: { x: 41, y: 27, w: 3, h: 2 },                      // the surf stand by the shore (3 x 2 tiles): the surfboard is sold at its counter, the row of tiles south of it
   court: { x: 51, y: 9, w: 9, h: 5 },                          // the volleyball court: lines on the sand, the net across its middle row (posts at both ends, mesh between)
   net: { y: 11, x0: 52, x1: 58 },
   pier: { y: [31, 32], from: 24 },                              // the planks of rows 31 and 32, from this column to the shore
@@ -372,11 +374,11 @@ function buildBeach() {
     // the boardwalk from the door to the sand, and the sign by it
     fill(46, BEACH.door[0], w - 46, 2, '-');
     // the sand's furniture: umbrellas with their towels, rocks, palms, the lifeguard post
-    for (const [x, y] of at([[31, 5], [36, 8], [41, 5], [33, 12], [40, 12], [31, 24], [37, 27], [43, 24], [35, 31], [44, 30]])) { set(x, y, 'O'); set(x + 1, y + 1, 'Q'); }
+    for (const [x, y] of at([[31, 5], [36, 8], [41, 5], [33, 12], [40, 12], [31, 24], [43, 27], [43, 24], [35, 31], [44, 30]])) { set(x, y, 'O'); set(x + 1, y + 1, 'Q'); }
     for (const [x, y] of at([[32, 6], [42, 6], [41, 13], [32, 25], [44, 25], [36, 32]])) set(x, y, '&');      // loungers in the shade, in place of some towels
     for (const [x, y] of at([[29, 21], [27, 11]])) set(x, y, 'I');
     for (const [x, y] of at([[28, 3], [29, 3], [28, 4], [45, 22], [46, 22], [45, 23], [29, 33], [30, 33], [30, 32], [44, 12], [38, 15], [39, 15], [26, 28]])) set(x, y, 'X');
-    for (const [x, y] of at([[34, 3], [38, 2], [46, 8], [46, 11], [33, 20], [42, 21], [36, 24], [40, 30], [46, 28], [28, 15], [27, 8], [45, 33], [30, 29]])) set(x, y, 'J');
+    for (const [x, y] of at([[34, 3], [38, 2], [46, 8], [46, 11], [29, 20], [42, 21], [39, 31], [40, 30], [46, 28], [28, 15], [27, 8], [45, 33], [30, 29]])) set(x, y, 'J');
     for (const [x, y] of at([[33, 16], [39, 16], [45, 16], [36, 19], [42, 19]])) set(x, y, 'L');          // lamps along the boardwalk
     // the new things
     fill(BEACH.court.x, BEACH.court.y, BEACH.court.w, BEACH.court.h, 's');                          // the court is cleared of the old things
@@ -387,6 +389,7 @@ function buildBeach() {
     for (const [x, y] of [[43, 9], [40, 8], [43, 8], [46, 6], [41, 38], [45, 37], [44, 40], [48, 3], [57, 38], [59, 39], [46, 4]]) set(x, y, 'X');
     for (const hut of BEACH.huts) fill(hut.x, hut.y, hut.w, hut.h, '5');
     fill(BEACH.kiosk.x, BEACH.kiosk.y, BEACH.kiosk.w, BEACH.kiosk.h, '7');
+    fill(BEACH.surfShop.x, BEACH.surfShop.y, BEACH.surfShop.w, BEACH.surfShop.h, '8');
     for (const [x, y] of [[62, 9], [55, 34], [64, 28], [64, 39], [51, 40], [55, 2], [60, 15]]) set(x, y, 'J');           // a few more palms
     for (const [x, y] of [[58, 16]]) set(x, y, 'L');                                        // a lamp by the Kiosco's counter
     for (const y of BEACH.pier.y) for (let x = BEACH.pier.from; x < shallowFrom(y) + 5; x++) set(x, y, '1');          // the pier: planks over the sea, out to where the water is deep

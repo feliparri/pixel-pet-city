@@ -267,7 +267,7 @@ export function rocks(seed = 0) {
 const OLD = [
   { kind: 'shell', x: 25, y: 8, dx: 4, dy: 9 }, { kind: 'shell', x: 26, y: 19, dx: 9, dy: 5 }, { kind: 'shell', x: 28, y: 27, dx: 3, dy: 8 }, { kind: 'shell', x: 38, y: 14, dx: 10, dy: 7 },
   { kind: 'starfish', x: 27, y: 14, dx: 6, dy: 6 }, { kind: 'starfish', x: 29, y: 30, dx: 5, dy: 8 },
-  { kind: 'castle', x: 29, y: 24, dx: 2, dy: 12 },
+  { kind: 'castle', x: 27, y: 27, dx: 2, dy: 12 },
   { kind: 'bucket', x: 31, y: 23, dx: 4, dy: 12 },
   { kind: 'ball', x: 34, y: 28, dx: 8, dy: 11 },
   { kind: 'table', x: 31, y: 6, dx: 1, dy: 15 }, { kind: 'table', x: 40, y: 13, dx: 1, dy: 15 }, { kind: 'table', x: 43, y: 25, dx: 1, dy: 15 },   // side tables with a drink beside some deck chairs
@@ -477,5 +477,25 @@ export function kiosk() {
   }
   rect(ctx, INK, 0, 0, 64, 2); rect(ctx, RED_LIT, 0, 1, 64, 1); rect(ctx, INK, 0, 11, 64, 1); rect(ctx, RED_LIT, 0, 2, 64, 1);
   rect(ctx, INK, 0, 14, 3, 48); rect(ctx, WOOD, 1, 14, 1, 46); rect(ctx, INK, 61, 14, 3, 48); rect(ctx, WOOD, 62, 14, 1, 46);               // the posts at the corners
+  return c;
+}
+
+/**
+ * The surf stand, 3 x 2 tiles (48 wide, 46 tall; its foot is the bottom edge): a small wooden hut with a sloped roof and a "Surf" sign, a counter at the front and three boards leaning
+ * on its side (one with a stripe). The counter is the row of tiles south of it.
+ */
+export function surfShop() {
+  const c = canvas(48, 46), ctx = c.getContext('2d');
+  rect(ctx, INK, 6, 16, 38, 30); rect(ctx, WOOD, 7, 17, 36, 28);                                          // the plank walls
+  for (let i = 0; i < 9; i++) rect(ctx, WOOD_DK, 11 + i * 4, 17, 1, 28);
+  rect(ctx, INK, 12, 28, 26, 12); rect(ctx, '#2c1a18', 13, 29, 24, 10);                                    // the dark serving window
+  rect(ctx, INK, 9, 38, 32, 7); rect(ctx, WOOD_LIT, 10, 39, 30, 2); rect(ctx, WOOD_DK, 10, 42, 30, 2);      // the counter
+  rect(ctx, INK, 2, 3, 44, 14); rect(ctx, '#2a9bb0', 3, 4, 42, 11); rect(ctx, '#58c7d8', 3, 4, 42, 2); rect(ctx, '#1d7a8e', 3, 13, 42, 2);   // the roof, teal
+  rect(ctx, INK, 11, 0, 26, 10); rect(ctx, P.cream, 12, 1, 24, 8);                                         // the sign board
+  const GLYPH = { S: ['111', '100', '111', '001', '111'], U: ['101', '101', '101', '101', '111'], R: ['111', '101', '111', '110', '101'], F: ['111', '100', '110', '100', '100'] };
+  [...'SURF'].forEach((ch, i) => GLYPH[ch].forEach((row, y) => [...row].forEach((v, x) => { if (v === '1') rect(ctx, '#1d7a8e', 14 + i * 6 + x, 2 + y, 1, 1); })));   // "Surf" in 3 x 5 pixel letters
+  for (const [x, col] of [[36, '#e0485a'], [40, '#ffcb6b'], [44, '#3f7ad0']]) {                             // boards leaning on the right side
+    rect(ctx, INK, x - 1, 14, 5, 31); rect(ctx, col, x, 15, 3, 29); rect(ctx, P.cream, x, 28, 3, 2);
+  }
   return c;
 }

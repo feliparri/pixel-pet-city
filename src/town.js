@@ -3,7 +3,7 @@ import { findPath, dirVector } from './path.js';
 import { isWalkable, doorAt, spotAt, tileAt, getArea, waterAt, isBreak, TILES, GAME_PLACES, SPAWNS } from './map.js';
 import { Walker, REMOTE_SNAP } from './walker.js';
 import { paceFactor, waterOf, zoomTarget } from './sea.js';
-import { createSurf, surfFlag, surfAction, press as surfPress, wipeout, wipeOver, finishRide, rideDecide, waveAt, waveSize, SIZES, HUGE, RIDE_MS, SAY, BOARD } from './surf.js';
+import { createSurf, surfFlag, surfAction, press as surfPress, wipeout, wipeOver, finishRide, rideDecide, waveAt, waveSize, SIZES, HUGE, RIDE_MS, SAY, BOARD, surfShopAt } from './surf.js';
 import { loungeAt } from './lounge.js';
 import { kioskAt, createTreat, treatPhase, buyTreat, fromCode, TREATS } from './kiosk.js';
 import { isTyping, isJumpKey, runs, tapWalks } from './keys.js';
@@ -69,7 +69,7 @@ function spawnFor(id) {
  * done }, what the server paid today), claim(m) (hands a mission in: the server pays real gold, src/trip.js claimMission), giftOwner() (who opens the seasonal gifts: the trip's ref),
  * gift(id) (opens a gift: the server pays 10 to 30 gold (20 to 30 for one of Santa's), src/trip.js claimGift) }; onFarm({ action, prompt }) says which action is available (or null) when it changes, onFarmDone(result) reports an action's outcome (the pop) and onFarmAction(event) every action done (missions), onFish() the pet fished at the park's pond (the page opens the fishing layer).
  * Returns { onNetEvent, emote, playExit, games: { play, join, seek, leave, dismiss }, farm: { act }, destroy }. */
-export function startTown({ canvas, stage, pad = null, sprites, font, net, me, entrance = null, stars = { add() {}, get: () => 0 }, canasta = createCanasta(), farmMemory = createFarmMemory(), tools = () => [], onStore = () => {}, onKiosk = () => {}, missions = null, onHud = () => {}, onShow = () => {}, onShop = () => {}, insets = () => ({ top: 0, bottom: 0 }), onFarm = () => {}, onFarmDone = () => {}, onFarmAction = () => {}, onFish = () => {} }) {
+export function startTown({ canvas, stage, pad = null, sprites, font, net, me, entrance = null, stars = { add() {}, get: () => 0 }, canasta = createCanasta(), farmMemory = createFarmMemory(), tools = () => [], onStore = () => {}, onKiosk = () => {}, onSurfShop = () => {}, missions = null, onHud = () => {}, onShow = () => {}, onShop = () => {}, insets = () => ({ top: 0, bottom: 0 }), onFarm = () => {}, onFarmDone = () => {}, onFarmAction = () => {}, onFish = () => {} }) {
   const [sx, sy] = spawnFor(net.id);
   const self = { id: net.id, name: me.name, look: me.look, stats: me.stats || null, act: 'idle', walker: new Walker(sx, sy), emote: null, jumpAt: null, area: 'town' };
   const treat = createTreat();                                     // a treat from the Kiosco in the pet's hand (src/kiosk.js): this screen's state, the others see its code in the position
@@ -347,7 +347,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     } else { state.farm = null; farmAction = null; }
     if (self.area === 'town' && !farmAction && !w.busy && !self.fx && !modal && !mv.closed) farmAction = pondAction(self.area, w.tileX, w.tileY, tools());      // beside the park's pond: A fishes (with the rod)
     if (self.area === 'beach' && !farmAction && !w.busy && !self.fx && !modal && !mv.closed && surf.mode === 'idle') farmAction = surfAction(utc, w.tileX, w.tileY, tools()) || loungeAt(w.tileX, w.tileY, 'beach', resting, (x, y) => crowd.taken(x, y));      // at the break: A catches the wave (with the board), or what is missing
-    if (self.area === 'beach' && (!farmAction || farmAction.id === 'hint') && !w.busy && !self.fx && !modal && !mv.closed && surf.mode === 'idle') { const ka = kioskAt(w.tileX, w.tileY, 'beach'); if (ka) farmAction = ka; }      // in front of the Kiosco's counter: A opens its menu
+    if (self.area === 'beach' && (!farmAction || farmAction.id === 'hint') && !w.busy && !self.fx && !modal && !mv.closed && surf.mode === 'idle') { const ka = kioskAt(w.tileX, w.tileY, 'beach') || surfShopAt(w.tileX, w.tileY, 'beach'); if (ka) farmAction = ka; }      // in front of the Kiosco's counter: A opens its menu
     if (self.area === 'beach' && seat >= 0 && !w.busy && !self.fx && !modal && !mv.closed) farmAction = { id: 'fire', label: nextSitAct === 'roast' ? 'Tostar malvavisco' : 'Avivar el fuego', target: 'bonfire' };      // seated: A toasts a marshmallow, then stokes the fire, then toasts again
     else if (self.area === 'beach' && (!farmAction || farmAction.id === 'hint') && !w.busy && !self.fx && !modal && !mv.closed && surf.mode === 'idle') { const ba = bonfireAt(w.tileX, w.tileY, 'beach', takenSeats()); if (ba && (!farmAction || ba.id === 'sit')) farmAction = ba; }      // by the fire: "Sentarse", or "La fogata está llena"
     if (self.area === 'beach' && seat < 0 && !w.busy && !self.fx && !modal && !mv.closed) { const vp = volley.prompt(w.tileX, w.tileY, 'beach'); if (vp && (vp.id === 'vhit' || !farmAction || farmAction.id === 'hint')) farmAction = vp; }      // on the court: "Jugar vóley", then "Devolver" while the match lasts
@@ -543,6 +543,7 @@ export function startTown({ canvas, stage, pad = null, sprites, font, net, me, e
     if (!farmAction || farmAction.id === 'hint') return false;
     if (farmAction.id === 'store') { pets.cue('door'); onStore(); return true; }
     if (farmAction.id === 'kiosk') { pets.cue('door'); onKiosk(); return true; }
+    if (farmAction.id === 'surfshop') { pets.cue('door'); onSurfShop(); return true; }
     if (farmAction.id === 'surf') { catchWave(); return true; }
     if (farmAction.id === 'sit') {                                                             // walk onto the seat and sit there (src/bonfire.js)
       const w = self.walker, [rx, ry] = farmAction.target;

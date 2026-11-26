@@ -65,7 +65,7 @@ test('the prompt: needs the break, then the board, then a wave', () => {
   assert.equal(surfAction(near, 12, Y, withBoard), null, 'deep water but not the break');
   assert.ok(isBreak(X, Y, 'beach'));
   const hint = surfAction(near, X, Y, []);
-  assert.deepEqual([hint.id, hint.label], ['hint', 'Necesitas una Tabla de surf — Almacén']);
+  assert.deepEqual([hint.id, hint.label], ['hint', 'Necesitas una Tabla de surf — Tienda de surf']);
   assert.equal(surfAction(near, X, Y, undefined).id, 'hint');
   assert.deepEqual(surfAction(near, X, Y, withBoard), { id: 'surf', label: 'Tomar la ola', target: 'wave' });
   assert.equal(surfAction(at(9800), X, Y, withBoard).id, 'hint', 'no wave near: wait for it');
