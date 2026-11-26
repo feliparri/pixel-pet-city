@@ -179,6 +179,19 @@ a.btn { display: inline-block; text-decoration: none; }
 .shop-row.mission .shop-info strong { white-space: normal; }
 .confirm { display: grid; gap: .6rem; justify-items: center; text-align: center; padding: .6rem 0; }
 .confirm .icon { width: 64px; height: 64px; image-rendering: pixelated; background: var(--bg); border: 1px solid var(--edge); }
+/* a short landscape viewport (a phone on its side, 844 x 390): the panels use two columns of compact rows so the Almacén's five tools fit without scrolling; portrait and tall windows keep the roomy layout */
+@media (max-height: 460px) and (orientation: landscape) {
+  .panel { top: 2.7rem; bottom: 3.6rem; width: min(40rem, calc(100% - 1rem)); padding: .35rem .5rem; }
+  .panel-head { margin-bottom: .25rem; }
+  .panel-head h2 { font-size: 1.05rem; }
+  .panel-body .empty { margin: 0 0 .25rem; font-size: .8rem; line-height: 1.2; }
+  .shop-list:not(.bag):not(.missions) { grid-template-columns: 1fr 1fr; gap: .25rem; }
+  .shop-row { gap: .4rem; padding: .2rem .35rem; }
+  .shop-row .icon { width: 32px; height: 32px; }
+  .shop-row .btn { max-width: 7rem; font-size: .75rem; min-height: 2rem; padding: .15rem .4rem; }
+  .shop-info strong { font-size: .85rem; }
+  .shop-info .price { font-size: .8rem; }
+}
 .confirm p { margin: 0; font-size: 1.1rem; font-weight: 700; }
 .confirm-actions { display: flex; gap: .6rem; }
 .play.modal .pad, .play.modal .stick-zone { display: none !important; }
