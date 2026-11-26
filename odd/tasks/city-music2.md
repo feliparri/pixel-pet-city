@@ -16,7 +16,7 @@ Owner 2026-11-26: "el sonido de lluvia está muy fuerte, bajale un poco, y lo ot
 
 ## Tasks
 - [x] MU.1 (a05b258) Rain bed quieter (GAIN.rain in src/ambience.js) plus a test pinning the lower level. Route: delegated (same writer as MU.2).
-- [x] MU.2 (see Progress) Town music rewrite: song structure, chords, bass, arpeggios, lead, noise drums, mood variants (day, night, rain, beach, farm), crossfades. Tests for the pure song data and scheduler. Route: delegated (one writer, several files: city-music.js, maybe sound.js, tests).
+- [x] MU.2 (5d58649) Town music rewrite: song structure, chords, bass, arpeggios, lead, noise drums, mood variants (day, night, rain, beach, farm), crossfades. Tests for the pure song data and scheduler. Route: delegated (one writer, several files: city-music.js, maybe sound.js, tests).
 
 ## Progress
 - 2026-11-26 Document created.
