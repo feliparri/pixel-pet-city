@@ -1,15 +1,15 @@
-// The town's music player: turns the pure song (src/city-song.js) into sound with the browser's own oscillators, in the voices of an 8-bit machine: two pulse voices (the lead,
-// with vibrato and a quiet echo, and a harmony arpeggio), a triangle bass and a noise channel for the drums. Notes are scheduled a little ahead (LOOK seconds) by one timer that
+// The town's music player: turns the pure song (src/city-song.js) into sound with the browser's own oscillators, in the voices of an 8-bit machine: two pulse voices (the lead, a 50 % square
+// with vibrato and a quiet echo, and a 25 % pulse harmony arpeggio), a triangle bass and a noise channel for the drums. Notes are scheduled a little ahead (LOOK seconds) by one timer that
 // only runs while the music plays; every note is its own short oscillator that is stopped at its end, and the voices share one gain each, so the node count stays small.
 // The mood is read at each bar line, so a change of weather or place never cuts a bar: the next bar is in the new key, and the master level and the echo tail carry the change.
-// step(ms, mood) is called every frame with the mood now (null: silence) and does no work beyond a check; reset() stops everything and the next start begins with the intro.
+// step(ms, mood) is called every frame with the mood now (null: silence) and does no work beyond a check; reset() stops everything and the next start begins at bar 1 of the loop.
 import { STEPS, MOODS, songBar, stepSeconds, midiToHz } from './city-song.js';
 
 export const MUSIC_GAIN = 0.04;                    // the whole music's peak share of full scale: it plays under the ambience and the effects
 const LOOK = 0.2, TICK_MS = 80, MAX_NOTES = 40;    // seconds scheduled ahead, the timer's period, the most notes sounding or waiting at once
 const BUS = { lead: 0.5, harm: 0.24, bass: 0.55, kick: 0.5, snare: 0.28, hat: 0.1 };
 
-function pulseWave(c, duty) {                       // a pulse of the given width as a periodic wave (the NES's 12.5 / 25 / 50 % squares)
+function pulseWave(c, duty) {                       // a pulse of the given width as a periodic wave (here the 50 % square and the 25 % pulse)
   const n = 32, real = new Float32Array(n + 1), imag = new Float32Array(n + 1);
   for (let k = 1; k <= n; k++) { real[k] = (2 / (k * Math.PI)) * Math.sin(k * Math.PI * duty); imag[k] = (2 / (k * Math.PI)) * (1 - Math.cos(k * Math.PI * duty)); }
   return c.createPeriodicWave(real, imag);
@@ -32,7 +32,7 @@ export function createCityMusic({ sound, setTimer = setInterval, clearTimer = cl
     lfo.frequency.value = 5.5; depth.gain.value = 12; lfo.connect(depth); lfo.start();
     const noise = c.createBuffer(1, Math.max(1, Math.floor(c.sampleRate * 0.5)), c.sampleRate), d = noise.getChannelData(0);
     for (let i = 0, s = 12345; i < d.length; i++) { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; d[i] = s / 2147483648 - 1; }
-    const waves = new Map();
+    const waves = new Map([[0.5, pulseWave(c, 0.5)], [0.25, pulseWave(c, 0.25)]]);   // each wave is built once per context and reused by every note
     return { master, bus, delay, lfo, depth, noise, waves };
   }
 
@@ -73,9 +73,7 @@ export function createCityMusic({ sound, setTimer = setInterval, clearTimer = cl
     ends = ends.filter((e) => e > c.currentTime);
     if (ends.length >= MAX_NOTES) return;                                    // never more notes in flight than a phone can mix
     if (ev.v === 'lead' || ev.v === 'harm') {
-      const duty = ev.v === 'lead' ? m.duty : 0.125, key = duty;
-      let w = g.waves.get(key); if (!w) g.waves.set(key, w = pulseWave(c, duty));
-      ends.push(tone(c, ev, t, sec, w, ev.v === 'lead'));
+      ends.push(tone(c, ev, t, sec, g.waves.get(ev.v === 'lead' ? m.duty : 0.25), ev.v === 'lead'));
     } else if (ev.v === 'bass') ends.push(tone(c, ev, t, sec, null, false));
     else ends.push(hit(c, ev, t));
   }

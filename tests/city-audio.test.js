@@ -176,7 +176,7 @@ test('music: notes are scheduled a little ahead (never more than 0.3 s) and ever
   assert.ok(live <= 40 + 1, `${live} notes in flight`);
 });
 
-test('music: the mood changes only at a bar line, and reset starts over from the intro with the voice faded out', () => {
+test('music: the mood changes only at a bar line, and reset starts over at bar 1 with the voice faded out', () => {
   const r = musicRig();
   r.run(4, 'day');
   const m = r.c.gains.length;
