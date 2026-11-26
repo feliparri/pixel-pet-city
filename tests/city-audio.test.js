@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chirp, cricket, cluck, moo, baa, thunder, rainBed, waterBed, waterNear, WATER, createAmbience, EVERY, GAIN } from '../src/ambience.js';
-import { MOODS, moodFor, phraseFor, phraseMs, createCityMusic, MUSIC_LEVEL } from '../src/city-music.js';
+import { createCityMusic, MUSIC_GAIN } from '../src/city-music.js';
 import { createCityAudio } from '../src/city-audio.js';
 import { createSound, SFX_RATE, AMBIENT_MAX } from '../src/sound.js';
 import { tileAt } from '../src/map.js';
@@ -59,6 +59,7 @@ function spySound({ running = true, muted = false } = {}) {
   s.stopBeds = () => { s.stopCount++; };
   s.playNotes = (notes, level, priority) => { s.calls.push(['notes', notes.length, level, priority]); return true; };
   s.stop = () => { s.calls.push(['stop']); };
+  s.audio = () => null;                                       // the music's own context: none unless a test gives one
   return s;
 }
 const lcg = (seed = 1) => () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
@@ -129,45 +130,76 @@ test('ambience: thunder follows a lightning strike after its delay, never before
   assert.ok(gap.calls.filter((c) => c[2] === GAIN.thunder).length <= 1, 'a ten minute gap is not replayed as a hundred thunders');
 });
 
-test('music: three moods of 16 steps, quiet and slow; the mood follows rain, then night, else day', () => {
-  for (const [k, m] of Object.entries(MOODS)) {
-    for (const p of m.patterns) { assert.equal(p.length, 16, k); assert.ok(p.every((i) => i < m.scale.length), k); }
-    assert.ok(m.ms >= 300 && m.vol <= 130);
+// A stand-in audio context: it records every node and AudioParam call, so the scheduler can be read without a browser.
+function fakeCtx() {
+  const c = { currentTime: 0, state: 'running', sampleRate: 8000, destination: { id: 'dest' }, oscillators: [], sources: [], gains: [], disconnected: 0 };
+  const param = (v = 0) => ({ value: v, calls: [], setValueAtTime(x, t) { this.calls.push(['set', x, t]); }, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {}, cancelScheduledValues() {}, setTargetAtTime(x, t) { this.calls.push(['target', x, t]); } });
+  const node = (extra) => ({ connect() {}, disconnect() { c.disconnected++; }, ...extra });
+  c.createGain = () => { const n = node({ gain: param(1) }); c.gains.push(n); return n; };
+  c.createOscillator = () => { const n = node({ frequency: param(440), detune: param(0), type: 'sine', start(t) { n.at = t; }, stop(t) { n.until = t; }, setPeriodicWave() { n.wave = true; } }); c.oscillators.push(n); return n; };
+  c.createBufferSource = () => { const n = node({ start(t) { n.at = t; }, stop(t) { n.until = t; } }); c.sources.push(n); return n; };
+  c.createBiquadFilter = () => node({ frequency: param(), Q: param() });
+  c.createDelay = () => node({ delayTime: param() });
+  c.createBuffer = (ch, n) => ({ getChannelData: () => new Float32Array(n) });
+  c.createPeriodicWave = () => ({});
+  return c;
+}
+function musicRig({ muted = false } = {}) {
+  const c = fakeCtx(), t = { fn: null, cleared: 0, delayed: [] };
+  const sound = { audio: () => (muted ? null : c) };
+  const m = createCityMusic({ sound, setTimer: (fn) => { t.fn = fn; return 1; }, clearTimer: () => { t.fn = null; t.cleared++; }, later: (f) => { t.delayed.push(f); } });
+  const run = (secs, mood) => { for (let i = 0; i < secs * 1000 / 80; i++) { c.currentTime += 0.08; m.step(80, mood); if (t.fn) t.fn(); } };
+  return { c, t, m, run, sound };
+}
+
+test('music: nothing starts while muted or before the context runs; a timer runs only while it plays', () => {
+  const q = musicRig({ muted: true });
+  q.run(5, 'day');
+  assert.equal(q.c.oscillators.length, 0); assert.equal(q.t.fn, null); assert.equal(q.m.playing, false);
+  const r = musicRig();
+  assert.equal(r.m.step(16, null), false); assert.equal(r.t.fn, null, 'no mood: no timer');
+  r.run(3, 'day');
+  assert.ok(r.t.fn && r.m.playing && r.c.oscillators.length > 5);
+  r.m.step(16, null);
+  assert.equal(r.t.fn, null, 'silence stops the timer'); assert.equal(r.m.playing, false);
+});
+
+test('music: notes are scheduled a little ahead (never more than 0.3 s) and every oscillator is stopped', () => {
+  const r = musicRig();
+  r.run(10, 'day');
+  for (const o of [...r.c.oscillators.filter((x) => x.until !== undefined), ...r.c.sources]) {
+    assert.ok(o.until > o.at, 'a stop after the start');
   }
-  assert.ok(MUSIC_LEVEL <= 1);
-  assert.ok(MOODS.night.ms > MOODS.day.ms && MOODS.rain.ms > MOODS.night.ms, 'night and rain are slower');
-  assert.ok(MOODS.rain.vol < MOODS.night.vol && MOODS.night.vol < MOODS.day.vol, 'and softer');
-  assert.equal(moodFor(0, null), 'day'); assert.equal(moodFor(1, { rain: 0, snow: 0 }), 'night'); assert.equal(moodFor(1, { rain: 0.8, snow: 0 }), 'rain'); assert.equal(moodFor(0, { rain: 0, snow: 0.9 }), 'rain');
-  assert.deepEqual(phraseFor('nope'), []);
-  assert.equal(phraseFor('day', 0).length, 16);
-  assert.notDeepEqual(phraseFor('day', 0), phraseFor('day', 1));
-  assert.ok(phraseMs(phraseFor('day', 0)) > 4500);
+  const lastAt = Math.max(...r.c.oscillators.filter((x) => x.at !== undefined).map((x) => x.at));
+  assert.ok(lastAt < r.c.currentTime + 0.35, `scheduled to ${lastAt - r.c.currentTime}s ahead`);
+  const live = r.c.oscillators.filter((x) => x.at !== undefined && x.until > r.c.currentTime && x.at <= r.c.currentTime + 0.3).length;
+  assert.ok(live <= 40 + 1, `${live} notes in flight`);
 });
 
-test('music: the first phrase waits, phrases follow with a pause, silence holds the timer, an unsounded phrase is retried later', () => {
-  const played = [];
-  let ok = true;
-  const m = createCityMusic({ play: (n) => { if (ok) played.push(n); return ok; }, rand: () => 0.5 });
-  assert.equal(m.step(1000, 'day'), false);
-  assert.equal(m.step(600, 'day'), true, 'after the first wait');
-  const len = phraseMs(played[0]), pause = (MOODS.day.gap[0] + MOODS.day.gap[1]) / 2;
-  assert.equal(m.step(len - 1, 'day'), false);
-  assert.equal(m.step(pause - 1, null), false, 'silent: the timer holds');
-  assert.equal(m.step(pause - 1, 'day'), false);
-  assert.equal(m.step(10, 'day'), true);
-  assert.equal(played.length, 2);
-  ok = false;
-  m.reset(); assert.equal(m.step(1600, 'rain'), false);
-  assert.equal(m.step(500, 'rain'), false, 'refused: retry in a while, not every frame');
-  ok = true; assert.equal(m.step(2100, 'rain'), true);
+test('music: the mood changes only at a bar line, and reset starts over from the intro with the voice faded out', () => {
+  const r = musicRig();
+  r.run(4, 'day');
+  const m = r.c.gains.length;
+  r.m.step(16, 'night');
+  assert.equal(r.m.playing, true, 'a mood change keeps the music going');
+  r.run(6, 'night');
+  assert.ok(r.c.gains.length > m);
+  r.m.reset();
+  assert.equal(r.m.playing, false); assert.equal(r.m.bar, 0);
+  assert.equal(r.t.delayed.length, 1, 'the old chain is released later');
+  r.t.delayed[0]();
+  r.run(2, 'rain'); assert.equal(r.m.playing, true);
+  assert.ok(MUSIC_GAIN <= 0.05, 'a background level');
 });
 
-test('city audio: music at the lowest priority and level 1; silent when muted or before a gesture; silence stops the voice and the beds', () => {
-  const s = spySound(), a = createCityAudio({ sound: s, rand: lcg() });
-  for (let i = 0; i < 40; i++) a.step(100, day);
-  const notes = s.calls.filter((c) => c[0] === 'notes');
-  assert.ok(notes.length >= 1);
-  assert.ok(notes.every((c) => c[2] === MUSIC_LEVEL && c[3] === 0), 'level 1, priority 0 (any effect cuts it)');
+test('city audio: music follows the sound switch and the layers; silence stops the music and the beds', () => {
+  const c = fakeCtx();
+  const s = spySound();
+  s.audio = () => c;
+  const a = createCityAudio({ sound: s, rand: lcg() });
+  a.step(100, day);
+  c.currentTime = 1; a.step(100, day);
+  assert.ok(c.oscillators.length > 0 || c.gains.length > 0, 'the music builds its voices');
   a.silence();
   assert.equal(s.stopCount, 1); assert.equal(s.calls.at(-1)[0], 'stop');
   for (const opts of [{ muted: true }, { running: false }]) {

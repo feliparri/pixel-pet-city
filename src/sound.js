@@ -242,6 +242,8 @@ export function createSound({ ctxFactory = () => null, storage = null } = {}) {
     unlock,
     /** Is the audio context running (a gesture has unlocked it)? The town's ambience waits for it, so it never creates a context on its own. */
     running,
+    /** The audio context for a caller that makes its own synth (the town's music), or null while it is not running or the sound is muted. */
+    audio: () => (running() && !mute.get() ? ctx : null),
     ambient, bed, stopBeds,
     isMuted: () => mute.get(),
     setMuted(on) { mute.set(on); if (mute.get()) { stopBeds(); if (voice) { try { voice.stop(); } catch { /* ended */ } voice = null; } } listeners.forEach((f) => f(mute.get())); },
